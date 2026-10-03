@@ -9,7 +9,7 @@ PX3LucyAudioProcessor::PX3LucyAudioProcessor()
     // means.
     const auto decibels = juce::NormalisableRange<float>(-36.0f, 36.0f);
 
-    addParameter(enabledParam = new juce::AudioParameterBool("lucyEnabled", "Lucy Enabled", true));
+    addParameter(enabledParam = new juce::AudioParameterBool("fx.lucy.enabled", "Lucy Enabled", true));
 
     // ---- the six primary knobs -------------------------------------------
     //
@@ -18,46 +18,46 @@ PX3LucyAudioProcessor::PX3LucyAudioProcessor()
     // control useful the moment GLOBAL is raised.
     // Part-way up, so inserting LUCY does something before a knob is touched.
     // At zero it passed audio untouched, which read as a broken plugin.
-    addParameter(globalParam = new juce::AudioParameterFloat("lucyGlobal", "Lucy Global", unit, 0.5f));
-    addParameter(lossParam = new juce::AudioParameterFloat("lucyLoss", "Lucy Loss", unit, 0.55f));
-    addParameter(speedParam = new juce::AudioParameterFloat("lucySpeed", "Lucy Speed", unit, 0.5f));
+    addParameter(globalParam = new juce::AudioParameterFloat("fx.lucy.global", "Lucy Global", unit, 0.5f));
+    addParameter(lossParam = new juce::AudioParameterFloat("fx.lucy.loss", "Lucy Loss", unit, 0.55f));
+    addParameter(speedParam = new juce::AudioParameterFloat("fx.lucy.speed", "Lucy Speed", unit, 0.5f));
     // Zero is NO filtering at all, which is what makes this a width control.
-    addParameter(filterParam = new juce::AudioParameterFloat("lucyFilter", "Lucy Filter", unit, 0.0f));
-    addParameter(filterFreqParam = new juce::AudioParameterFloat("lucyFreq", "Lucy Freq", unit, 0.5f));
-    addParameter(verbParam = new juce::AudioParameterFloat("lucyVerb", "Lucy Verb", unit, 0.0f));
+    addParameter(filterParam = new juce::AudioParameterFloat("fx.lucy.filter", "Lucy Filter", unit, 0.0f));
+    addParameter(filterFreqParam = new juce::AudioParameterFloat("fx.lucy.freq", "Lucy Freq", unit, 0.5f));
+    addParameter(verbParam = new juce::AudioParameterFloat("fx.lucy.verb", "Lucy Verb", unit, 0.0f));
 
     // ---- their alternate functions ----------------------------------------
     addParameter(gateThresholdParam = new juce::AudioParameterFloat(
-        "lucyGateThreshold", "Lucy Gate Threshold", unit, 0.25f));
-    addParameter(freezerParam = new juce::AudioParameterFloat("lucyFreezer", "Lucy Freezer", unit, 1.0f));
-    addParameter(verbDecayParam = new juce::AudioParameterFloat("lucyDecay", "Lucy Decay", unit, 0.45f));
+        "fx.lucy.gate.threshold", "Lucy Gate Threshold", unit, 0.25f));
+    addParameter(freezerParam = new juce::AudioParameterFloat("fx.lucy.freezer", "Lucy Freezer", unit, 1.0f));
+    addParameter(verbDecayParam = new juce::AudioParameterFloat("fx.lucy.decay", "Lucy Decay", unit, 0.45f));
     // The LIMITER's threshold. Named in full because the loss coder has a
     // masking threshold of its own; that one is derived and never a parameter.
     addParameter(limiterThresholdParam = new juce::AudioParameterFloat(
-        "lucyLimiterThreshold", "Lucy Limiter Threshold", unit, 0.8f));
-    addParameter(autoGainParam = new juce::AudioParameterFloat("lucyAutoGain", "Lucy Auto Gain", unit, 0.75f));
-    addParameter(lossGainParam = new juce::AudioParameterFloat("lucyLossGain", "Lucy Loss Gain", decibels, 0.0f));
+        "fx.lucy.limiter.threshold", "Lucy Limiter Threshold", unit, 0.8f));
+    addParameter(autoGainParam = new juce::AudioParameterFloat("fx.lucy.auto.gain", "Lucy Auto Gain", unit, 0.75f));
+    addParameter(lossGainParam = new juce::AudioParameterFloat("fx.lucy.loss.gain", "Lucy Loss Gain", decibels, 0.0f));
 
     // ---- toggles and categories -------------------------------------------
-    addParameter(filterInvertParam = new juce::AudioParameterBool("lucyFilterInvert", "Lucy Filter Invert", false));
-    addParameter(verbPostParam = new juce::AudioParameterBool("lucyVerbPost", "Lucy Verb Post", false));
-    addParameter(gateParam = new juce::AudioParameterBool("lucyGate", "Lucy Gate", false));
-    addParameter(slowParam = new juce::AudioParameterBool("lucySlow", "Lucy Slow", false));
+    addParameter(filterInvertParam = new juce::AudioParameterBool("fx.lucy.filter.invert", "Lucy Filter Invert", false));
+    addParameter(verbPostParam = new juce::AudioParameterBool("fx.lucy.verb.post", "Lucy Verb Post", false));
+    addParameter(gateParam = new juce::AudioParameterBool("fx.lucy.gate", "Lucy Gate", false));
+    addParameter(slowParam = new juce::AudioParameterBool("fx.lucy.slow", "Lucy Slow", false));
 
     addParameter(modeParam = new juce::AudioParameterChoice(
-        "lucyMode", "Lucy Mode", juce::StringArray { "STANDARD", "INVERSE", "JITTER" }, 0));
+        "fx.lucy.mode", "Lucy Mode", juce::StringArray { "STANDARD", "INVERSE", "JITTER" }, 0));
     addParameter(packetsParam = new juce::AudioParameterChoice(
-        "lucyPackets", "Lucy Packets", juce::StringArray { "CLEAN", "LOSS", "REPEAT" }, 0));
+        "fx.lucy.packets", "Lucy Packets", juce::StringArray { "CLEAN", "LOSS", "REPEAT" }, 0));
     addParameter(slopeParam = new juce::AudioParameterChoice(
-        "lucySlope", "Lucy Slope", juce::StringArray { "6 dB", "24 dB", "96 dB" }, 1));
+        "fx.lucy.slope", "Lucy Slope", juce::StringArray { "6 dB", "24 dB", "96 dB" }, 1));
     addParameter(weightingParam = new juce::AudioParameterChoice(
-        "lucyWeighting", "Lucy Weighting", juce::StringArray { "DARK", "NEUTRAL", "BRIGHT" }, 1));
+        "fx.lucy.weighting", "Lucy Weighting", juce::StringArray { "DARK", "NEUTRAL", "BRIGHT" }, 1));
     // One control with three states rather than two booleans, which could
     // express "slushy while not frozen" - a combination that meant nothing.
     addParameter(freezeParam = new juce::AudioParameterChoice(
-        "lucyFreeze", "Lucy Freeze", juce::StringArray { "OFF", "SOLID", "SLUSHY" }, 0));
+        "fx.lucy.freeze", "Lucy Freeze", juce::StringArray { "OFF", "SOLID", "SLUSHY" }, 0));
 
-    addParameter(spreadParam = new juce::AudioParameterFloat("lucySpread", "Lucy Spread", unit, 0.5f));
+    addParameter(spreadParam = new juce::AudioParameterFloat("fx.lucy.spread", "Lucy Spread", unit, 0.5f));
 }
 
 void PX3LucyAudioProcessor::prepareFx(double sampleRate, int)

@@ -5,25 +5,25 @@ PX3ChorusAudioProcessor::PX3ChorusAudioProcessor()
 {
     const auto unit = juce::NormalisableRange<float>(0.0f, 1.0f);
 
-    addParameter(enabledParam = new juce::AudioParameterBool("chorusEnabled", "Chorus Enabled", true));
+    addParameter(enabledParam = new juce::AudioParameterBool("fx.chorus.enabled", "Chorus Enabled", true));
     // Amount defaults to full here, not zero. In the Synth this is one stage of
     // a chain that starts silent; a standalone chorus that does nothing when
     // inserted reads as broken. Every other default is the Synth's.
-    addParameter(amountParam = new juce::AudioParameterFloat("chorusAmount", "Chorus Amount", unit, 1.0f));
-    addParameter(rateParam = new juce::AudioParameterFloat("chorusRate", "Chorus Rate", unit, 0.35f));
-    addParameter(depthParam = new juce::AudioParameterFloat("chorusDepth", "Chorus Depth", unit, 0.5f));
-    addParameter(widthParam = new juce::AudioParameterFloat("chorusWidth", "Chorus Width", unit, 0.75f));
-    addParameter(spreadParam = new juce::AudioParameterFloat("chorusSpread", "Chorus Spread", unit, 0.5f));
-    addParameter(lowCutParam = new juce::AudioParameterFloat("chorusLowCut", "Chorus Low Cut", unit, 0.3f));
-    addParameter(feedbackParam = new juce::AudioParameterFloat("chorusFeedback", "Chorus Feedback", unit, 0.0f));
-    addParameter(characterParam = new juce::AudioParameterFloat("chorusCharacter", "Chorus Character", unit, 0.5f));
-    addParameter(mixParam = new juce::AudioParameterFloat("chorusMix", "Chorus Mix", unit, 1.0f));
+    addParameter(amountParam = new juce::AudioParameterFloat("fx.chorus.amount", "Chorus Amount", unit, 1.0f));
+    addParameter(rateParam = new juce::AudioParameterFloat("fx.chorus.rate", "Chorus Rate", unit, 0.35f));
+    addParameter(depthParam = new juce::AudioParameterFloat("fx.chorus.depth", "Chorus Depth", unit, 0.5f));
+    addParameter(widthParam = new juce::AudioParameterFloat("fx.chorus.width", "Chorus Width", unit, 0.75f));
+    addParameter(spreadParam = new juce::AudioParameterFloat("fx.chorus.spread", "Chorus Spread", unit, 0.5f));
+    addParameter(lowCutParam = new juce::AudioParameterFloat("fx.chorus.low.cut", "Chorus Low Cut", unit, 0.3f));
+    addParameter(feedbackParam = new juce::AudioParameterFloat("fx.chorus.feedback", "Chorus Feedback", unit, 0.0f));
+    addParameter(characterParam = new juce::AudioParameterFloat("fx.chorus.character", "Chorus Character", unit, 0.5f));
+    addParameter(mixParam = new juce::AudioParameterFloat("fx.chorus.mix", "Chorus Mix", unit, 1.0f));
     // Tone is BIPOLAR: -1 warm, +1 clear. Copying it as 0..1 would have moved
     // its centre and changed what every stored value meant.
     addParameter(toneParam = new juce::AudioParameterFloat(
-        "chorusTone", "Chorus Tone", juce::NormalisableRange<float>(-1.0f, 1.0f), 0.0f));
+        "fx.chorus.tone", "Chorus Tone", juce::NormalisableRange<float>(-1.0f, 1.0f), 0.0f));
     addParameter(modeParam = new juce::AudioParameterChoice(
-        "chorusMode", "Chorus Mode",
+        "fx.chorus.mode", "Chorus Mode",
         juce::StringArray { "DIM 1", "DIM 2", "DIM 3", "DIM 4", "DIM 1+4",
                             "DIM 2+4", "DIM 3+4", "ENSEMBLE", "CE WARM" }, 1));
 }

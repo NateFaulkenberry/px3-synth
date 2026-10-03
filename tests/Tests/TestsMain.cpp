@@ -892,10 +892,10 @@ int main(int argc, char* argv[])
             setParam(processor, "voice.osc2.enabled", 0.0f);
             setParam(processor, "voice.osc3.enabled", 0.0f);
             setParam(processor, "voice.sub.enabled", 0.0f);
-            setParam(processor, "delayEnabled", 0.0f);
-            setParam(processor, "reverbEnabled", 0.0f);
-            setParam(processor, "moodEnabled", 0.0f);
-            setParam(processor, "vibeEnabled", 0.0f);
+            setParam(processor, "fx.delay.enabled", 0.0f);
+            setParam(processor, "fx.reverb.enabled", 0.0f);
+            setParam(processor, "fx.mood.enabled", 0.0f);
+            setParam(processor, "fx.vibe.enabled", 0.0f);
             for (int i = 0; i < 3; ++i)
             {
                 const auto slot = juce::String(i + 1);
@@ -1028,10 +1028,10 @@ int main(int argc, char* argv[])
                 setParam(other, "voice.osc2.enabled", 0.0f);
                 setParam(other, "voice.osc3.enabled", 0.0f);
                 setParam(other, "voice.sub.enabled", 0.0f);
-                setParam(other, "delayEnabled", 0.0f);
-                setParam(other, "reverbEnabled", 0.0f);
-                setParam(other, "moodEnabled", 0.0f);
-                setParam(other, "vibeEnabled", 0.0f);
+                setParam(other, "fx.delay.enabled", 0.0f);
+                setParam(other, "fx.reverb.enabled", 0.0f);
+                setParam(other, "fx.mood.enabled", 0.0f);
+                setParam(other, "fx.vibe.enabled", 0.0f);
                 setChoice(other, "voice.osc1.mode", 0);
                 setParam(other, "voice.amp.attack", 4.000f);
                 setParam(other, "voice.amp.decay", 0.100f);
@@ -1112,10 +1112,10 @@ int main(int argc, char* argv[])
             setParam(processor, "voice.osc2.enabled", 0.0f);
             setParam(processor, "voice.osc3.enabled", 0.0f);
             setParam(processor, "voice.sub.enabled", 0.0f);
-            setParam(processor, "delayEnabled", 0.0f);
-            setParam(processor, "reverbEnabled", 0.0f);
-            setParam(processor, "moodEnabled", 0.0f);
-            setParam(processor, "vibeEnabled", 0.0f);
+            setParam(processor, "fx.delay.enabled", 0.0f);
+            setParam(processor, "fx.reverb.enabled", 0.0f);
+            setParam(processor, "fx.mood.enabled", 0.0f);
+            setParam(processor, "fx.vibe.enabled", 0.0f);
             setChoice(processor, "voice.osc1.mode", 0);
             setParam(processor, "voice.amp.attack", 4.000f);
             setParam(processor, "voice.amp.decay", 0.100f);
@@ -1161,10 +1161,10 @@ int main(int argc, char* argv[])
             setParam(processor, "voice.osc2.enabled", 0.0f);
             setParam(processor, "voice.osc3.enabled", 0.0f);
             setParam(processor, "voice.sub.enabled", 0.0f);
-            setParam(processor, "delayEnabled", 0.0f);
-            setParam(processor, "reverbEnabled", 0.0f);
-            setParam(processor, "moodEnabled", 0.0f);
-            setParam(processor, "vibeEnabled", 0.0f);
+            setParam(processor, "fx.delay.enabled", 0.0f);
+            setParam(processor, "fx.reverb.enabled", 0.0f);
+            setParam(processor, "fx.mood.enabled", 0.0f);
+            setParam(processor, "fx.vibe.enabled", 0.0f);
             setChoice(processor, "voice.osc1.mode", 0);
             setParam(processor, "voice.amp.attack", 4.000f);
             setParam(processor, "voice.amp.decay", 0.100f);
@@ -1224,10 +1224,10 @@ int main(int argc, char* argv[])
             setParam(processor, "voice.osc2.enabled", 0.0f);
             setParam(processor, "voice.osc3.enabled", 0.0f);
             setParam(processor, "voice.sub.enabled", 0.0f);
-            setParam(processor, "delayEnabled", 0.0f);
-            setParam(processor, "reverbEnabled", 0.0f);
-            setParam(processor, "moodEnabled", 0.0f);
-            setParam(processor, "vibeEnabled", 0.0f);
+            setParam(processor, "fx.delay.enabled", 0.0f);
+            setParam(processor, "fx.reverb.enabled", 0.0f);
+            setParam(processor, "fx.mood.enabled", 0.0f);
+            setParam(processor, "fx.vibe.enabled", 0.0f);
             setChoice(processor, "voice.osc1.mode", 0);
             setParam(processor, "voice.amp.attack", 4.000f);
             setParam(processor, "voice.amp.decay", 0.100f);
@@ -1299,10 +1299,10 @@ int main(int argc, char* argv[])
                 setParam(processor, "voice.osc2.enabled", 0.0f);
                 setParam(processor, "voice.osc3.enabled", 0.0f);
                 setParam(processor, "voice.sub.enabled", 0.0f);
-                setParam(processor, "delayEnabled", 0.0f);
-                setParam(processor, "reverbEnabled", 0.0f);
-                setParam(processor, "moodEnabled", 0.0f);
-                setParam(processor, "vibeEnabled", 0.0f);
+                setParam(processor, "fx.delay.enabled", 0.0f);
+                setParam(processor, "fx.reverb.enabled", 0.0f);
+                setParam(processor, "fx.mood.enabled", 0.0f);
+                setParam(processor, "fx.vibe.enabled", 0.0f);
                 setChoice(processor, "voice.osc1.mode", 0);
                 setParam(processor, "voice.amp.attack", 4.000f);
                 setParam(processor, "voice.amp.decay", 0.100f);
@@ -1351,10 +1351,10 @@ int main(int argc, char* argv[])
                 setParam(processor, "voice.osc2.enabled", 0.0f);
                 setParam(processor, "voice.osc3.enabled", 0.0f);
                 setParam(processor, "voice.sub.enabled", 0.0f);
-                setParam(processor, "delayEnabled", 0.0f);
-                setParam(processor, "reverbEnabled", 0.0f);
-                setParam(processor, "moodEnabled", 0.0f);
-                setParam(processor, "vibeEnabled", 0.0f);
+                setParam(processor, "fx.delay.enabled", 0.0f);
+                setParam(processor, "fx.reverb.enabled", 0.0f);
+                setParam(processor, "fx.mood.enabled", 0.0f);
+                setParam(processor, "fx.vibe.enabled", 0.0f);
                 setChoice(processor, "voice.osc1.mode", 0);
                 setParam(processor, "voice.amp.attack", 4.000f);
                 setParam(processor, "voice.amp.sustain", 1.00f);
@@ -2440,8 +2440,8 @@ int main(int argc, char* argv[])
                 PX3SynthAudioProcessor processor;
                 makePlainPatch(processor);
                 setChoice(processor, "voice.osc1.mode", 0);
-                setParam(processor, "vibeEnabled", 1.0f);
-                setParam(processor, "vibeAmount", amount);
+                setParam(processor, "fx.vibe.enabled", 1.0f);
+                setParam(processor, "fx.vibe.amount", amount);
                 const auto c = render(processor, 96000, { { 2000, true, 57, 0.9f } });
                 std::printf("  DC offset at vibe %.1f: %+.6f  (peak %.4f)\n",
                             amount, c.dcOffset(), c.peak());
@@ -2455,8 +2455,8 @@ int main(int argc, char* argv[])
             makePlainPatch(processor);
             for (int i = 1; i <= 3; ++i) setParam(processor, "voice.osc" + juce::String(i) + ".enabled", 0.0f);
             setParam(processor, "voice.sub.enabled", 0.0f);
-            setParam(processor, "vibeEnabled", 1.0f);
-            setParam(processor, "vibeAmount", 1.0f);
+            setParam(processor, "fx.vibe.enabled", 1.0f);
+            setParam(processor, "fx.vibe.amount", 1.0f);
             const auto c = render(processor, 96000, { { 2000, true, 57, 0.9f } });
             std::printf("  vibe noise floor with all sources off: rms %.8f\n", c.rms());
         }
@@ -2473,8 +2473,8 @@ int main(int argc, char* argv[])
                 PX3SynthAudioProcessor processor;
                 makePlainPatch(processor);
                 setChoice(processor, "voice.osc1.mode", 0);
-                setParam(processor, "vibeEnabled", 1.0f);
-                setParam(processor, "vibeAmount", amount);
+                setParam(processor, "fx.vibe.enabled", 1.0f);
+                setParam(processor, "fx.vibe.amount", amount);
                 const auto c = render(processor, 96000, { { 2000, true, 57, 0.9f } });
                 const auto r = c.rmsOver(20000, 94000);
                 std::printf("  %-8.2f %10.6f %10.6f %10.4f %+10.6f\n",
@@ -2489,8 +2489,8 @@ int main(int argc, char* argv[])
             {
                 PX3SynthAudioProcessor processor;
                 makePlainPatch(processor);
-                setParam(processor, "vibeEnabled", 1.0f);
-                setParam(processor, "vibeAmount", 1.0f);
+                setParam(processor, "fx.vibe.enabled", 1.0f);
+                setParam(processor, "fx.vibe.amount", 1.0f);
                 processor.setPlayConfigDetails(0, 2, kSampleRate, blockSize);
                 processor.prepareToPlay(kSampleRate, blockSize);
                 juce::AudioBuffer<float> buffer(2, blockSize);
@@ -2529,10 +2529,10 @@ int main(int argc, char* argv[])
             setParam(processor, "voice.osc2.enabled", 0.0f);
             setParam(processor, "voice.osc3.enabled", 0.0f);
             setParam(processor, "voice.sub.enabled", 0.0f);
-            setParam(processor, "vibeEnabled", 0.0f);
-            setParam(processor, "reverbEnabled", 0.0f);
-            setParam(processor, "delayEnabled", 0.0f);
-            setParam(processor, "moodEnabled", 0.0f);
+            setParam(processor, "fx.vibe.enabled", 0.0f);
+            setParam(processor, "fx.reverb.enabled", 0.0f);
+            setParam(processor, "fx.delay.enabled", 0.0f);
+            setParam(processor, "fx.mood.enabled", 0.0f);
             setParam(processor, "voice.filter1.enabled", 0.0f);
             setParam(processor, "voice.filter2.enabled", 0.0f);
             setParam(processor, "voice.amp.sustain", 1.0f);
@@ -2596,8 +2596,8 @@ int main(int argc, char* argv[])
             setChoice(processor, "voice.osc1.mode", 1);
             setParam(processor, "voice.filter1.enabled", 1.0f);
             setParam(processor, "voice.filter1.cutoff", 2500.0f);
-            setParam(processor, "vibeEnabled", 1.0f);
-            setParam(processor, "vibeAmount", amount);
+            setParam(processor, "fx.vibe.enabled", 1.0f);
+            setParam(processor, "fx.vibe.amount", amount);
             const auto capture = render(processor, 48000, { { 2000, true, 45, 0.9f } });
             std::printf("  %-10.3f %12.6f %12.6f\n", amount, capture.rms(), capture.peak());
         }

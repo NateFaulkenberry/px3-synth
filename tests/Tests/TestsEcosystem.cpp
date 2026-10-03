@@ -160,6 +160,13 @@ void testEcosystem()
                   && catalog.find("ampAttack") == nullptr && catalog.find("ampEnvEnabled") == nullptr
                   && catalog.find("filter1Cutoff") == nullptr && catalog.find("filterRouting") == nullptr);
 
+        const auto* chorus = catalog.find("fx.chorus.rate");
+        const auto* granular = catalog.find("fx.delay.granular.mode");
+        check("ParameterCatalog_EffectsUseCanonicalModuleIdsWithoutAliases",
+              chorus != nullptr && chorus->groupPath == "EFFECTS / CHORUS"
+                  && granular != nullptr && granular->groupPath == "EFFECTS / DELAY"
+                  && catalog.find("chorusRate") == nullptr && catalog.find("granularMode") == nullptr);
+
         check("ParameterCatalog_SerializesCompleteGroupedNormalizedState",
               stateValid && stateValues.size() == catalog.entries().size()
                   && coarseState.isValid() && coarseState.getParent().getProperty("id").toString() == "osc1"

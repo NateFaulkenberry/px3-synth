@@ -396,28 +396,28 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
 
     masterGainParam = parameterCatalog.createFloat("masterGain", "Master Gain", juce::NormalisableRange<float>(0.0f, 1.0f), 0.6f);
 
-    vibeAmountParam = parameterCatalog.createFloat("vibeAmount", "Vibe", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
-    vibeEnabledParam = parameterCatalog.createBool("vibeEnabled", "Vibe Enabled", true);
-    vibeTypeParam = parameterCatalog.createChoice("vibeType",
+    vibeAmountParam = parameterCatalog.createFloat("fx.vibe.amount", "Vibe", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
+    vibeEnabledParam = parameterCatalog.createBool("fx.vibe.enabled", "Vibe Enabled", true);
+    vibeTypeParam = parameterCatalog.createChoice("fx.vibe.type",
                                                     "Vibe Type",
                                                     kVibeTypeChoices,
                                                     0);
-    delayAmountParam = parameterCatalog.createFloat("delayAmount", "Delay Amount", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
-    granularSyncDivisionParam = parameterCatalog.createChoice("granularSyncDivision",
+    delayAmountParam = parameterCatalog.createFloat("fx.delay.amount", "Delay Amount", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
+    granularSyncDivisionParam = parameterCatalog.createChoice("fx.delay.granular.sync.division",
                                                                 "Granular Sync",
                                                                 juce::StringArray { "Free", "1 Bar", "1/2", "1/4", "1/8", "1/8T", "1/16", "1/16T" },
                                                                 0);
-    granularModeParam = parameterCatalog.createChoice("granularMode",
+    granularModeParam = parameterCatalog.createChoice("fx.delay.granular.mode",
                                                         "Granular Mode",
                                                         juce::StringArray { "CLASSIC", "CLOUD", "SHIMMER", "RHYTHMIC" },
                                                         0);
-    delayAlgorithmParam = parameterCatalog.createChoice("delayAlgorithm",
+    delayAlgorithmParam = parameterCatalog.createChoice("fx.delay.algorithm",
                                                           "Delay Algorithm",
                                                           juce::StringArray { "Granular", "Tape", "Analog/BBD", "Ping-Pong", "Stereo", "Modulated", "Diffusion" },
                                                           0);
-    delayEnabledParam = parameterCatalog.createBool("delayEnabled", "Delay Enabled", true);
-    delayTimeParam = parameterCatalog.createFloat("delayTime", "Delay Time", juce::NormalisableRange<float>(0.0f, 1.0f), 0.35f);
-    delayFeedbackParam = parameterCatalog.createFloat("delayFeedback", "Delay Feedback", juce::NormalisableRange<float>(0.0f, 1.0f), 0.38f);
+    delayEnabledParam = parameterCatalog.createBool("fx.delay.enabled", "Delay Enabled", true);
+    delayTimeParam = parameterCatalog.createFloat("fx.delay.time", "Delay Time", juce::NormalisableRange<float>(0.0f, 1.0f), 0.35f);
+    delayFeedbackParam = parameterCatalog.createFloat("fx.delay.feedback", "Delay Feedback", juce::NormalisableRange<float>(0.0f, 1.0f), 0.38f);
     fxSendGainParam = parameterCatalog.createFloat("fxSendGain", "FX Send", juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f);
     fxReturnGainParam = parameterCatalog.createFloat("fxReturnGain",
                                                        "FX Return",
@@ -470,74 +470,74 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     dryBusSoloParam = parameterCatalog.createBool("mix.dry.solo", "Dry Solo", false);
     dryBusPhaseInvertParam = parameterCatalog.createBool("mix.dry.phase", "Dry Phase Invert", false);
     fxReturnPanParam = parameterCatalog.createFloat("mix.fx.pan", "FX Return Pan", juce::NormalisableRange<float>(-1.0f, 1.0f), 0.0f);
-    reverbAmountParam = parameterCatalog.createFloat("reverbAmount", "Reverb", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
-    reverbEnabledParam = parameterCatalog.createBool("reverbEnabled", "Reverb Enabled", true);
-    reverbAlgorithmParam = parameterCatalog.createChoice("reverbAlgorithm",
+    reverbAmountParam = parameterCatalog.createFloat("fx.reverb.amount", "Reverb", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
+    reverbEnabledParam = parameterCatalog.createBool("fx.reverb.enabled", "Reverb Enabled", true);
+    reverbAlgorithmParam = parameterCatalog.createChoice("fx.reverb.algorithm",
                                                            "Reverb Mode",
                                                            juce::StringArray { "ROOM", "PLATE", "HALL", "CLOUD" },
                                                            0);
-    moodEnabledParam = parameterCatalog.createBool("moodEnabled", "Mood Enabled", true);
-    moodFreezeParam = parameterCatalog.createBool("moodFreeze", "Mood Freeze", false);
-    moodMixParam = parameterCatalog.createFloat("moodMix", "Mood Mix", juce::NormalisableRange<float>(0.0f, 1.0f), 0.35f);
-    moodClockParam = parameterCatalog.createFloat("moodClock", "Mood Clock", juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f);
-    moodWetTimeParam = parameterCatalog.createFloat("moodWetTime", "Mood Wet Time", juce::NormalisableRange<float>(0.0f, 1.0f), 0.40f);
-    moodWetModifyParam = parameterCatalog.createFloat("moodWetModify", "Mood Wet Modify", juce::NormalisableRange<float>(0.0f, 1.0f), 0.45f);
-    moodLoopLengthParam = parameterCatalog.createFloat("moodLoopLength", "Mood Loop Length", juce::NormalisableRange<float>(0.0f, 1.0f), 0.28f);
-    moodLoopModifyParam = parameterCatalog.createFloat("moodLoopModify", "Mood Loop Modify", juce::NormalisableRange<float>(0.0f, 1.0f), 0.50f);
-    moodFeedbackParam = parameterCatalog.createFloat("moodFeedback", "Mood Feedback", juce::NormalisableRange<float>(0.0f, 1.0f), 0.35f);
-    moodSpreadParam = parameterCatalog.createFloat("moodSpread", "Mood Spread", juce::NormalisableRange<float>(0.0f, 1.0f), 0.50f);
-    moodDegradeParam = parameterCatalog.createFloat("moodDegrade", "Mood Degrade", juce::NormalisableRange<float>(0.0f, 1.0f), 0.20f);
-    moodRoutingParam = parameterCatalog.createChoice("moodRouting",
+    moodEnabledParam = parameterCatalog.createBool("fx.mood.enabled", "Mood Enabled", true);
+    moodFreezeParam = parameterCatalog.createBool("fx.mood.freeze", "Mood Freeze", false);
+    moodMixParam = parameterCatalog.createFloat("fx.mood.mix", "Mood Mix", juce::NormalisableRange<float>(0.0f, 1.0f), 0.35f);
+    moodClockParam = parameterCatalog.createFloat("fx.mood.clock", "Mood Clock", juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f);
+    moodWetTimeParam = parameterCatalog.createFloat("fx.mood.wet.time", "Mood Wet Time", juce::NormalisableRange<float>(0.0f, 1.0f), 0.40f);
+    moodWetModifyParam = parameterCatalog.createFloat("fx.mood.wet.modify", "Mood Wet Modify", juce::NormalisableRange<float>(0.0f, 1.0f), 0.45f);
+    moodLoopLengthParam = parameterCatalog.createFloat("fx.mood.loop.length", "Mood Loop Length", juce::NormalisableRange<float>(0.0f, 1.0f), 0.28f);
+    moodLoopModifyParam = parameterCatalog.createFloat("fx.mood.loop.modify", "Mood Loop Modify", juce::NormalisableRange<float>(0.0f, 1.0f), 0.50f);
+    moodFeedbackParam = parameterCatalog.createFloat("fx.mood.feedback", "Mood Feedback", juce::NormalisableRange<float>(0.0f, 1.0f), 0.35f);
+    moodSpreadParam = parameterCatalog.createFloat("fx.mood.spread", "Mood Spread", juce::NormalisableRange<float>(0.0f, 1.0f), 0.50f);
+    moodDegradeParam = parameterCatalog.createFloat("fx.mood.degrade", "Mood Degrade", juce::NormalisableRange<float>(0.0f, 1.0f), 0.20f);
+    moodRoutingParam = parameterCatalog.createChoice("fx.mood.routing",
                                                        "Mood Routing",
                                                        juce::StringArray { "DRY->WET", "LOOP->WET", "PARALLEL" },
                                                        0);
-    moodWetModeParam = parameterCatalog.createChoice("moodWetMode",
+    moodWetModeParam = parameterCatalog.createChoice("fx.mood.wet.mode",
                                                        "Mood Wet Mode",
                                                        juce::StringArray { "REVERB", "DELAY", "SLIP" },
                                                        0);
-    moodLoopModeParam = parameterCatalog.createChoice("moodLoopMode",
+    moodLoopModeParam = parameterCatalog.createChoice("fx.mood.loop.mode",
                                                         "Mood Loop Mode",
                                                         juce::StringArray { "ENV", "TAPE", "STRETCH" },
                                                         0);
     // ---- DOOM ------------------------------------------------------------
     // A BAD MOOD-inspired two-channel processor. See docs/DOOM_DSP_DESIGN.md.
-    doomEnabledParam = parameterCatalog.createBool("doomEnabled", "Doom Enabled", true);
-    doomFreezeParam = parameterCatalog.createBool("doomFreeze", "Doom Freeze", false);
-    doomLoopActiveParam = parameterCatalog.createBool("doomLoopActive", "Doom Looper Active", false);
-    doomWetActiveParam = parameterCatalog.createBool("doomWetActive", "Doom Wet Active", true);
-    doomLoopHalfParam = parameterCatalog.createBool("doomLoopHalf", "Doom Loop Half", false);
-    doomClockSmoothParam = parameterCatalog.createBool("doomClockSmooth", "Doom Clock Smooth", false);
+    doomEnabledParam = parameterCatalog.createBool("fx.doom.enabled", "Doom Enabled", true);
+    doomFreezeParam = parameterCatalog.createBool("fx.doom.freeze", "Doom Freeze", false);
+    doomLoopActiveParam = parameterCatalog.createBool("fx.doom.loop.active", "Doom Looper Active", false);
+    doomWetActiveParam = parameterCatalog.createBool("fx.doom.wet.active", "Doom Wet Active", true);
+    doomLoopHalfParam = parameterCatalog.createBool("fx.doom.loop.half", "Doom Loop Half", false);
+    doomClockSmoothParam = parameterCatalog.createBool("fx.doom.clock.smooth", "Doom Clock Smooth", false);
     // Zero by default, matching reverbAmount: adding an effect to the instrument
     // must not change what every existing patch sounds like.
-    doomMixParam = parameterCatalog.createFloat("doomMix", "Doom Mix", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
-    doomClockParam = parameterCatalog.createFloat("doomClock", "Doom Clock", juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f);
-    doomLoopLengthParam = parameterCatalog.createFloat("doomLoopLength", "Doom Loop Length", juce::NormalisableRange<float>(0.0f, 1.0f), 0.45f);
-    doomLoopModifyParam = parameterCatalog.createFloat("doomLoopModify", "Doom Loop Modify", juce::NormalisableRange<float>(0.0f, 1.0f), 0.50f);
-    doomOverdubParam = parameterCatalog.createFloat("doomOverdub", "Doom Overdub", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
-    doomFadeParam = parameterCatalog.createFloat("doomFade", "Doom Fade", juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f);
-    doomWetTimeParam = parameterCatalog.createFloat("doomWetTime", "Doom Wet Time", juce::NormalisableRange<float>(0.0f, 1.0f), 0.45f);
-    doomWetModifyParam = parameterCatalog.createFloat("doomWetModify", "Doom Wet Modify", juce::NormalisableRange<float>(0.0f, 1.0f), 0.40f);
+    doomMixParam = parameterCatalog.createFloat("fx.doom.mix", "Doom Mix", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
+    doomClockParam = parameterCatalog.createFloat("fx.doom.clock", "Doom Clock", juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f);
+    doomLoopLengthParam = parameterCatalog.createFloat("fx.doom.loop.length", "Doom Loop Length", juce::NormalisableRange<float>(0.0f, 1.0f), 0.45f);
+    doomLoopModifyParam = parameterCatalog.createFloat("fx.doom.loop.modify", "Doom Loop Modify", juce::NormalisableRange<float>(0.0f, 1.0f), 0.50f);
+    doomOverdubParam = parameterCatalog.createFloat("fx.doom.overdub", "Doom Overdub", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
+    doomFadeParam = parameterCatalog.createFloat("fx.doom.fade", "Doom Fade", juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f);
+    doomWetTimeParam = parameterCatalog.createFloat("fx.doom.wet.time", "Doom Wet Time", juce::NormalisableRange<float>(0.0f, 1.0f), 0.45f);
+    doomWetModifyParam = parameterCatalog.createFloat("fx.doom.wet.modify", "Doom Wet Modify", juce::NormalisableRange<float>(0.0f, 1.0f), 0.40f);
     // Off by default: cross is confusing before you know what it does, and the
     // source pedal ships it off for the same reason.
-    doomCrossParam = parameterCatalog.createFloat("doomCross", "Doom Cross", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
-    doomGlueParam = parameterCatalog.createFloat("doomGlue", "Doom Glue", juce::NormalisableRange<float>(0.0f, 1.0f), 0.15f);
-    doomEqParam = parameterCatalog.createFloat("doomEq", "Doom EQ", juce::NormalisableRange<float>(-1.0f, 1.0f), 0.0f);
-    doomBalanceParam = parameterCatalog.createFloat("doomBalance", "Doom Balance", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
-    doomBlendParam = parameterCatalog.createFloat("doomBlend", "Doom Blend", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
-    doomSpreadParam = parameterCatalog.createFloat("doomSpread", "Doom Spread", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
-    doomRoutingParam = parameterCatalog.createChoice("doomRouting",
+    doomCrossParam = parameterCatalog.createFloat("fx.doom.cross", "Doom Cross", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
+    doomGlueParam = parameterCatalog.createFloat("fx.doom.glue", "Doom Glue", juce::NormalisableRange<float>(0.0f, 1.0f), 0.15f);
+    doomEqParam = parameterCatalog.createFloat("fx.doom.eq", "Doom EQ", juce::NormalisableRange<float>(-1.0f, 1.0f), 0.0f);
+    doomBalanceParam = parameterCatalog.createFloat("fx.doom.balance", "Doom Balance", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
+    doomBlendParam = parameterCatalog.createFloat("fx.doom.blend", "Doom Blend", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
+    doomSpreadParam = parameterCatalog.createFloat("fx.doom.spread", "Doom Spread", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
+    doomRoutingParam = parameterCatalog.createChoice("fx.doom.routing",
                                                        "Doom Routing",
                                                        juce::StringArray { "INPUT", "INPUT+LOOP", "LOOP" },
                                                        0);
-    doomLoopModeParam = parameterCatalog.createChoice("doomLoopMode",
+    doomLoopModeParam = parameterCatalog.createChoice("fx.doom.loop.mode",
                                                         "Doom Loop Mode",
                                                         juce::StringArray { "BURST", "RADIO", "MASK" },
                                                         1);
-    doomWetModeParam = parameterCatalog.createChoice("doomWetMode",
+    doomWetModeParam = parameterCatalog.createChoice("fx.doom.wet.mode",
                                                        "Doom Wet Mode",
                                                        juce::StringArray { "SOUP", "RELAY", "FLIP" },
                                                        0);
-    doomCrossSourceParam = parameterCatalog.createChoice("doomCrossSource",
+    doomCrossSourceParam = parameterCatalog.createChoice("fx.doom.cross.source",
                                                            "Doom Cross Source",
                                                            juce::StringArray { "INPUT", "CHANNEL" },
                                                            0);
@@ -549,72 +549,72 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     // that did nothing until a second control was found. Off keeps a fresh
     // instance, INIT, and any session saved before LUCY existed sounding exactly
     // as they did.
-    lucyEnabledParam = parameterCatalog.createBool("lucyEnabled", "Lucy Enabled", false);
-    lucyFilterInvertParam = parameterCatalog.createBool("lucyFilterInvert", "Lucy Filter Invert", false);
-    lucyVerbPostParam = parameterCatalog.createBool("lucyVerbPost", "Lucy Verb Post", false);
-    lucyGateParam = parameterCatalog.createBool("lucyGate", "Lucy Gate", false);
-    lucySlowParam = parameterCatalog.createBool("lucySlow", "Lucy Slow", false);
+    lucyEnabledParam = parameterCatalog.createBool("fx.lucy.enabled", "Lucy Enabled", false);
+    lucyFilterInvertParam = parameterCatalog.createBool("fx.lucy.filter.invert", "Lucy Filter Invert", false);
+    lucyVerbPostParam = parameterCatalog.createBool("fx.lucy.verb.post", "Lucy Verb Post", false);
+    lucyGateParam = parameterCatalog.createBool("fx.lucy.gate", "Lucy Gate", false);
+    lucySlowParam = parameterCatalog.createBool("fx.lucy.slow", "Lucy Slow", false);
 
     // The six primary knobs. Zero GLOBAL by default, like reverbAmount and
     // doomMix: adding an effect must not change an existing patch.
-    lucyGlobalParam = parameterCatalog.createFloat("lucyGlobal", "Lucy Global", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
-    lucyLossParam = parameterCatalog.createFloat("lucyLoss", "Lucy Loss", juce::NormalisableRange<float>(0.0f, 1.0f), 0.55f);
-    lucySpeedParam = parameterCatalog.createFloat("lucySpeed", "Lucy Speed", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
+    lucyGlobalParam = parameterCatalog.createFloat("fx.lucy.global", "Lucy Global", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
+    lucyLossParam = parameterCatalog.createFloat("fx.lucy.loss", "Lucy Loss", juce::NormalisableRange<float>(0.0f, 1.0f), 0.55f);
+    lucySpeedParam = parameterCatalog.createFloat("fx.lucy.speed", "Lucy Speed", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
     // Zero is NO filtering at all, which is what makes this a width control.
-    lucyFilterParam = parameterCatalog.createFloat("lucyFilter", "Lucy Filter", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
-    lucyFilterFreqParam = parameterCatalog.createFloat("lucyFreq", "Lucy Freq", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
-    lucyVerbParam = parameterCatalog.createFloat("lucyVerb", "Lucy Verb", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
+    lucyFilterParam = parameterCatalog.createFloat("fx.lucy.filter", "Lucy Filter", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
+    lucyFilterFreqParam = parameterCatalog.createFloat("fx.lucy.freq", "Lucy Freq", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
+    lucyVerbParam = parameterCatalog.createFloat("fx.lucy.verb", "Lucy Verb", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
 
     // Their alternate functions, in the same order as the panel pairs them.
-    lucyGateThresholdParam = parameterCatalog.createFloat("lucyGateThreshold", "Lucy Gate Threshold", juce::NormalisableRange<float>(0.0f, 1.0f), 0.25f);
-    lucyFreezerParam = parameterCatalog.createFloat("lucyFreezer", "Lucy Freezer", juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f);
-    lucyVerbDecayParam = parameterCatalog.createFloat("lucyDecay", "Lucy Decay", juce::NormalisableRange<float>(0.0f, 1.0f), 0.45f);
+    lucyGateThresholdParam = parameterCatalog.createFloat("fx.lucy.gate.threshold", "Lucy Gate Threshold", juce::NormalisableRange<float>(0.0f, 1.0f), 0.25f);
+    lucyFreezerParam = parameterCatalog.createFloat("fx.lucy.freezer", "Lucy Freezer", juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f);
+    lucyVerbDecayParam = parameterCatalog.createFloat("fx.lucy.decay", "Lucy Decay", juce::NormalisableRange<float>(0.0f, 1.0f), 0.45f);
     // The LIMITER's threshold. Named in full because the loss coder has a
     // masking threshold of its own; that one is derived and never a parameter.
-    lucyLimiterThresholdParam = parameterCatalog.createFloat("lucyLimiterThreshold", "Lucy Limiter Threshold", juce::NormalisableRange<float>(0.0f, 1.0f), 0.8f);
-    lucyAutoGainParam = parameterCatalog.createFloat("lucyAutoGain", "Lucy Auto Gain", juce::NormalisableRange<float>(0.0f, 1.0f), 0.75f);
-    lucyLossGainParam = parameterCatalog.createFloat("lucyLossGain", "Lucy Loss Gain", juce::NormalisableRange<float>(-36.0f, 36.0f), 0.0f);
+    lucyLimiterThresholdParam = parameterCatalog.createFloat("fx.lucy.limiter.threshold", "Lucy Limiter Threshold", juce::NormalisableRange<float>(0.0f, 1.0f), 0.8f);
+    lucyAutoGainParam = parameterCatalog.createFloat("fx.lucy.auto.gain", "Lucy Auto Gain", juce::NormalisableRange<float>(0.0f, 1.0f), 0.75f);
+    lucyLossGainParam = parameterCatalog.createFloat("fx.lucy.loss.gain", "Lucy Loss Gain", juce::NormalisableRange<float>(-36.0f, 36.0f), 0.0f);
 
-    lucySpreadParam = parameterCatalog.createFloat("lucySpread", "Lucy Spread", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
-    lucyModeParam = parameterCatalog.createChoice("lucyMode",
+    lucySpreadParam = parameterCatalog.createFloat("fx.lucy.spread", "Lucy Spread", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
+    lucyModeParam = parameterCatalog.createChoice("fx.lucy.mode",
                                                     "Lucy Mode",
                                                     juce::StringArray { "STANDARD", "INVERSE", "JITTER" },
                                                     0);
-    lucyPacketsParam = parameterCatalog.createChoice("lucyPackets",
+    lucyPacketsParam = parameterCatalog.createChoice("fx.lucy.packets",
                                                        "Lucy Packets",
                                                        juce::StringArray { "CLEAN", "LOSS", "REPEAT" },
                                                        0);
-    lucySlopeParam = parameterCatalog.createChoice("lucySlope",
+    lucySlopeParam = parameterCatalog.createChoice("fx.lucy.slope",
                                                      "Lucy Slope",
                                                      juce::StringArray { "6 dB", "24 dB", "96 dB" },
                                                      1);
-    lucyWeightingParam = parameterCatalog.createChoice("lucyWeighting",
+    lucyWeightingParam = parameterCatalog.createChoice("fx.lucy.weighting",
                                                          "Lucy Weighting",
                                                          juce::StringArray { "DARK", "NEUTRAL", "BRIGHT" },
                                                          1);
     // OFF / SOLID / SLUSHY as one control rather than two booleans, which
     // could express "slushy while not frozen" - a state that meant nothing.
-    lucyFreezeParam = parameterCatalog.createChoice("lucyFreeze",
+    lucyFreezeParam = parameterCatalog.createChoice("fx.lucy.freeze",
                                                       "Lucy Freeze",
                                                       juce::StringArray { "OFF", "SOLID", "SLUSHY" },
                                                       0);
 
     // ---- CHORUS ----------------------------------------------------------
     // Dimension D-inspired. See docs/CHORUS_DSP_DESIGN.md.
-    chorusEnabledParam = parameterCatalog.createBool("chorusEnabled", "Chorus Enabled", true);
+    chorusEnabledParam = parameterCatalog.createBool("fx.chorus.enabled", "Chorus Enabled", true);
     // Zero by default, like reverbAmount: adding an effect must not change
     // what existing patches sound like.
-    chorusAmountParam = parameterCatalog.createFloat("chorusAmount", "Chorus Amount", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
-    chorusRateParam = parameterCatalog.createFloat("chorusRate", "Chorus Rate", juce::NormalisableRange<float>(0.0f, 1.0f), 0.35f);
-    chorusDepthParam = parameterCatalog.createFloat("chorusDepth", "Chorus Depth", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
-    chorusWidthParam = parameterCatalog.createFloat("chorusWidth", "Chorus Width", juce::NormalisableRange<float>(0.0f, 1.0f), 0.75f);
-    chorusSpreadParam = parameterCatalog.createFloat("chorusSpread", "Chorus Spread", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
-    chorusLowCutParam = parameterCatalog.createFloat("chorusLowCut", "Chorus Low Cut", juce::NormalisableRange<float>(0.0f, 1.0f), 0.3f);
-    chorusFeedbackParam = parameterCatalog.createFloat("chorusFeedback", "Chorus Feedback", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
-    chorusCharacterParam = parameterCatalog.createFloat("chorusCharacter", "Chorus Character", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
-    chorusMixParam = parameterCatalog.createFloat("chorusMix", "Chorus Mix", juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f);
-    chorusToneParam = parameterCatalog.createFloat("chorusTone", "Chorus Tone", juce::NormalisableRange<float>(-1.0f, 1.0f), 0.0f);
-    chorusModeParam = parameterCatalog.createChoice("chorusMode",
+    chorusAmountParam = parameterCatalog.createFloat("fx.chorus.amount", "Chorus Amount", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
+    chorusRateParam = parameterCatalog.createFloat("fx.chorus.rate", "Chorus Rate", juce::NormalisableRange<float>(0.0f, 1.0f), 0.35f);
+    chorusDepthParam = parameterCatalog.createFloat("fx.chorus.depth", "Chorus Depth", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
+    chorusWidthParam = parameterCatalog.createFloat("fx.chorus.width", "Chorus Width", juce::NormalisableRange<float>(0.0f, 1.0f), 0.75f);
+    chorusSpreadParam = parameterCatalog.createFloat("fx.chorus.spread", "Chorus Spread", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
+    chorusLowCutParam = parameterCatalog.createFloat("fx.chorus.low.cut", "Chorus Low Cut", juce::NormalisableRange<float>(0.0f, 1.0f), 0.3f);
+    chorusFeedbackParam = parameterCatalog.createFloat("fx.chorus.feedback", "Chorus Feedback", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
+    chorusCharacterParam = parameterCatalog.createFloat("fx.chorus.character", "Chorus Character", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
+    chorusMixParam = parameterCatalog.createFloat("fx.chorus.mix", "Chorus Mix", juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f);
+    chorusToneParam = parameterCatalog.createFloat("fx.chorus.tone", "Chorus Tone", juce::NormalisableRange<float>(-1.0f, 1.0f), 0.0f);
+    chorusModeParam = parameterCatalog.createChoice("fx.chorus.mode",
                                                       "Chorus Mode",
                                                       juce::StringArray { "DIM 1", "DIM 2", "DIM 3", "DIM 4",
                                                                           "DIM 1+4", "DIM 2+4", "DIM 3+4",
@@ -623,18 +623,18 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
 
     // ---- STEREO SPREAD ---------------------------------------------------
     // See docs/STEREO_SPREAD_DSP_DESIGN.md.
-    spreadEnabledParam = parameterCatalog.createBool("spreadEnabled", "Spread Enabled", true);
-    spreadAmountParam = parameterCatalog.createFloat("spreadAmount", "Spread Amount", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
-    spreadWidthParam = parameterCatalog.createFloat("spreadWidth", "Spread Width", juce::NormalisableRange<float>(0.0f, 1.0f), 0.6f);
-    spreadDepthParam = parameterCatalog.createFloat("spreadDepth", "Spread Depth", juce::NormalisableRange<float>(0.0f, 1.0f), 0.4f);
-    spreadCenterParam = parameterCatalog.createFloat("spreadCenter", "Spread Center", juce::NormalisableRange<float>(0.0f, 1.0f), 0.7f);
-    spreadLowWidthParam = parameterCatalog.createFloat("spreadLowWidth", "Spread Low Width", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
-    spreadHighWidthParam = parameterCatalog.createFloat("spreadHighWidth", "Spread High Width", juce::NormalisableRange<float>(0.0f, 1.0f), 0.8f);
-    spreadLowFreqParam = parameterCatalog.createFloat("spreadLowFreq", "Spread Low Freq", juce::NormalisableRange<float>(0.0f, 1.0f), 0.55f);
-    spreadHighFreqParam = parameterCatalog.createFloat("spreadHighFreq", "Spread High Freq", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
-    spreadMixParam = parameterCatalog.createFloat("spreadMix", "Spread Mix", juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f);
-    spreadToneParam = parameterCatalog.createFloat("spreadTone", "Spread Tone", juce::NormalisableRange<float>(-1.0f, 1.0f), 0.0f);
-    spreadModeParam = parameterCatalog.createChoice("spreadMode",
+    spreadEnabledParam = parameterCatalog.createBool("fx.spread.enabled", "Spread Enabled", true);
+    spreadAmountParam = parameterCatalog.createFloat("fx.spread.amount", "Spread Amount", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
+    spreadWidthParam = parameterCatalog.createFloat("fx.spread.width", "Spread Width", juce::NormalisableRange<float>(0.0f, 1.0f), 0.6f);
+    spreadDepthParam = parameterCatalog.createFloat("fx.spread.depth", "Spread Depth", juce::NormalisableRange<float>(0.0f, 1.0f), 0.4f);
+    spreadCenterParam = parameterCatalog.createFloat("fx.spread.center", "Spread Center", juce::NormalisableRange<float>(0.0f, 1.0f), 0.7f);
+    spreadLowWidthParam = parameterCatalog.createFloat("fx.spread.low.width", "Spread Low Width", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
+    spreadHighWidthParam = parameterCatalog.createFloat("fx.spread.high.width", "Spread High Width", juce::NormalisableRange<float>(0.0f, 1.0f), 0.8f);
+    spreadLowFreqParam = parameterCatalog.createFloat("fx.spread.low.freq", "Spread Low Freq", juce::NormalisableRange<float>(0.0f, 1.0f), 0.55f);
+    spreadHighFreqParam = parameterCatalog.createFloat("fx.spread.high.freq", "Spread High Freq", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
+    spreadMixParam = parameterCatalog.createFloat("fx.spread.mix", "Spread Mix", juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f);
+    spreadToneParam = parameterCatalog.createFloat("fx.spread.tone", "Spread Tone", juce::NormalisableRange<float>(-1.0f, 1.0f), 0.0f);
+    spreadModeParam = parameterCatalog.createChoice("fx.spread.mode",
                                                       "Spread Mode",
                                                       juce::StringArray { "CLASSIC", "WIDE", "DEEP", "MONO SAFE" },
                                                       0);
@@ -665,15 +665,15 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
                                                          px3::AnalogEngine::profileNames(),
                                                          0);
 
-    reverbSizeParam = parameterCatalog.createFloat("reverbSize", "Reverb Size", juce::NormalisableRange<float>(0.0f, 1.0f), 0.52f);
-    reverbDecayParam = parameterCatalog.createFloat("reverbDecay", "Reverb Decay", juce::NormalisableRange<float>(0.0f, 1.0f), 0.48f);
-    reverbDampingParam = parameterCatalog.createFloat("reverbDamping", "Reverb Damping", juce::NormalisableRange<float>(0.0f, 1.0f), 0.46f);
-    reverbPreDelayParam = parameterCatalog.createFloat("reverbPreDelay", "Reverb PreDelay", juce::NormalisableRange<float>(0.0f, 1.0f), 0.08f);
-    reverbModDepthParam = parameterCatalog.createFloat("reverbModDepth", "Reverb Mod Depth", juce::NormalisableRange<float>(0.0f, 1.0f), 0.24f);
-    reverbModRateParam = parameterCatalog.createFloat("reverbModRate", "Reverb Mod Rate", juce::NormalisableRange<float>(0.0f, 1.0f), 0.18f);
-    reverbWidthParam = parameterCatalog.createFloat("reverbWidth", "Reverb Width", juce::NormalisableRange<float>(0.0f, 1.0f), 0.86f);
-    reverbCloudFeedbackParam = parameterCatalog.createFloat("reverbCloudFeedback", "Reverb Cloud Feedback", juce::NormalisableRange<float>(0.0f, 1.0f), 0.62f);
-    reverbCloudDiffusionParam = parameterCatalog.createFloat("reverbCloudDiffusion", "Reverb Cloud Diffusion", juce::NormalisableRange<float>(0.0f, 1.0f), 0.54f);
+    reverbSizeParam = parameterCatalog.createFloat("fx.reverb.size", "Reverb Size", juce::NormalisableRange<float>(0.0f, 1.0f), 0.52f);
+    reverbDecayParam = parameterCatalog.createFloat("fx.reverb.decay", "Reverb Decay", juce::NormalisableRange<float>(0.0f, 1.0f), 0.48f);
+    reverbDampingParam = parameterCatalog.createFloat("fx.reverb.damping", "Reverb Damping", juce::NormalisableRange<float>(0.0f, 1.0f), 0.46f);
+    reverbPreDelayParam = parameterCatalog.createFloat("fx.reverb.pre.delay", "Reverb PreDelay", juce::NormalisableRange<float>(0.0f, 1.0f), 0.08f);
+    reverbModDepthParam = parameterCatalog.createFloat("fx.reverb.mod.depth", "Reverb Mod Depth", juce::NormalisableRange<float>(0.0f, 1.0f), 0.24f);
+    reverbModRateParam = parameterCatalog.createFloat("fx.reverb.mod.rate", "Reverb Mod Rate", juce::NormalisableRange<float>(0.0f, 1.0f), 0.18f);
+    reverbWidthParam = parameterCatalog.createFloat("fx.reverb.width", "Reverb Width", juce::NormalisableRange<float>(0.0f, 1.0f), 0.86f);
+    reverbCloudFeedbackParam = parameterCatalog.createFloat("fx.reverb.cloud.feedback", "Reverb Cloud Feedback", juce::NormalisableRange<float>(0.0f, 1.0f), 0.62f);
+    reverbCloudDiffusionParam = parameterCatalog.createFloat("fx.reverb.cloud.diffusion", "Reverb Cloud Diffusion", juce::NormalisableRange<float>(0.0f, 1.0f), 0.54f);
     pitchBendRangeParam = parameterCatalog.createInt("pitchBendRange",
                                                        "Pitch Bend Range",
                                                        1,

@@ -7,23 +7,23 @@ PX3MoodAudioProcessor::PX3MoodAudioProcessor()
     // control means the same thing in both products.
     const auto unit = juce::NormalisableRange<float>(0.0f, 1.0f);
 
-    addParameter(enabledParam = new juce::AudioParameterBool("moodEnabled", "Mood Enabled", true));
-    addParameter(freezeParam = new juce::AudioParameterBool("moodFreeze", "Mood Freeze", false));
-    addParameter(mixParam = new juce::AudioParameterFloat("moodMix", "Mood Mix", unit, 0.35f));
-    addParameter(clockParam = new juce::AudioParameterFloat("moodClock", "Mood Clock", unit, 1.0f));
-    addParameter(wetTimeParam = new juce::AudioParameterFloat("moodWetTime", "Mood Wet Time", unit, 0.40f));
-    addParameter(wetModifyParam = new juce::AudioParameterFloat("moodWetModify", "Mood Wet Modify", unit, 0.45f));
-    addParameter(loopLengthParam = new juce::AudioParameterFloat("moodLoopLength", "Mood Loop Length", unit, 0.28f));
-    addParameter(loopModifyParam = new juce::AudioParameterFloat("moodLoopModify", "Mood Loop Modify", unit, 0.50f));
-    addParameter(feedbackParam = new juce::AudioParameterFloat("moodFeedback", "Mood Feedback", unit, 0.35f));
-    addParameter(spreadParam = new juce::AudioParameterFloat("moodSpread", "Mood Spread", unit, 0.50f));
-    addParameter(degradeParam = new juce::AudioParameterFloat("moodDegrade", "Mood Degrade", unit, 0.20f));
+    addParameter(enabledParam = new juce::AudioParameterBool("fx.mood.enabled", "Mood Enabled", true));
+    addParameter(freezeParam = new juce::AudioParameterBool("fx.mood.freeze", "Mood Freeze", false));
+    addParameter(mixParam = new juce::AudioParameterFloat("fx.mood.mix", "Mood Mix", unit, 0.35f));
+    addParameter(clockParam = new juce::AudioParameterFloat("fx.mood.clock", "Mood Clock", unit, 1.0f));
+    addParameter(wetTimeParam = new juce::AudioParameterFloat("fx.mood.wet.time", "Mood Wet Time", unit, 0.40f));
+    addParameter(wetModifyParam = new juce::AudioParameterFloat("fx.mood.wet.modify", "Mood Wet Modify", unit, 0.45f));
+    addParameter(loopLengthParam = new juce::AudioParameterFloat("fx.mood.loop.length", "Mood Loop Length", unit, 0.28f));
+    addParameter(loopModifyParam = new juce::AudioParameterFloat("fx.mood.loop.modify", "Mood Loop Modify", unit, 0.50f));
+    addParameter(feedbackParam = new juce::AudioParameterFloat("fx.mood.feedback", "Mood Feedback", unit, 0.35f));
+    addParameter(spreadParam = new juce::AudioParameterFloat("fx.mood.spread", "Mood Spread", unit, 0.50f));
+    addParameter(degradeParam = new juce::AudioParameterFloat("fx.mood.degrade", "Mood Degrade", unit, 0.20f));
     addParameter(routingParam = new juce::AudioParameterChoice(
-        "moodRouting", "Mood Routing", juce::StringArray { "DRY->WET", "LOOP->WET", "PARALLEL" }, 0));
+        "fx.mood.routing", "Mood Routing", juce::StringArray { "DRY->WET", "LOOP->WET", "PARALLEL" }, 0));
     addParameter(wetModeParam = new juce::AudioParameterChoice(
-        "moodWetMode", "Mood Wet Mode", juce::StringArray { "REVERB", "DELAY", "SLIP" }, 0));
+        "fx.mood.wet.mode", "Mood Wet Mode", juce::StringArray { "REVERB", "DELAY", "SLIP" }, 0));
     addParameter(loopModeParam = new juce::AudioParameterChoice(
-        "moodLoopMode", "Mood Loop Mode", juce::StringArray { "ENV", "TAPE", "STRETCH" }, 0));
+        "fx.mood.loop.mode", "Mood Loop Mode", juce::StringArray { "ENV", "TAPE", "STRETCH" }, 0));
 }
 
 void PX3MoodAudioProcessor::prepareFx(double sampleRate, int)

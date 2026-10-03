@@ -68,9 +68,9 @@ void testFxProducts()
     {
         PX3SynthAudioProcessor synth;
         PX3LucyAudioProcessor standalone;
-        const auto synthEnabled = getParamValue(synth, "lucyEnabled");
-        const auto synthGlobal = getParamValue(synth, "lucyGlobal");
-        const auto standaloneGlobal = getParamValue(standalone, "lucyGlobal");
+        const auto synthEnabled = getParamValue(synth, "fx.lucy.enabled");
+        const auto synthGlobal = getParamValue(synth, "fx.lucy.global");
+        const auto standaloneGlobal = getParamValue(standalone, "fx.lucy.global");
         check("Lucy_DefaultsAreOffWithGlobalPartWayUp",
               synthEnabled < 0.5f && std::abs(synthGlobal - 0.5f) < 1.0e-4f && std::abs(standaloneGlobal - 0.5f) < 1.0e-4f,
               "synth lucyEnabled " + fmt(synthEnabled, 0) + ", lucyGlobal " + fmt(synthGlobal, 2)
@@ -82,8 +82,8 @@ void testFxProducts()
         {
             PX3SynthAudioProcessor processor;
             setParam(processor, "voice.amp.release", 0.05f);
-            for (const auto* id : { "vibeEnabled", "delayEnabled", "reverbEnabled", "moodEnabled",
-                                    "doomEnabled", "chorusEnabled", "spreadEnabled" })
+            for (const auto* id : { "fx.vibe.enabled", "fx.delay.enabled", "fx.reverb.enabled", "fx.mood.enabled",
+                                    "fx.doom.enabled", "fx.chorus.enabled", "fx.spread.enabled" })
             {
                 setParam(processor, id, 0.0f);
             }
@@ -91,7 +91,7 @@ void testFxProducts()
             {
                 setParam(processor, juce::String("mix.") + id + ".level", 0.0f);
             }
-            if (switchLucyOn) { setParam(processor, "lucyEnabled", 1.0f); }
+            if (switchLucyOn) { setParam(processor, "fx.lucy.enabled", 1.0f); }
             return render(processor, 24000, { { 1000, true, 57, 0.9f } }).rmsOver(6000, 24000);
         };
         const auto off = returnLevel(false);
@@ -106,8 +106,8 @@ void testFxProducts()
     // Loaded here over a patch with all eight on.
     {
         PX3SynthAudioProcessor processor;
-        const std::vector<const char*> effects { "vibeEnabled", "delayEnabled", "reverbEnabled", "moodEnabled",
-                                                 "doomEnabled", "lucyEnabled", "chorusEnabled", "spreadEnabled" };
+        const std::vector<const char*> effects { "fx.vibe.enabled", "fx.delay.enabled", "fx.reverb.enabled", "fx.mood.enabled",
+                                                 "fx.doom.enabled", "fx.lucy.enabled", "fx.chorus.enabled", "fx.spread.enabled" };
         for (const auto* id : effects) { setParam(processor, id, 1.0f); }
 
         PresetManager manager(processor);
@@ -908,9 +908,9 @@ void testFxProducts()
     // could drop a parameter without the other noticing.
     {
         const std::array<const char*, 9> ids { {
-            "reverbSize", "reverbDecay", "reverbDamping", "reverbPreDelay",
-            "reverbModDepth", "reverbModRate", "reverbWidth",
-            "reverbCloudFeedback", "reverbCloudDiffusion" } };
+            "fx.reverb.size", "fx.reverb.decay", "fx.reverb.damping", "fx.reverb.pre.delay",
+            "fx.reverb.mod.depth", "fx.reverb.mod.rate", "fx.reverb.width",
+            "fx.reverb.cloud.feedback", "fx.reverb.cloud.diffusion" } };
 
         const auto setAll = [&](juce::AudioProcessor& processor, float value)
         {
@@ -1124,8 +1124,8 @@ void testFxProducts()
         { PX3ChorusAudioProcessor p; measure("Chorus", p, p.enabled()); }
         { PX3SpreadAudioProcessor p; measure("Spread", p, p.enabled()); }
         { PX3ReverbAudioProcessor p; measure("Reverb", p, p.enabled()); }
-        { PX3DoomAudioProcessor p;   measure("Doom",   p, p.enabled(), "doomMix"); }
-        { PX3LucyAudioProcessor p;   measure("Lucy",   p, p.enabled(), "lucyGlobal"); }
+        { PX3DoomAudioProcessor p;   measure("Doom",   p, p.enabled(), "fx.doom.mix"); }
+        { PX3LucyAudioProcessor p;   measure("Lucy",   p, p.enabled(), "fx.lucy.global"); }
 
         // And the card's own switch has to reach that parameter. The audio path
         // above is only half the control: a button that changes nothing looks

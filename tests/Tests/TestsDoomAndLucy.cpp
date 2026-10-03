@@ -1615,11 +1615,11 @@ void testDoom()
 
         struct FloatParam { const char* id; float value; };
         const std::array<FloatParam, 14> floats { {
-            { "doomMix", 0.71f }, { "doomClock", 0.33f }, { "doomLoopLength", 0.62f },
-            { "doomLoopModify", 0.19f }, { "doomOverdub", 0.44f }, { "doomFade", 0.27f },
-            { "doomWetTime", 0.83f }, { "doomWetModify", 0.56f }, { "doomCross", 0.38f },
-            { "doomGlue", 0.91f }, { "doomEq", -0.64f }, { "doomBalance", 0.22f },
-            { "doomBlend", 0.77f }, { "doomSpread", 0.11f },
+            { "fx.doom.mix", 0.71f }, { "fx.doom.clock", 0.33f }, { "fx.doom.loop.length", 0.62f },
+            { "fx.doom.loop.modify", 0.19f }, { "fx.doom.overdub", 0.44f }, { "fx.doom.fade", 0.27f },
+            { "fx.doom.wet.time", 0.83f }, { "fx.doom.wet.modify", 0.56f }, { "fx.doom.cross", 0.38f },
+            { "fx.doom.glue", 0.91f }, { "fx.doom.eq", -0.64f }, { "fx.doom.balance", 0.22f },
+            { "fx.doom.blend", 0.77f }, { "fx.doom.spread", 0.11f },
         } };
 
         auto findParam = [&processor](const juce::String& id) -> juce::RangedAudioParameter*
@@ -1651,8 +1651,8 @@ void testDoom()
         }
 
         const std::array<const char*, 6> bools {
-            { "doomEnabled", "doomFreeze", "doomLoopActive", "doomWetActive",
-              "doomLoopHalf", "doomClockSmooth" }
+            { "fx.doom.enabled", "fx.doom.freeze", "fx.doom.loop.active", "fx.doom.wet.active",
+              "fx.doom.loop.half", "fx.doom.clock.smooth" }
         };
         for (const auto* id : bools)
         {
@@ -1667,7 +1667,7 @@ void testDoom()
         }
 
         const std::array<const char*, 4> choices {
-            { "doomRouting", "doomLoopMode", "doomWetMode", "doomCrossSource" }
+            { "fx.doom.routing", "fx.doom.loop.mode", "fx.doom.wet.mode", "fx.doom.cross.source" }
         };
         for (const auto* id : choices)
         {
@@ -1734,11 +1734,11 @@ void testDoom()
             {
                 if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(param))
                 {
-                    if (ranged->paramID == "doomMix")       ranged->setValueNotifyingHost(0.8f);
-                    if (ranged->paramID == "doomWetTime")   ranged->setValueNotifyingHost(0.6f);
-                    if (ranged->paramID == "delayMix" || ranged->paramID == "delayAmount")
+                    if (ranged->paramID == "fx.doom.mix")       ranged->setValueNotifyingHost(0.8f);
+                    if (ranged->paramID == "fx.doom.wet.time")   ranged->setValueNotifyingHost(0.6f);
+                    if (ranged->paramID == "fx.delay.mix" || ranged->paramID == "fx.delay.amount")
                         ranged->setValueNotifyingHost(0.6f);
-                    if (ranged->paramID == "reverbAmount")  ranged->setValueNotifyingHost(0.6f);
+                    if (ranged->paramID == "fx.reverb.amount")  ranged->setValueNotifyingHost(0.6f);
                 }
             }
             processor.setFxProcessingOrder(order);
@@ -3160,21 +3160,21 @@ void testLucy()
         // before the control refresh loads LUCY at its defaults.
         const std::array<const char*, 23> ids { {
             // the six primaries
-            "lucyGlobal", "lucyLoss", "lucySpeed", "lucyFilter", "lucyFreq", "lucyVerb",
+            "fx.lucy.global", "fx.lucy.loss", "fx.lucy.speed", "fx.lucy.filter", "fx.lucy.freq", "fx.lucy.verb",
             // their alternates
-            "lucyGateThreshold", "lucyFreezer", "lucyDecay",
-            "lucyLimiterThreshold", "lucyAutoGain", "lucyLossGain",
+            "fx.lucy.gate.threshold", "fx.lucy.freezer", "fx.lucy.decay",
+            "fx.lucy.limiter.threshold", "fx.lucy.auto.gain", "fx.lucy.loss.gain",
             // categories
-            "lucyMode", "lucyPackets", "lucySlope", "lucyWeighting", "lucyFreeze",
+            "fx.lucy.mode", "fx.lucy.packets", "fx.lucy.slope", "fx.lucy.weighting", "fx.lucy.freeze",
             // toggles and the rest
-            "lucyEnabled", "lucyFilterInvert", "lucyVerbPost", "lucyGate",
-            "lucySlow", "lucySpread",
+            "fx.lucy.enabled", "fx.lucy.filter.invert", "fx.lucy.verb.post", "fx.lucy.gate",
+            "fx.lucy.slow", "fx.lucy.spread",
         } };
 
         // Retired outright. Finding one of these means a shim crept back in.
         const std::array<const char*, 5> retired { {
-            "lucyFreezeSlushy", "lucyFilterFreq", "lucyGateCutoff",
-            "lucyThreshold", "lucyGain",
+            "fx.lucy.freeze.slushy", "fx.lucy.filter.freq", "fx.lucy.gate.cutoff",
+            "fx.lucy.threshold", "fx.lucy.gain",
         } };
         juce::StringArray survivors;
         for (const auto* id : retired)
@@ -3259,12 +3259,12 @@ void testLucy()
             {
                 if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(param))
                 {
-                    if (ranged->paramID == "lucyEnabled")  ranged->setValueNotifyingHost(1.0f);
-                    if (ranged->paramID == "doomEnabled")  ranged->setValueNotifyingHost(1.0f);
-                    if (ranged->paramID == "lucyGlobal")   ranged->setValueNotifyingHost(0.7f);
-                    if (ranged->paramID == "lucyLoss")     ranged->setValueNotifyingHost(0.7f);
-                    if (ranged->paramID == "doomMix")      ranged->setValueNotifyingHost(0.6f);
-                    if (ranged->paramID == "reverbAmount") ranged->setValueNotifyingHost(0.6f);
+                    if (ranged->paramID == "fx.lucy.enabled")  ranged->setValueNotifyingHost(1.0f);
+                    if (ranged->paramID == "fx.doom.enabled")  ranged->setValueNotifyingHost(1.0f);
+                    if (ranged->paramID == "fx.lucy.global")   ranged->setValueNotifyingHost(0.7f);
+                    if (ranged->paramID == "fx.lucy.loss")     ranged->setValueNotifyingHost(0.7f);
+                    if (ranged->paramID == "fx.doom.mix")      ranged->setValueNotifyingHost(0.6f);
+                    if (ranged->paramID == "fx.reverb.amount") ranged->setValueNotifyingHost(0.6f);
                 }
             }
             processor.setFxProcessingOrder(order);

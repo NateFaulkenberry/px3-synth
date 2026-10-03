@@ -1171,8 +1171,8 @@ void testBusInserts()
     {
         PX3SynthAudioProcessor processor;
         makePlainPatch(processor);
-        setParam(processor, "doomEnabled", 0.0f);
-        setParam(processor, "lucyEnabled", 0.0f);
+        setParam(processor, "fx.doom.enabled", 0.0f);
+        setParam(processor, "fx.lucy.enabled", 0.0f);
         configure(processor);
         return render(processor, 66000, oneNote);
     };
@@ -1280,8 +1280,8 @@ void testBusInserts()
     {
         auto openSend = [](PX3SynthAudioProcessor& p)
         {
-            setParam(p, "delayEnabled", 1.0f);
-            setParam(p, "delayAmount", 0.7f);
+            setParam(p, "fx.delay.enabled", 1.0f);
+            setParam(p, "fx.delay.amount", 0.7f);
             setParam(p, "mix.osc1.fxSend", 0.9f);
             setParam(p, "fxReturnGain", 0.8f);
         };
@@ -3977,7 +3977,7 @@ void testAnalogEngine()
                 if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(parameter))
                 {
                     const auto id = ranged->getParameterID();
-                    if (id == "vibeAmount")    { ranged->setValueNotifyingHost(vibeOn ? 0.6f : 0.0f); }
+                    if (id == "fx.vibe.amount")    { ranged->setValueNotifyingHost(vibeOn ? 0.6f : 0.0f); }
                     if (id == "analogEnabled") { ranged->setValueNotifyingHost(analogOn ? 1.0f : 0.0f); }
                     if (id == "analogProfile") { ranged->setValueNotifyingHost(0.25f); }
                 }
@@ -4291,7 +4291,7 @@ void testMultiOutput()
                 effect->setValueNotifyingHost(0.0f);
             }
             processor.getReverbEnabledParam().setValueNotifyingHost(reverbOn ? 1.0f : 0.0f);
-            setParam(processor, "reverbAmount", 0.8f);
+            setParam(processor, "fx.reverb.amount", 0.8f);
 
             juce::AudioBuffer<float> buffer(processor.getTotalNumOutputChannels(), kBlock);
             renderNote(processor, buffer, 40);

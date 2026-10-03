@@ -553,11 +553,11 @@ inline void makePlainPatch(PX3SynthAudioProcessor& processor)
     setParam(processor, "voice.filter1.enabled", 0.0f);
     setParam(processor, "voice.filter2.enabled", 0.0f);
 
-    setParam(processor, "vibeEnabled", 0.0f);
-    setParam(processor, "vibeAmount", 0.0f);
-    setParam(processor, "delayEnabled", 0.0f);
-    setParam(processor, "reverbEnabled", 0.0f);
-    setParam(processor, "moodEnabled", 0.0f);
+    setParam(processor, "fx.vibe.enabled", 0.0f);
+    setParam(processor, "fx.vibe.amount", 0.0f);
+    setParam(processor, "fx.delay.enabled", 0.0f);
+    setParam(processor, "fx.reverb.enabled", 0.0f);
+    setParam(processor, "fx.mood.enabled", 0.0f);
 
     for (int i = 0; i < 3; ++i)
     {

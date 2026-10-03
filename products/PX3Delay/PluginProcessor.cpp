@@ -9,22 +9,22 @@ PX3DelayAudioProcessor::PX3DelayAudioProcessor()
     // Synth the delay is one stage of a chain and starts at zero, but a
     // standalone delay that does nothing when you insert it reads as broken.
     addParameter(amountParam = new juce::AudioParameterFloat(
-        "delayAmount", "Delay Amount", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f));
+        "fx.delay.amount", "Delay Amount", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f));
     addParameter(timeParam = new juce::AudioParameterFloat(
-        "delayTime", "Delay Time", juce::NormalisableRange<float>(0.0f, 1.0f), 0.35f));
+        "fx.delay.time", "Delay Time", juce::NormalisableRange<float>(0.0f, 1.0f), 0.35f));
     addParameter(feedbackParam = new juce::AudioParameterFloat(
-        "delayFeedback", "Delay Feedback", juce::NormalisableRange<float>(0.0f, 1.0f), 0.38f));
+        "fx.delay.feedback", "Delay Feedback", juce::NormalisableRange<float>(0.0f, 1.0f), 0.38f));
     addParameter(enabledParam = new juce::AudioParameterBool(
-        "delayEnabled", "Delay Enabled", true));
+        "fx.delay.enabled", "Delay Enabled", true));
     addParameter(algorithmParam = new juce::AudioParameterChoice(
-        "delayAlgorithm", "Delay Algorithm",
+        "fx.delay.algorithm", "Delay Algorithm",
         juce::StringArray { "Granular", "Tape", "Analog/BBD", "Ping-Pong",
                             "Stereo", "Modulated", "Diffusion" }, 0));
     addParameter(granularModeParam = new juce::AudioParameterChoice(
-        "granularMode", "Granular Mode",
+        "fx.delay.granular.mode", "Granular Mode",
         juce::StringArray { "CLASSIC", "CLOUD", "SHIMMER", "RHYTHMIC" }, 0));
     addParameter(syncDivisionParam = new juce::AudioParameterChoice(
-        "granularSyncDivision", "Granular Sync",
+        "fx.delay.granular.sync.division", "Granular Sync",
         juce::StringArray { "Free", "1 Bar", "1/2", "1/4", "1/8", "1/8T", "1/16", "1/16T" }, 0));
 }
 

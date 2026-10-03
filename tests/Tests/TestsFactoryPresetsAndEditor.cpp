@@ -128,7 +128,7 @@ void testFactoryPresets()
 
             for (const auto* fx : kFx)
             {
-                const auto id = juce::String(fx) + juce::String("Enabled");
+                const auto id = "fx." + juce::String(fx) + ".enabled";
                 auto on = defaultOf(id);
                 for (const auto& [paramId, value] : def.params)
                 {
@@ -290,14 +290,14 @@ void testFactoryPresets()
         // effect has to appear somewhere with a non-zero amount.
         struct Coverage { const char* label; const char* id; };
         const std::array<Coverage, 8> effects { {
-            { "VIBE", "vibeAmount" },
-            { "CHORUS", "chorusAmount" },
-            { "DOOM", "doomMix" },
-            { "LUCY", "lucyGlobal" },
-            { "DELAY", "delayAmount" },
-            { "MOOD", "moodMix" },
-            { "REVERB", "reverbAmount" },
-            { "SPREAD", "spreadAmount" },
+            { "VIBE", "fx.vibe.amount" },
+            { "CHORUS", "fx.chorus.amount" },
+            { "DOOM", "fx.doom.mix" },
+            { "LUCY", "fx.lucy.global" },
+            { "DELAY", "fx.delay.amount" },
+            { "MOOD", "fx.mood.mix" },
+            { "REVERB", "fx.reverb.amount" },
+            { "SPREAD", "fx.spread.amount" },
         } };
 
         juce::StringArray uncovered;

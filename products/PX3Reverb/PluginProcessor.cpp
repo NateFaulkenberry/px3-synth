@@ -5,21 +5,21 @@ PX3ReverbAudioProcessor::PX3ReverbAudioProcessor()
 {
     const auto unit = juce::NormalisableRange<float>(0.0f, 1.0f);
 
-    addParameter(enabledParam = new juce::AudioParameterBool("reverbEnabled", "Reverb Enabled", true));
+    addParameter(enabledParam = new juce::AudioParameterBool("fx.reverb.enabled", "Reverb Enabled", true));
     // Full rather than the Synth's zero: a standalone reverb that does nothing
     // when inserted reads as broken. Every other default is the Synth's.
-    addParameter(amountParam = new juce::AudioParameterFloat("reverbAmount", "Reverb", unit, 0.35f));
-    addParameter(sizeParam = new juce::AudioParameterFloat("reverbSize", "Reverb Size", unit, 0.52f));
-    addParameter(decayParam = new juce::AudioParameterFloat("reverbDecay", "Reverb Decay", unit, 0.48f));
-    addParameter(dampingParam = new juce::AudioParameterFloat("reverbDamping", "Reverb Damping", unit, 0.46f));
-    addParameter(preDelayParam = new juce::AudioParameterFloat("reverbPreDelay", "Reverb PreDelay", unit, 0.08f));
-    addParameter(modDepthParam = new juce::AudioParameterFloat("reverbModDepth", "Reverb Mod Depth", unit, 0.24f));
-    addParameter(modRateParam = new juce::AudioParameterFloat("reverbModRate", "Reverb Mod Rate", unit, 0.18f));
-    addParameter(widthParam = new juce::AudioParameterFloat("reverbWidth", "Reverb Width", unit, 0.86f));
-    addParameter(cloudFeedbackParam = new juce::AudioParameterFloat("reverbCloudFeedback", "Reverb Cloud Feedback", unit, 0.62f));
-    addParameter(cloudDiffusionParam = new juce::AudioParameterFloat("reverbCloudDiffusion", "Reverb Cloud Diffusion", unit, 0.54f));
+    addParameter(amountParam = new juce::AudioParameterFloat("fx.reverb.amount", "Reverb", unit, 0.35f));
+    addParameter(sizeParam = new juce::AudioParameterFloat("fx.reverb.size", "Reverb Size", unit, 0.52f));
+    addParameter(decayParam = new juce::AudioParameterFloat("fx.reverb.decay", "Reverb Decay", unit, 0.48f));
+    addParameter(dampingParam = new juce::AudioParameterFloat("fx.reverb.damping", "Reverb Damping", unit, 0.46f));
+    addParameter(preDelayParam = new juce::AudioParameterFloat("fx.reverb.pre.delay", "Reverb PreDelay", unit, 0.08f));
+    addParameter(modDepthParam = new juce::AudioParameterFloat("fx.reverb.mod.depth", "Reverb Mod Depth", unit, 0.24f));
+    addParameter(modRateParam = new juce::AudioParameterFloat("fx.reverb.mod.rate", "Reverb Mod Rate", unit, 0.18f));
+    addParameter(widthParam = new juce::AudioParameterFloat("fx.reverb.width", "Reverb Width", unit, 0.86f));
+    addParameter(cloudFeedbackParam = new juce::AudioParameterFloat("fx.reverb.cloud.feedback", "Reverb Cloud Feedback", unit, 0.62f));
+    addParameter(cloudDiffusionParam = new juce::AudioParameterFloat("fx.reverb.cloud.diffusion", "Reverb Cloud Diffusion", unit, 0.54f));
     addParameter(algorithmParam = new juce::AudioParameterChoice(
-        "reverbAlgorithm", "Reverb Mode",
+        "fx.reverb.algorithm", "Reverb Mode",
         juce::StringArray { "ROOM", "PLATE", "HALL", "CLOUD" }, 0));
 }
 

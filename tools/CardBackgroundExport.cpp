@@ -313,8 +313,8 @@ int main(int argc, char* argv[])
             {
                 if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(parameter))
                 {
-                    if (ranged->getParameterID() == "lucyEnabled") { ranged->setValueNotifyingHost(0.0f); }
-                    if (ranged->getParameterID() == "lucyGlobal")  { ranged->setValueNotifyingHost(1.0f); }
+                    if (ranged->getParameterID() == "fx.lucy.enabled") { ranged->setValueNotifyingHost(0.0f); }
+                    if (ranged->getParameterID() == "fx.lucy.global")  { ranged->setValueNotifyingHost(1.0f); }
                 }
             }
 

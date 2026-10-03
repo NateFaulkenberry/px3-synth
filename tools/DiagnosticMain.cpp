@@ -313,16 +313,16 @@ void applyPatch(PX3SynthAudioProcessor& processor, const PatchOptions& patch)
     setParameter(processor, "voice.amp.sustain", patch.sustain);
     setParameter(processor, "voice.amp.release", patch.release);
     setParameter(processor, "voice.amp.enabled", 1.0f);
-    setParameter(processor, "vibeEnabled", patch.vibeEnabled ? 1.0f : 0.0f);
-    setParameter(processor, "vibeAmount", patch.vibeAmount);
-    setParameter(processor, "delayEnabled", patch.fxEnabled ? 1.0f : 0.0f);
-    setParameter(processor, "reverbEnabled", patch.fxEnabled ? 1.0f : 0.0f);
-    setParameter(processor, "moodEnabled", patch.fxEnabled ? 1.0f : 0.0f);
+    setParameter(processor, "fx.vibe.enabled", patch.vibeEnabled ? 1.0f : 0.0f);
+    setParameter(processor, "fx.vibe.amount", patch.vibeAmount);
+    setParameter(processor, "fx.delay.enabled", patch.fxEnabled ? 1.0f : 0.0f);
+    setParameter(processor, "fx.reverb.enabled", patch.fxEnabled ? 1.0f : 0.0f);
+    setParameter(processor, "fx.mood.enabled", patch.fxEnabled ? 1.0f : 0.0f);
     if (patch.fxEnabled)
     {
-        setParameter(processor, "delayAmount", 0.4f);
-        setParameter(processor, "reverbAmount", 0.4f);
-        setParameter(processor, "moodMix", 0.3f);
+        setParameter(processor, "fx.delay.amount", 0.4f);
+        setParameter(processor, "fx.reverb.amount", 0.4f);
+        setParameter(processor, "fx.mood.mix", 0.3f);
     }
 
     setParameter(processor, "masterGain", patch.masterGain);
@@ -661,10 +661,10 @@ double measureVoiceFilterPeak(const FilterSynthConfig& config)
     setParameter(processor, "voice.amp.sustain", 1.0f);
     setParameter(processor, "voice.amp.release", 0.100f);
     setParameter(processor, "voice.amp.enabled", 1.0f);
-    setParameter(processor, "vibeAmount", 0.0f);
-    setParameter(processor, "delayEnabled", 0.0f);
-    setParameter(processor, "reverbEnabled", 0.0f);
-    setParameter(processor, "moodEnabled", 0.0f);
+    setParameter(processor, "fx.vibe.amount", 0.0f);
+    setParameter(processor, "fx.delay.enabled", 0.0f);
+    setParameter(processor, "fx.reverb.enabled", 0.0f);
+    setParameter(processor, "fx.mood.enabled", 0.0f);
     setParameter(processor, "voice.sub.enabled", 0.0f);
     for (int i = 0; i < 3; ++i)
     {
@@ -763,11 +763,11 @@ std::vector<float> renderFilterNoteTrace(int midiNote, bool precedeWithOtherNote
     setParameter(processor, "voice.amp.decay", 0.050f);
     setParameter(processor, "voice.amp.sustain", 1.0f);
     setParameter(processor, "voice.amp.release", 0.050f);
-    setParameter(processor, "delayEnabled", 0.0f);
-    setParameter(processor, "reverbEnabled", 0.0f);
-    setParameter(processor, "moodEnabled", 0.0f);
+    setParameter(processor, "fx.delay.enabled", 0.0f);
+    setParameter(processor, "fx.reverb.enabled", 0.0f);
+    setParameter(processor, "fx.mood.enabled", 0.0f);
     setParameter(processor, "voice.sub.enabled", 0.0f);
-    setParameter(processor, "vibeAmount", 0.0f);
+    setParameter(processor, "fx.vibe.amount", 0.0f);
     for (int i = 0; i < 3; ++i)
     {
         const auto slot = juce::String(i + 1);
@@ -869,7 +869,7 @@ MixerMeasurement measureMixer(const MixerConfig& config)
     setParameter(processor, "voice.amp.sustain", 1.0f);
     setParameter(processor, "voice.amp.release", 0.200f);
     setParameter(processor, "voice.amp.enabled", 1.0f);
-    setParameter(processor, "vibeAmount", 0.0f);
+    setParameter(processor, "fx.vibe.amount", 0.0f);
     setParameter(processor, "masterGain", 0.6f);
 
     for (int i = 0; i < 3; ++i)
@@ -887,11 +887,11 @@ MixerMeasurement measureMixer(const MixerConfig& config)
     // juce::Random::getSystemRandom() during processing, which makes the FX
     // return non-reproducible between renders and would make FX-return
     // measurements meaningless.
-    setParameter(processor, "delayEnabled", 0.0f);
-    setParameter(processor, "moodEnabled", 0.0f);
-    setParameter(processor, "delayAmount", 0.0f);
-    setParameter(processor, "reverbEnabled", config.fxEnabled ? 1.0f : 0.0f);
-    setParameter(processor, "reverbAmount", config.fxEnabled ? 0.6f : 0.0f);
+    setParameter(processor, "fx.delay.enabled", 0.0f);
+    setParameter(processor, "fx.mood.enabled", 0.0f);
+    setParameter(processor, "fx.delay.amount", 0.0f);
+    setParameter(processor, "fx.reverb.enabled", config.fxEnabled ? 1.0f : 0.0f);
+    setParameter(processor, "fx.reverb.amount", config.fxEnabled ? 0.6f : 0.0f);
 
     for (int i = 0; i < 4; ++i)
     {
@@ -980,12 +980,12 @@ MixerDynamicResult measureMixerDynamics(const juce::String& paramId,
     setParameter(processor, "voice.amp.sustain", 1.0f);
     setParameter(processor, "voice.amp.release", 0.150f);
     setParameter(processor, "voice.amp.enabled", 1.0f);
-    setParameter(processor, "vibeAmount", 0.0f);
+    setParameter(processor, "fx.vibe.amount", 0.0f);
     setParameter(processor, "masterGain", 0.6f);
-    setParameter(processor, "delayEnabled", 0.0f);
-    setParameter(processor, "moodEnabled", 0.0f);
-    setParameter(processor, "reverbEnabled", 0.0f);
-    setParameter(processor, "reverbAmount", 0.0f);
+    setParameter(processor, "fx.delay.enabled", 0.0f);
+    setParameter(processor, "fx.mood.enabled", 0.0f);
+    setParameter(processor, "fx.reverb.enabled", 0.0f);
+    setParameter(processor, "fx.reverb.amount", 0.0f);
     for (int i = 0; i < 3; ++i)
     {
         const auto slot = juce::String(i + 1);
@@ -2310,10 +2310,10 @@ int main(int argc, char* argv[])
             setParameter(processor, "voice.amp.attack", 0.005f);
             setParameter(processor, "voice.amp.sustain", 1.0f);
             setParameter(processor, "voice.amp.release", 0.3f);
-            setParameter(processor, "delayEnabled", fxOn ? 1.0f : 0.0f);
-            setParameter(processor, "reverbEnabled", fxOn ? 1.0f : 0.0f);
-            setParameter(processor, "moodEnabled", fxOn ? 1.0f : 0.0f);
-            for (const auto* id : { "doomEnabled", "lucyEnabled", "chorusEnabled", "spreadEnabled" })
+            setParameter(processor, "fx.delay.enabled", fxOn ? 1.0f : 0.0f);
+            setParameter(processor, "fx.reverb.enabled", fxOn ? 1.0f : 0.0f);
+            setParameter(processor, "fx.mood.enabled", fxOn ? 1.0f : 0.0f);
+            for (const auto* id : { "fx.doom.enabled", "fx.lucy.enabled", "fx.chorus.enabled", "fx.spread.enabled" })
             {
                 setParameter(processor, id, fxOn ? 1.0f : 0.0f);
             }
@@ -2329,12 +2329,12 @@ int main(int argc, char* argv[])
             // The newer engines take an early-out while inaudible, so leaving
             // them at their defaults would measure the bypass rather than the
             // DSP. Driven to an audible amount so the whole chain is running.
-            setParameter(processor, "doomMix", fxOn ? 0.4f : 0.0f);
-            setParameter(processor, "lucyGlobal", fxOn ? 0.5f : 0.0f);
-            setParameter(processor, "chorusAmount", fxOn ? 0.6f : 0.0f);
-            setParameter(processor, "spreadAmount", fxOn ? 0.6f : 0.0f);
-            setParameter(processor, "doomLoopActive", fxOn ? 1.0f : 0.0f);
-            setParameter(processor, "lucyFreeze", fxOn ? 1.0f : 0.0f);
+            setParameter(processor, "fx.doom.mix", fxOn ? 0.4f : 0.0f);
+            setParameter(processor, "fx.lucy.global", fxOn ? 0.5f : 0.0f);
+            setParameter(processor, "fx.chorus.amount", fxOn ? 0.6f : 0.0f);
+            setParameter(processor, "fx.spread.amount", fxOn ? 0.6f : 0.0f);
+            setParameter(processor, "fx.doom.loop.active", fxOn ? 1.0f : 0.0f);
+            setParameter(processor, "fx.lucy.freeze", fxOn ? 1.0f : 0.0f);
 
             // AnalogEngine adds four channel stages and three bus stages inside
             // the per-sample loop, so it belongs in the allocation check.
@@ -2675,9 +2675,9 @@ int main(int argc, char* argv[])
             setParameter(processor, "voice.amp.attack", 0.005f);
             setParameter(processor, "voice.amp.sustain", 1.0f);
             setParameter(processor, "voice.amp.release", 0.2f);
-            setParameter(processor, "delayEnabled", 0.0f);
-            setParameter(processor, "reverbEnabled", 0.0f);
-            setParameter(processor, "moodEnabled", 0.0f);
+            setParameter(processor, "fx.delay.enabled", 0.0f);
+            setParameter(processor, "fx.reverb.enabled", 0.0f);
+            setParameter(processor, "fx.mood.enabled", 0.0f);
             setParameter(processor, "voice.sub.enabled", 1.0f);
             setParameter(processor, "voice.osc1.enabled", 0.0f);
             setParameter(processor, "voice.osc2.enabled", 0.0f);
@@ -3701,9 +3701,9 @@ int main(int argc, char* argv[])
                 setParameter(processor, "voice.amp.attack", 0.005f);
                 setParameter(processor, "voice.amp.sustain", 1.0f);
                 setParameter(processor, "voice.amp.release", 0.2f);
-                setParameter(processor, "delayEnabled", 0.0f);
-                setParameter(processor, "moodEnabled", 0.0f);
-                setParameter(processor, "reverbEnabled", 0.0f);
+                setParameter(processor, "fx.delay.enabled", 0.0f);
+                setParameter(processor, "fx.mood.enabled", 0.0f);
+                setParameter(processor, "fx.reverb.enabled", 0.0f);
                 setParameter(processor, "masterGain", 0.6f);
                 setParameter(processor, "voice.sub.enabled", 1.0f);
                 for (int i = 0; i < 3; ++i)
@@ -3777,9 +3777,9 @@ int main(int argc, char* argv[])
                 setParameter(processor, "voice.amp.attack", 0.005f);
                 setParameter(processor, "voice.amp.sustain", 0.8f);
                 setParameter(processor, "voice.amp.release", release);
-                setParameter(processor, "delayEnabled", 0.0f);
-                setParameter(processor, "moodEnabled", 0.0f);
-                setParameter(processor, "reverbEnabled", 0.0f);
+                setParameter(processor, "fx.delay.enabled", 0.0f);
+                setParameter(processor, "fx.mood.enabled", 0.0f);
+                setParameter(processor, "fx.reverb.enabled", 0.0f);
                 setParameter(processor, "masterGain", 0.6f);
                 setParameter(processor, "voice.sub.enabled", 0.0f);
                 for (int i = 0; i < 3; ++i)

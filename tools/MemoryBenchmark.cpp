@@ -226,13 +226,13 @@ void exerciseInstance(Instance& instance, Scenario scenario, double sampleRate, 
     // stress: bring up every module that owns a buffer, then play through them.
     // Nothing here reaches into the DSP - it only sets the parameters a user
     // would set, so the allocations are the ones the plugin really makes.
-    for (const auto& id : { "vibeEnabled", "delayEnabled", "reverbEnabled",
-                            "moodEnabled", "voice.sub.enabled", "voice.amp.enabled" })
+    for (const auto& id : { "fx.vibe.enabled", "fx.delay.enabled", "fx.reverb.enabled",
+                            "fx.mood.enabled", "voice.sub.enabled", "voice.amp.enabled" })
     {
         setParameterById(processor, id, 1.0f);
     }
-    for (const auto& id : { "vibeAmount", "delayAmount", "reverbAmount", "moodMix",
-                            "delayFeedback", "moodFeedback", "moodSpread", "moodDegrade" })
+    for (const auto& id : { "fx.vibe.amount", "fx.delay.amount", "fx.reverb.amount", "fx.mood.mix",
+                            "fx.delay.feedback", "fx.mood.feedback", "fx.mood.spread", "fx.mood.degrade" })
     {
         setParameterById(processor, id, 0.75f);
     }
@@ -245,8 +245,8 @@ void exerciseInstance(Instance& instance, Scenario scenario, double sampleRate, 
     runBlocks(64, notes);
 
     // Walk the FX algorithm choices so each one's delay lines are allocated.
-    for (const auto& id : { "delayAlgorithm", "reverbAlgorithm", "granularMode",
-                            "moodWetMode", "moodLoopMode", "vibeType" })
+    for (const auto& id : { "fx.delay.algorithm", "fx.reverb.algorithm", "fx.delay.granular.mode",
+                            "fx.mood.wet.mode", "fx.mood.loop.mode", "fx.vibe.type" })
     {
         for (float v : { 0.0f, 0.34f, 0.67f, 1.0f })
         {

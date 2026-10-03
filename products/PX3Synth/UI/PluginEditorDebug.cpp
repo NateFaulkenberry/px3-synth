@@ -1679,9 +1679,9 @@ void PX3SynthAudioProcessorEditor::debugForceSerializationTest()
                                 && xmlText.containsIgnoreCase("delay")
                                 && xmlText.containsIgnoreCase("reverb");
 
-    const auto hasDelayTime = xmlText.containsIgnoreCase("delayTime");
-    const auto hasReverbAmount = xmlText.containsIgnoreCase("reverbAmount");
-    const auto hasVibeAmount = xmlText.containsIgnoreCase("vibeAmount");
+    const auto hasDelayTime = xmlText.containsIgnoreCase("fx.delay.time");
+    const auto hasReverbAmount = xmlText.containsIgnoreCase("fx.reverb.amount");
+    const auto hasVibeAmount = xmlText.containsIgnoreCase("fx.vibe.amount");
     const auto pass = hasModuleOrder && hasDelayTime && hasReverbAmount && hasVibeAmount;
 
     juce::String report;

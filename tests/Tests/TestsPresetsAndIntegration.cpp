@@ -111,36 +111,36 @@ void applyUnusualConfiguration(PX3SynthAudioProcessor& processor)
     processor.setLfoAssignmentByParameterId(1, "mix.osc2.pan", false);
     processor.setLfoAssignmentByParameterId(2, "voice.osc1.tuning.cents", false);
 
-    setParam(processor, "vibeEnabled", 1.0f);
-    setParam(processor, "vibeAmount", 0.67f);
-    setChoice(processor, "vibeType", 2);
+    setParam(processor, "fx.vibe.enabled", 1.0f);
+    setParam(processor, "fx.vibe.amount", 0.67f);
+    setChoice(processor, "fx.vibe.type", 2);
 
-    setParam(processor, "reverbEnabled", 1.0f);
-    setParam(processor, "reverbAmount", 0.71f);
-    setChoice(processor, "reverbAlgorithm", 3);
-    setParam(processor, "reverbSize", 0.83f);
-    setParam(processor, "reverbDecay", 0.29f);
-    setParam(processor, "reverbDamping", 0.77f);
-    setParam(processor, "reverbPreDelay", 0.43f);
-    setParam(processor, "reverbWidth", 0.19f);
-    setParam(processor, "reverbCloudFeedback", 0.91f);
-    setParam(processor, "reverbCloudDiffusion", 0.13f);
+    setParam(processor, "fx.reverb.enabled", 1.0f);
+    setParam(processor, "fx.reverb.amount", 0.71f);
+    setChoice(processor, "fx.reverb.algorithm", 3);
+    setParam(processor, "fx.reverb.size", 0.83f);
+    setParam(processor, "fx.reverb.decay", 0.29f);
+    setParam(processor, "fx.reverb.damping", 0.77f);
+    setParam(processor, "fx.reverb.pre.delay", 0.43f);
+    setParam(processor, "fx.reverb.width", 0.19f);
+    setParam(processor, "fx.reverb.cloud.feedback", 0.91f);
+    setParam(processor, "fx.reverb.cloud.diffusion", 0.13f);
 
-    setParam(processor, "moodEnabled", 1.0f);
-    setParam(processor, "moodMix", 0.61f);
-    setParam(processor, "moodClock", 0.23f);
-    setParam(processor, "moodWetTime", 0.87f);
-    setParam(processor, "moodFeedback", 0.44f);
-    setParam(processor, "moodSpread", 0.71f);
-    setParam(processor, "moodDegrade", 0.58f);
-    setParam(processor, "moodFreeze", 0.0f);
-    setChoice(processor, "moodWetMode", 2);
-    setChoice(processor, "moodLoopMode", 1);
+    setParam(processor, "fx.mood.enabled", 1.0f);
+    setParam(processor, "fx.mood.mix", 0.61f);
+    setParam(processor, "fx.mood.clock", 0.23f);
+    setParam(processor, "fx.mood.wet.time", 0.87f);
+    setParam(processor, "fx.mood.feedback", 0.44f);
+    setParam(processor, "fx.mood.spread", 0.71f);
+    setParam(processor, "fx.mood.degrade", 0.58f);
+    setParam(processor, "fx.mood.freeze", 0.0f);
+    setChoice(processor, "fx.mood.wet.mode", 2);
+    setChoice(processor, "fx.mood.loop.mode", 1);
 
-    setParam(processor, "delayEnabled", 1.0f);
-    setParam(processor, "delayAmount", 0.39f);
-    setParam(processor, "delayTime", 0.62f);
-    setParam(processor, "delayFeedback", 0.47f);
+    setParam(processor, "fx.delay.enabled", 1.0f);
+    setParam(processor, "fx.delay.amount", 0.39f);
+    setParam(processor, "fx.delay.time", 0.62f);
+    setParam(processor, "fx.delay.feedback", 0.47f);
 
     setParam(processor, "fxSendGain", 0.73f);
     setParam(processor, "fxReturnGain", 0.58f);
@@ -322,9 +322,9 @@ void testPresets()
         applyUnusualConfiguration(original);
         // FX and modes that draw from the shared system Random are switched off
         // for this comparison so the two renders are comparable at all.
-        setParam(original, "reverbEnabled", 0.0f);
-        setParam(original, "moodEnabled", 0.0f);
-        setParam(original, "delayEnabled", 0.0f);
+        setParam(original, "fx.reverb.enabled", 0.0f);
+        setParam(original, "fx.mood.enabled", 0.0f);
+        setParam(original, "fx.delay.enabled", 0.0f);
         setChoice(original, "voice.osc1.mode", 1);
         setChoice(original, "voice.osc2.mode", 3);
         setParam(original, "mix.osc3.mute", 0.0f);
@@ -408,7 +408,7 @@ void testPresets()
             PX3SynthAudioProcessor source;
             applyUnusualConfiguration(source);
             auto tree = source.createParameterStateTree();
-            tree.setProperty("moodTrueBypass", 1.0, nullptr);
+            tree.setProperty("fx.mood.true.bypass", 1.0, nullptr);
             const auto expected = snapshotParameters(source);
 
             if (auto xml = tree.createXml())
@@ -887,8 +887,8 @@ void testIntegration()
         // step in the summed output, and the result must not be silence either.
         PX3SynthAudioProcessor processor;
         makePlainPatch(processor);
-        setParam(processor, "vibeEnabled", 1.0f);
-        setParam(processor, "vibeAmount", 0.7f);
+        setParam(processor, "fx.vibe.enabled", 1.0f);
+        setParam(processor, "fx.vibe.amount", 0.7f);
         setParam(processor, "analogEnabled", 1.0f);
         setParam(processor, "voice.filter1.enabled", 1.0f);
 
@@ -987,16 +987,16 @@ void testIntegration()
               } },
             { "AllFxAtMaximum", [](PX3SynthAudioProcessor& p)
               {
-                  setParam(p, "reverbEnabled", 1.0f);
-                  setParam(p, "reverbAmount", 1.0f);
-                  setParam(p, "moodEnabled", 1.0f);
-                  setParam(p, "moodMix", 1.0f);
-                  setParam(p, "moodFeedback", 1.0f);
-                  setParam(p, "delayEnabled", 1.0f);
-                  setParam(p, "delayAmount", 1.0f);
-                  setParam(p, "delayFeedback", 1.0f);
-                  setParam(p, "vibeEnabled", 1.0f);
-                  setParam(p, "vibeAmount", 1.0f);
+                  setParam(p, "fx.reverb.enabled", 1.0f);
+                  setParam(p, "fx.reverb.amount", 1.0f);
+                  setParam(p, "fx.mood.enabled", 1.0f);
+                  setParam(p, "fx.mood.mix", 1.0f);
+                  setParam(p, "fx.mood.feedback", 1.0f);
+                  setParam(p, "fx.delay.enabled", 1.0f);
+                  setParam(p, "fx.delay.amount", 1.0f);
+                  setParam(p, "fx.delay.feedback", 1.0f);
+                  setParam(p, "fx.vibe.enabled", 1.0f);
+                  setParam(p, "fx.vibe.amount", 1.0f);
                   setParam(p, "fxSendGain", 1.0f);
                   setParam(p, "fxReturnGain", 1.0f);
                   for (const auto* id : { "sub", "osc1", "osc2", "osc3" })
@@ -1019,10 +1019,10 @@ void testIntegration()
                   {
                       setParam(p, juce::String("mix.") + id + ".level", 1.0f);
                   }
-                  setParam(p, "vibeEnabled", 1.0f);
-                  setParam(p, "vibeAmount", 1.0f);
-                  setParam(p, "reverbEnabled", 1.0f);
-                  setParam(p, "reverbAmount", 1.0f);
+                  setParam(p, "fx.vibe.enabled", 1.0f);
+                  setParam(p, "fx.vibe.amount", 1.0f);
+                  setParam(p, "fx.reverb.enabled", 1.0f);
+                  setParam(p, "fx.reverb.amount", 1.0f);
                   setParam(p, "fxReturnGain", 1.0f);
               } },
         };
@@ -1083,7 +1083,7 @@ void testIntegration()
             { "OscillatorEnable", "voice.osc2.enabled" },
             { "SubOscillatorEnable", "voice.sub.enabled" },
             { "FilterEnable", "voice.filter1.enabled" },
-            { "ReverbEnable", "reverbEnabled" },
+            { "ReverbEnable", "fx.reverb.enabled" },
         };
 
         for (const auto& switchCase : switches)
@@ -1151,8 +1151,8 @@ void testIntegration()
             makePlainPatch(processor);
             setChoice(processor, "voice.osc1.mode", 1);
             setParam(processor, "voice.filter1.enabled", 1.0f);
-            setParam(processor, "reverbEnabled", 1.0f);
-            setParam(processor, "reverbAmount", 0.6f);
+            setParam(processor, "fx.reverb.enabled", 1.0f);
+            setParam(processor, "fx.reverb.amount", 0.6f);
             processor.setPlayConfigDetails(0, 2, config.sampleRate, config.blockSize);
             processor.prepareToPlay(config.sampleRate, config.blockSize);
 

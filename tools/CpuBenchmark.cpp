@@ -175,17 +175,17 @@ void configure(PX3SynthAudioProcessor& processor, const Scenario& scenario)
     setParameter(processor, "voice.filter1.cutoff", 1200.0f);
     setParameter(processor, "voice.filter2.cutoff", 3000.0f);
 
-    setParameter(processor, "vibeEnabled", scenario.vibe ? 1.0f : 0.0f);
-    setParameter(processor, "vibeAmount", scenario.vibe ? 0.85f : 0.0f);
+    setParameter(processor, "fx.vibe.enabled", scenario.vibe ? 1.0f : 0.0f);
+    setParameter(processor, "fx.vibe.amount", scenario.vibe ? 0.85f : 0.0f);
 
-    setParameter(processor, "delayEnabled", scenario.fx ? 1.0f : 0.0f);
-    setParameter(processor, "reverbEnabled", scenario.fx ? 1.0f : 0.0f);
-    setParameter(processor, "moodEnabled", scenario.fx ? 1.0f : 0.0f);
+    setParameter(processor, "fx.delay.enabled", scenario.fx ? 1.0f : 0.0f);
+    setParameter(processor, "fx.reverb.enabled", scenario.fx ? 1.0f : 0.0f);
+    setParameter(processor, "fx.mood.enabled", scenario.fx ? 1.0f : 0.0f);
     if (scenario.fx)
     {
-        setParameter(processor, "delayAmount", 0.5f);
-        setParameter(processor, "reverbAmount", 0.5f);
-        setParameter(processor, "moodMix", 0.4f);
+        setParameter(processor, "fx.delay.amount", 0.5f);
+        setParameter(processor, "fx.reverb.amount", 0.5f);
+        setParameter(processor, "fx.mood.mix", 0.4f);
         setParameter(processor, "fxSendGain", 0.8f);
     }
 
@@ -193,14 +193,14 @@ void configure(PX3SynthAudioProcessor& processor, const Scenario& scenario)
     // that is deliberate, and it is exactly why they have to be measured with a
     // non-zero amount rather than left at their defaults, where the benchmark
     // would report a cost of zero for four whole engines.
-    setParameter(processor, "doomEnabled", scenario.newFx ? 1.0f : 0.0f);
-    setParameter(processor, "lucyEnabled", scenario.newFx ? 1.0f : 0.0f);
-    setParameter(processor, "chorusEnabled", scenario.newFx ? 1.0f : 0.0f);
-    setParameter(processor, "spreadEnabled", scenario.newFx ? 1.0f : 0.0f);
-    setParameter(processor, "doomMix", scenario.newFx ? 0.4f : 0.0f);
-    setParameter(processor, "lucyGlobal", scenario.newFx ? 0.5f : 0.0f);
-    setParameter(processor, "chorusAmount", scenario.newFx ? 0.6f : 0.0f);
-    setParameter(processor, "spreadAmount", scenario.newFx ? 0.6f : 0.0f);
+    setParameter(processor, "fx.doom.enabled", scenario.newFx ? 1.0f : 0.0f);
+    setParameter(processor, "fx.lucy.enabled", scenario.newFx ? 1.0f : 0.0f);
+    setParameter(processor, "fx.chorus.enabled", scenario.newFx ? 1.0f : 0.0f);
+    setParameter(processor, "fx.spread.enabled", scenario.newFx ? 1.0f : 0.0f);
+    setParameter(processor, "fx.doom.mix", scenario.newFx ? 0.4f : 0.0f);
+    setParameter(processor, "fx.lucy.global", scenario.newFx ? 0.5f : 0.0f);
+    setParameter(processor, "fx.chorus.amount", scenario.newFx ? 0.6f : 0.0f);
+    setParameter(processor, "fx.spread.amount", scenario.newFx ? 0.6f : 0.0f);
 
     // AnalogEngine runs at four channel stages plus three bus stages, so it is
     // measured with the rest of the console rather than as an effect.

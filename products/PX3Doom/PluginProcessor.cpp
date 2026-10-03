@@ -8,34 +8,34 @@ PX3DoomAudioProcessor::PX3DoomAudioProcessor()
     // Synth, and declaring it 0..1 here would move its centre.
     const auto bipolar = juce::NormalisableRange<float>(-1.0f, 1.0f);
 
-    addParameter(enabledParam = new juce::AudioParameterBool("doomEnabled", "Doom Enabled", true));
-    addParameter(freezeParam = new juce::AudioParameterBool("doomFreeze", "Doom Freeze", false));
-    addParameter(loopActiveParam = new juce::AudioParameterBool("doomLoopActive", "Doom Looper Active", false));
-    addParameter(wetActiveParam = new juce::AudioParameterBool("doomWetActive", "Doom Wet Active", true));
-    addParameter(loopHalfParam = new juce::AudioParameterBool("doomLoopHalf", "Doom Loop Half", false));
-    addParameter(clockSmoothParam = new juce::AudioParameterBool("doomClockSmooth", "Doom Clock Smooth", false));
-    addParameter(mixParam = new juce::AudioParameterFloat("doomMix", "Doom Mix", unit, 0.0f));
-    addParameter(clockParam = new juce::AudioParameterFloat("doomClock", "Doom Clock", unit, 1.0f));
-    addParameter(loopLengthParam = new juce::AudioParameterFloat("doomLoopLength", "Doom Loop Length", unit, 0.45f));
-    addParameter(loopModifyParam = new juce::AudioParameterFloat("doomLoopModify", "Doom Loop Modify", unit, 0.50f));
-    addParameter(overdubParam = new juce::AudioParameterFloat("doomOverdub", "Doom Overdub", unit, 0.0f));
-    addParameter(fadeParam = new juce::AudioParameterFloat("doomFade", "Doom Fade", unit, 1.0f));
-    addParameter(wetTimeParam = new juce::AudioParameterFloat("doomWetTime", "Doom Wet Time", unit, 0.45f));
-    addParameter(wetModifyParam = new juce::AudioParameterFloat("doomWetModify", "Doom Wet Modify", unit, 0.40f));
-    addParameter(crossParam = new juce::AudioParameterFloat("doomCross", "Doom Cross", unit, 0.0f));
-    addParameter(glueParam = new juce::AudioParameterFloat("doomGlue", "Doom Glue", unit, 0.15f));
-    addParameter(eqParam = new juce::AudioParameterFloat("doomEq", "Doom EQ", bipolar, 0.0f));
-    addParameter(balanceParam = new juce::AudioParameterFloat("doomBalance", "Doom Balance", unit, 0.5f));
-    addParameter(blendParam = new juce::AudioParameterFloat("doomBlend", "Doom Blend", unit, 0.0f));
-    addParameter(spreadParam = new juce::AudioParameterFloat("doomSpread", "Doom Spread", unit, 0.5f));
+    addParameter(enabledParam = new juce::AudioParameterBool("fx.doom.enabled", "Doom Enabled", true));
+    addParameter(freezeParam = new juce::AudioParameterBool("fx.doom.freeze", "Doom Freeze", false));
+    addParameter(loopActiveParam = new juce::AudioParameterBool("fx.doom.loop.active", "Doom Looper Active", false));
+    addParameter(wetActiveParam = new juce::AudioParameterBool("fx.doom.wet.active", "Doom Wet Active", true));
+    addParameter(loopHalfParam = new juce::AudioParameterBool("fx.doom.loop.half", "Doom Loop Half", false));
+    addParameter(clockSmoothParam = new juce::AudioParameterBool("fx.doom.clock.smooth", "Doom Clock Smooth", false));
+    addParameter(mixParam = new juce::AudioParameterFloat("fx.doom.mix", "Doom Mix", unit, 0.0f));
+    addParameter(clockParam = new juce::AudioParameterFloat("fx.doom.clock", "Doom Clock", unit, 1.0f));
+    addParameter(loopLengthParam = new juce::AudioParameterFloat("fx.doom.loop.length", "Doom Loop Length", unit, 0.45f));
+    addParameter(loopModifyParam = new juce::AudioParameterFloat("fx.doom.loop.modify", "Doom Loop Modify", unit, 0.50f));
+    addParameter(overdubParam = new juce::AudioParameterFloat("fx.doom.overdub", "Doom Overdub", unit, 0.0f));
+    addParameter(fadeParam = new juce::AudioParameterFloat("fx.doom.fade", "Doom Fade", unit, 1.0f));
+    addParameter(wetTimeParam = new juce::AudioParameterFloat("fx.doom.wet.time", "Doom Wet Time", unit, 0.45f));
+    addParameter(wetModifyParam = new juce::AudioParameterFloat("fx.doom.wet.modify", "Doom Wet Modify", unit, 0.40f));
+    addParameter(crossParam = new juce::AudioParameterFloat("fx.doom.cross", "Doom Cross", unit, 0.0f));
+    addParameter(glueParam = new juce::AudioParameterFloat("fx.doom.glue", "Doom Glue", unit, 0.15f));
+    addParameter(eqParam = new juce::AudioParameterFloat("fx.doom.eq", "Doom EQ", bipolar, 0.0f));
+    addParameter(balanceParam = new juce::AudioParameterFloat("fx.doom.balance", "Doom Balance", unit, 0.5f));
+    addParameter(blendParam = new juce::AudioParameterFloat("fx.doom.blend", "Doom Blend", unit, 0.0f));
+    addParameter(spreadParam = new juce::AudioParameterFloat("fx.doom.spread", "Doom Spread", unit, 0.5f));
     addParameter(routingParam = new juce::AudioParameterChoice(
-        "doomRouting", "Doom Routing", juce::StringArray { "INPUT", "INPUT+LOOP", "LOOP" }, 0));
+        "fx.doom.routing", "Doom Routing", juce::StringArray { "INPUT", "INPUT+LOOP", "LOOP" }, 0));
     addParameter(loopModeParam = new juce::AudioParameterChoice(
-        "doomLoopMode", "Doom Loop Mode", juce::StringArray { "BURST", "RADIO", "MASK" }, 1));
+        "fx.doom.loop.mode", "Doom Loop Mode", juce::StringArray { "BURST", "RADIO", "MASK" }, 1));
     addParameter(wetModeParam = new juce::AudioParameterChoice(
-        "doomWetMode", "Doom Wet Mode", juce::StringArray { "SOUP", "RELAY", "FLIP" }, 0));
+        "fx.doom.wet.mode", "Doom Wet Mode", juce::StringArray { "SOUP", "RELAY", "FLIP" }, 0));
     addParameter(crossSourceParam = new juce::AudioParameterChoice(
-        "doomCrossSource", "Doom Cross Source", juce::StringArray { "INPUT", "CHANNEL" }, 0));
+        "fx.doom.cross.source", "Doom Cross Source", juce::StringArray { "INPUT", "CHANNEL" }, 0));
 
     // Mix defaults to the Synth's 0 for every other product's Amount reason in
     // reverse: Doom's mix at 0 is the DRY signal, and a destroyer that arrives

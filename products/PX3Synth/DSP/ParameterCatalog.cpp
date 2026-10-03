@@ -17,6 +17,11 @@ std::vector<ParameterCatalog::GroupSegment> ParameterCatalog::groupPathForId(con
         return std::vector<GroupSegment> { { rootId, rootName }, { moduleId, moduleName } };
     };
 
+    if (key.startsWith("fx."))
+    {
+        const auto module = key.substring(3).upToFirstOccurrenceOf(".", false, false);
+        return path("effects", "EFFECTS", module, module == "spread" ? juce::String("STEREO SPREAD") : module.toUpperCase());
+    }
     if (key.startsWith("voice.osc1.") || key.startsWith("voice.osc2.") || key.startsWith("voice.osc3.")
         || key.startsWith("osc1") || key.startsWith("osc2") || key.startsWith("osc3"))
     {
@@ -70,38 +75,6 @@ std::vector<ParameterCatalog::GroupSegment> ParameterCatalog::groupPathForId(con
         || key.startsWith("fxeq") || key.startsWith("fxcomp") || key.startsWith("mastergain"))
     {
         return path("mixer", "MIXER", "buses", "BUSES");
-    }
-    if (key.startsWith("delay") || key.startsWith("granular"))
-    {
-        return path("effects", "EFFECTS", "delay", "DELAY");
-    }
-    if (key.startsWith("reverb"))
-    {
-        return path("effects", "EFFECTS", "reverb", "REVERB");
-    }
-    if (key.startsWith("mood"))
-    {
-        return path("effects", "EFFECTS", "mood", "MOOD");
-    }
-    if (key.startsWith("doom"))
-    {
-        return path("effects", "EFFECTS", "doom", "DOOM");
-    }
-    if (key.startsWith("lucy"))
-    {
-        return path("effects", "EFFECTS", "lucy", "LUCY");
-    }
-    if (key.startsWith("chorus"))
-    {
-        return path("effects", "EFFECTS", "chorus", "CHORUS");
-    }
-    if (key.startsWith("spread"))
-    {
-        return path("effects", "EFFECTS", "spread", "STEREO SPREAD");
-    }
-    if (key.startsWith("vibe"))
-    {
-        return path("effects", "EFFECTS", "vibe", "VIBE");
     }
     if (key.startsWith("analog"))
     {

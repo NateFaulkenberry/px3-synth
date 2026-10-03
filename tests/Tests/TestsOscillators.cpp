@@ -2747,10 +2747,10 @@ void testOscillators()
             setParam(processor, "voice.osc2.enabled", 0.0f);
             setParam(processor, "voice.osc3.enabled", 0.0f);
             setParam(processor, "voice.sub.enabled", 0.0f);
-            setParam(processor, "vibeEnabled", 0.0f);
-            setParam(processor, "reverbEnabled", 0.0f);
-            setParam(processor, "delayEnabled", 0.0f);
-            setParam(processor, "moodEnabled", 0.0f);
+            setParam(processor, "fx.vibe.enabled", 0.0f);
+            setParam(processor, "fx.reverb.enabled", 0.0f);
+            setParam(processor, "fx.delay.enabled", 0.0f);
+            setParam(processor, "fx.mood.enabled", 0.0f);
             setParam(processor, "voice.filter1.enabled", 0.0f);
             setParam(processor, "voice.filter2.enabled", 0.0f);
             // Same reason as makePlainPatch: these numbers are the MIXER's gain
@@ -2777,10 +2777,10 @@ void testOscillators()
             setParam(processor, "voice.osc2.enabled", 0.0f);
             setParam(processor, "voice.osc3.enabled", 0.0f);
             setParam(processor, "voice.sub.enabled", 0.0f);
-            setParam(processor, "vibeEnabled", 0.0f);
-            setParam(processor, "reverbEnabled", 0.0f);
-            setParam(processor, "delayEnabled", 0.0f);
-            setParam(processor, "moodEnabled", 0.0f);
+            setParam(processor, "fx.vibe.enabled", 0.0f);
+            setParam(processor, "fx.reverb.enabled", 0.0f);
+            setParam(processor, "fx.delay.enabled", 0.0f);
+            setParam(processor, "fx.mood.enabled", 0.0f);
             setParam(processor, "voice.filter1.enabled", 0.0f);
             setParam(processor, "voice.filter2.enabled", 0.0f);
             setParam(processor, "voice.amp.sustain", 1.0f);
@@ -2820,13 +2820,13 @@ void testOscillators()
             setChoice(processor, "voice.osc1.mode", 0);
             setParam(processor, "voice.filter1.enabled", 0.0f);
             setParam(processor, "voice.filter2.enabled", 0.0f);
-            setParam(processor, "vibeEnabled", 0.0f);
-            setParam(processor, "delayEnabled", 0.0f);
-            setParam(processor, "moodEnabled", 0.0f);
+            setParam(processor, "fx.vibe.enabled", 0.0f);
+            setParam(processor, "fx.delay.enabled", 0.0f);
+            setParam(processor, "fx.mood.enabled", 0.0f);
             // Reverb passes the dry signal through with enough direct content
             // that the two paths can cancel.
-            setParam(processor, "reverbEnabled", 1.0f);
-            setParam(processor, "reverbAmount", 1.0f);
+            setParam(processor, "fx.reverb.enabled", 1.0f);
+            setParam(processor, "fx.reverb.amount", 1.0f);
             setParam(processor, "mix.dry.phase", invertDry ? 1.0f : 0.0f);
             return render(processor, 48000, { { 2000, true, 57, 0.9f } }).rmsOver(24000, 46000);
         };

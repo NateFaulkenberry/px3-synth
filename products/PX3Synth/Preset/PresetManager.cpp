@@ -529,8 +529,8 @@ juce::ValueTree PresetManager::initPresetTree(juce::String& error) const
             parameterState.setProperty("value", ranged->getDefaultValue(), nullptr);
         }
     }
-    for (const auto* id : { "vibeEnabled", "delayEnabled", "reverbEnabled", "moodEnabled",
-                            "doomEnabled", "lucyEnabled", "chorusEnabled", "spreadEnabled" })
+    for (const auto* id : { "fx.vibe.enabled", "fx.delay.enabled", "fx.reverb.enabled", "fx.mood.enabled",
+                            "fx.doom.enabled", "fx.lucy.enabled", "fx.chorus.enabled", "fx.spread.enabled" })
     {
         auto parameterState = processor.getParameterCatalog().findStateEntry(parameters, id);
         if (parameterState.isValid()) { parameterState.setProperty("value", 0.0f, nullptr); }

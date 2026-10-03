@@ -5,23 +5,23 @@ PX3SpreadAudioProcessor::PX3SpreadAudioProcessor()
 {
     const auto unit = juce::NormalisableRange<float>(0.0f, 1.0f);
 
-    addParameter(enabledParam = new juce::AudioParameterBool("spreadEnabled", "Spread Enabled", true));
+    addParameter(enabledParam = new juce::AudioParameterBool("fx.spread.enabled", "Spread Enabled", true));
     // Full rather than the Synth's zero: one stage of a chain starts silent, a
     // standalone widener that does nothing when inserted reads as broken.
-    addParameter(amountParam = new juce::AudioParameterFloat("spreadAmount", "Spread Amount", unit, 1.0f));
-    addParameter(widthParam = new juce::AudioParameterFloat("spreadWidth", "Spread Width", unit, 0.6f));
-    addParameter(depthParam = new juce::AudioParameterFloat("spreadDepth", "Spread Depth", unit, 0.4f));
-    addParameter(centerParam = new juce::AudioParameterFloat("spreadCenter", "Spread Center", unit, 0.7f));
-    addParameter(lowWidthParam = new juce::AudioParameterFloat("spreadLowWidth", "Spread Low Width", unit, 0.0f));
-    addParameter(highWidthParam = new juce::AudioParameterFloat("spreadHighWidth", "Spread High Width", unit, 0.8f));
-    addParameter(lowFreqParam = new juce::AudioParameterFloat("spreadLowFreq", "Spread Low Freq", unit, 0.55f));
-    addParameter(highFreqParam = new juce::AudioParameterFloat("spreadHighFreq", "Spread High Freq", unit, 0.5f));
-    addParameter(mixParam = new juce::AudioParameterFloat("spreadMix", "Spread Mix", unit, 1.0f));
+    addParameter(amountParam = new juce::AudioParameterFloat("fx.spread.amount", "Spread Amount", unit, 1.0f));
+    addParameter(widthParam = new juce::AudioParameterFloat("fx.spread.width", "Spread Width", unit, 0.6f));
+    addParameter(depthParam = new juce::AudioParameterFloat("fx.spread.depth", "Spread Depth", unit, 0.4f));
+    addParameter(centerParam = new juce::AudioParameterFloat("fx.spread.center", "Spread Center", unit, 0.7f));
+    addParameter(lowWidthParam = new juce::AudioParameterFloat("fx.spread.low.width", "Spread Low Width", unit, 0.0f));
+    addParameter(highWidthParam = new juce::AudioParameterFloat("fx.spread.high.width", "Spread High Width", unit, 0.8f));
+    addParameter(lowFreqParam = new juce::AudioParameterFloat("fx.spread.low.freq", "Spread Low Freq", unit, 0.55f));
+    addParameter(highFreqParam = new juce::AudioParameterFloat("fx.spread.high.freq", "Spread High Freq", unit, 0.5f));
+    addParameter(mixParam = new juce::AudioParameterFloat("fx.spread.mix", "Spread Mix", unit, 1.0f));
     // Bipolar, like the Synth's: a tilt on the SIDE signal only.
     addParameter(toneParam = new juce::AudioParameterFloat(
-        "spreadTone", "Spread Tone", juce::NormalisableRange<float>(-1.0f, 1.0f), 0.0f));
+        "fx.spread.tone", "Spread Tone", juce::NormalisableRange<float>(-1.0f, 1.0f), 0.0f));
     addParameter(modeParam = new juce::AudioParameterChoice(
-        "spreadMode", "Spread Mode",
+        "fx.spread.mode", "Spread Mode",
         juce::StringArray { "CLASSIC", "WIDE", "DEEP", "MONO SAFE" }, 0));
 }
 

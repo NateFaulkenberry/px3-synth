@@ -778,9 +778,9 @@ void testVibe()
         setChoice(processor, "voice.osc1.mode", 1);
         setParam(processor, "voice.filter1.enabled", 1.0f);
         setParam(processor, "voice.filter1.cutoff", 2500.0f);
-        setParam(processor, "vibeEnabled", enabled ? 1.0f : 0.0f);
-        setParam(processor, "vibeAmount", amount);
-        setChoice(processor, "vibeType", typeIndex);
+        setParam(processor, "fx.vibe.enabled", enabled ? 1.0f : 0.0f);
+        setParam(processor, "fx.vibe.amount", amount);
+        setChoice(processor, "fx.vibe.type", typeIndex);
         return render(processor, 48000, { { 2000, true, 45, 0.9f } });
     };
 
@@ -842,8 +842,8 @@ void testVibe()
         PX3SynthAudioProcessor processor;
         makePlainPatch(processor);
         setChoice(processor, "voice.osc1.mode", 0);      // SINE
-        setParam(processor, "vibeEnabled", 1.0f);
-        setParam(processor, "vibeAmount", amount);
+        setParam(processor, "fx.vibe.enabled", 1.0f);
+        setParam(processor, "fx.vibe.amount", amount);
         const auto capture = render(processor, 96000, { { 2000, true, 45, 0.9f } });
         return harmonicToFundamentalRatio(capture.left, 110.0, 24000);
     };
@@ -870,9 +870,9 @@ void testVibe()
             PX3SynthAudioProcessor processor;
             makePlainPatch(processor);
             setChoice(processor, "voice.osc1.mode", 0);          // SINE: no HF of its own
-            setParam(processor, "vibeEnabled", 1.0f);
-            setParam(processor, "vibeAmount", amount);
-            setChoice(processor, "vibeType", typeIndex);
+            setParam(processor, "fx.vibe.enabled", 1.0f);
+            setParam(processor, "fx.vibe.amount", amount);
+            setChoice(processor, "fx.vibe.type", typeIndex);
             const auto capture = render(processor, 96000, { { 2000, true, 45, 0.9f } });
             return bandRmsDb(capture.left, 8000.0, 16000.0, 40000);
         };
@@ -953,8 +953,8 @@ void testVibe()
     {
         PX3SynthAudioProcessor processor;
         makePlainPatch(processor);
-        setParam(processor, "vibeEnabled", 1.0f);
-        setParam(processor, "vibeAmount", 1.0f);
+        setParam(processor, "fx.vibe.enabled", 1.0f);
+        setParam(processor, "fx.vibe.amount", 1.0f);
         const auto capture = render(processor, 64000,
                                     { { 2000, true, 57, 0.9f }, { 2000, true, 69, 0.9f } });
         check("Vibe_MultipleVoicesRenderWithoutInterference",
@@ -967,8 +967,8 @@ void testVibe()
     {
         PX3SynthAudioProcessor processor;
         makePlainPatch(processor);
-        setParam(processor, "vibeEnabled", 1.0f);
-        setParam(processor, "vibeAmount", 1.0f);
+        setParam(processor, "fx.vibe.enabled", 1.0f);
+        setParam(processor, "fx.vibe.amount", 1.0f);
         setParam(processor, "voice.amp.release", 0.100f);
         const auto capture = render(processor, 96000,
                                     { { 2000, true, 57, 0.9f }, { 20000, false, 57, 0.0f } });
@@ -1913,10 +1913,10 @@ void testComb()
             setParam(processor, "voice.osc2.enabled", 0.0f);
             setParam(processor, "voice.osc3.enabled", 0.0f);
             setParam(processor, "voice.sub.enabled", 0.0f);
-            setParam(processor, "vibeEnabled", 0.0f);
-            setParam(processor, "reverbEnabled", 0.0f);
-            setParam(processor, "delayEnabled", 0.0f);
-            setParam(processor, "moodEnabled", 0.0f);
+            setParam(processor, "fx.vibe.enabled", 0.0f);
+            setParam(processor, "fx.reverb.enabled", 0.0f);
+            setParam(processor, "fx.delay.enabled", 0.0f);
+            setParam(processor, "fx.mood.enabled", 0.0f);
             setParam(processor, "voice.amp.sustain", 1.0f);
             // Noise in, so the comb's resonance is what shapes the output
             // rather than the oscillator's own harmonics.

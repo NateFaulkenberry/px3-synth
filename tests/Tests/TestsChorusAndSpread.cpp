@@ -649,9 +649,9 @@ void testChorus()
         };
 
         const std::array<const char*, 12> ids { {
-            "chorusEnabled", "chorusAmount", "chorusRate", "chorusDepth", "chorusWidth",
-            "chorusSpread", "chorusLowCut", "chorusFeedback", "chorusCharacter",
-            "chorusMix", "chorusTone", "chorusMode",
+            "fx.chorus.enabled", "fx.chorus.amount", "fx.chorus.rate", "fx.chorus.depth", "fx.chorus.width",
+            "fx.chorus.spread", "fx.chorus.low.cut", "fx.chorus.feedback", "fx.chorus.character",
+            "fx.chorus.mix", "fx.chorus.tone", "fx.chorus.mode",
         } };
 
         juce::StringArray missing;
@@ -1280,9 +1280,9 @@ void testStereoSpread()
         };
 
         const std::array<const char*, 12> ids { {
-            "spreadEnabled", "spreadAmount", "spreadWidth", "spreadDepth", "spreadCenter",
-            "spreadLowWidth", "spreadHighWidth", "spreadLowFreq", "spreadHighFreq",
-            "spreadMix", "spreadTone", "spreadMode",
+            "fx.spread.enabled", "fx.spread.amount", "fx.spread.width", "fx.spread.depth", "fx.spread.center",
+            "fx.spread.low.width", "fx.spread.high.width", "fx.spread.low.freq", "fx.spread.high.freq",
+            "fx.spread.mix", "fx.spread.tone", "fx.spread.mode",
         } };
 
         juce::StringArray missing;
@@ -1351,11 +1351,11 @@ void testStereoSpread()
             {
                 if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(param))
                 {
-                    if (ranged->paramID == "spreadAmount") ranged->setValueNotifyingHost(0.8f);
-                    if (ranged->paramID == "chorusAmount") ranged->setValueNotifyingHost(0.7f);
-                    if (ranged->paramID == "lucyGlobal")   ranged->setValueNotifyingHost(0.5f);
-                    if (ranged->paramID == "doomMix")      ranged->setValueNotifyingHost(0.5f);
-                    if (ranged->paramID == "reverbAmount") ranged->setValueNotifyingHost(0.5f);
+                    if (ranged->paramID == "fx.spread.amount") ranged->setValueNotifyingHost(0.8f);
+                    if (ranged->paramID == "fx.chorus.amount") ranged->setValueNotifyingHost(0.7f);
+                    if (ranged->paramID == "fx.lucy.global")   ranged->setValueNotifyingHost(0.5f);
+                    if (ranged->paramID == "fx.doom.mix")      ranged->setValueNotifyingHost(0.5f);
+                    if (ranged->paramID == "fx.reverb.amount") ranged->setValueNotifyingHost(0.5f);
                 }
             }
             processor.setFxProcessingOrder(order);

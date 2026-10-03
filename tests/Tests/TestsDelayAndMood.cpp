@@ -397,11 +397,11 @@ void testDelay()
             setParam(processor, "fxSendGain", 1.0f);
             setParam(processor, "fxReturnGain", 1.0f);
 
-            setParam(processor, "delayEnabled", 1.0f);
-            setChoice(processor, "delayAlgorithm", algorithm);
-            setParam(processor, "delayTime", 0.34f);
-            setParam(processor, "delayFeedback", 0.32f);
-            setParam(processor, "delayAmount", amount);
+            setParam(processor, "fx.delay.enabled", 1.0f);
+            setChoice(processor, "fx.delay.algorithm", algorithm);
+            setParam(processor, "fx.delay.time", 0.34f);
+            setParam(processor, "fx.delay.feedback", 0.32f);
+            setParam(processor, "fx.delay.amount", amount);
 
             const auto cap = render(processor, 200000, { { 2000, true, 111, 0.9f } });
 
@@ -475,11 +475,11 @@ void testDelay()
                 setParam(processor, juce::String("mix.") + id + ".fxSend", 1.0f);
             setParam(processor, "fxSendGain", 1.0f);
             setParam(processor, "fxReturnGain", 1.0f);
-            setParam(processor, "delayEnabled", 1.0f);
-            setChoice(processor, "delayAlgorithm", 1);     // TAPE
-            setParam(processor, "delayTime", 0.34f);
-            setParam(processor, "delayFeedback", 0.32f);
-            setParam(processor, "delayAmount", amount);
+            setParam(processor, "fx.delay.enabled", 1.0f);
+            setChoice(processor, "fx.delay.algorithm", 1);     // TAPE
+            setParam(processor, "fx.delay.time", 0.34f);
+            setParam(processor, "fx.delay.feedback", 0.32f);
+            setParam(processor, "fx.delay.amount", amount);
 
             std::vector<NoteEvent> notes;
             for (int n = 0; n < 8; ++n)
@@ -554,11 +554,11 @@ void testDelay()
                 setParam(processor, juce::String("mix.") + id + ".fxSend", 1.0f);
             setParam(processor, "fxSendGain", 1.0f);
             setParam(processor, "fxReturnGain", 1.0f);
-            setParam(processor, "delayEnabled", 1.0f);
-            setChoice(processor, "delayAlgorithm", algo);
-            setParam(processor, "delayAmount", 1.0f);
-            setParam(processor, "delayFeedback", 0.45f);
-            setParam(processor, "delayTime", 0.9f);
+            setParam(processor, "fx.delay.enabled", 1.0f);
+            setChoice(processor, "fx.delay.algorithm", algo);
+            setParam(processor, "fx.delay.amount", 1.0f);
+            setParam(processor, "fx.delay.feedback", 0.45f);
+            setParam(processor, "fx.delay.time", 0.9f);
 
             constexpr double rate = 44100.0;
             constexpr int block = 512;
@@ -572,9 +572,9 @@ void testDelay()
                 buffer.clear();
                 juce::MidiBuffer midi;
                 if (b % 60 == 4) midi.addEvent(juce::MidiMessage::noteOn(1, 72, 0.9f), 0);
-                if (b == 200) setParam(processor, "delayTime", 0.05f);
-                if (b == 380) setParam(processor, "delayTime", 0.95f);
-                if (b == 560) setParam(processor, "delayTime", 0.10f);
+                if (b == 200) setParam(processor, "fx.delay.time", 0.05f);
+                if (b == 380) setParam(processor, "fx.delay.time", 0.95f);
+                if (b == 560) setParam(processor, "fx.delay.time", 0.10f);
                 processor.processBlock(buffer, midi);
                 for (int i = 0; i < buffer.getNumSamples(); ++i)
                 {
@@ -751,11 +751,11 @@ void testDelay()
         {
             PX3SynthAudioProcessor processor;
             makePlainPatch(processor);
-            setParam(processor, "delayEnabled", 1.0f);
-            setChoice(processor, "delayAlgorithm", algo);
-            setParam(processor, "delayAmount", 1.0f);
-            setParam(processor, "delayFeedback", 1.0f);
-            setParam(processor, "delayTime", 0.3f);
+            setParam(processor, "fx.delay.enabled", 1.0f);
+            setChoice(processor, "fx.delay.algorithm", algo);
+            setParam(processor, "fx.delay.amount", 1.0f);
+            setParam(processor, "fx.delay.feedback", 1.0f);
+            setParam(processor, "fx.delay.time", 0.3f);
             const auto capture = render(processor, 192000,
                                         { { 2000, true, 45, 0.9f }, { 60000, false, 45, 0.0f } });
             if (!capture.isFinite() || capture.peak() > 1.0)
@@ -778,10 +778,10 @@ void testDelay()
         {
             PX3SynthAudioProcessor processor;
             makePlainPatch(processor);
-            setParam(processor, "delayEnabled", 1.0f);
-            setChoice(processor, "delayAlgorithm", algo);
-            setParam(processor, "delayAmount", 0.9f);
-            setParam(processor, "delayFeedback", 0.95f);
+            setParam(processor, "fx.delay.enabled", 1.0f);
+            setChoice(processor, "fx.delay.algorithm", algo);
+            setParam(processor, "fx.delay.amount", 0.9f);
+            setParam(processor, "fx.delay.feedback", 0.95f);
             const auto totalBlocks = 192000 / kBlockSize;
             const auto capture = render(processor, 192000,
                                         { { 2000, true, 45, 0.9f }, { 90000, false, 45, 0.0f } },
@@ -789,7 +789,7 @@ void testDelay()
                                         {
                                             const auto t = static_cast<float>(block)
                                                          / static_cast<float>(juce::jmax(1, totalBlocks));
-                                            setParam(processor, "delayTime", t);
+                                            setParam(processor, "fx.delay.time", t);
                                         });
             if (!capture.isFinite() || capture.peak() > 1.0)
             {
@@ -1634,7 +1634,7 @@ void testMood()
         {
             if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(parameter))
             {
-                if (ranged->paramID.equalsIgnoreCase("moodTrueBypass")) found = true;
+                if (ranged->paramID.equalsIgnoreCase("fx.mood.true.bypass")) found = true;
             }
         }
         check("Mood_NoOrphanedTrueBypassParameterIsExposed", ! found,
@@ -1884,41 +1884,41 @@ void testEffectIndependence()
 
     const auto reverbOnly = [](PX3SynthAudioProcessor& p)
     {
-        setParam(p, "reverbEnabled", 1.0f);
-        setParam(p, "reverbAmount", 0.7f);
-        setParam(p, "delayEnabled", 0.0f);
-        setParam(p, "moodEnabled", 0.0f);
+        setParam(p, "fx.reverb.enabled", 1.0f);
+        setParam(p, "fx.reverb.amount", 0.7f);
+        setParam(p, "fx.delay.enabled", 0.0f);
+        setParam(p, "fx.mood.enabled", 0.0f);
     };
     const auto moodOnly = [](PX3SynthAudioProcessor& p)
     {
-        setParam(p, "moodEnabled", 1.0f);
-        setParam(p, "moodMix", 0.7f);
-        setParam(p, "reverbEnabled", 0.0f);
-        setParam(p, "delayEnabled", 0.0f);
+        setParam(p, "fx.mood.enabled", 1.0f);
+        setParam(p, "fx.mood.mix", 0.7f);
+        setParam(p, "fx.reverb.enabled", 0.0f);
+        setParam(p, "fx.delay.enabled", 0.0f);
     };
 
     // Changing a disabled effect's parameters must not reach the enabled one.
     independence("Reverb_UnaffectedByMoodParameterChanges", reverbOnly,
                  [](PX3SynthAudioProcessor& p)
                  {
-                     setParam(p, "moodMix", 1.0f);
-                     setParam(p, "moodFeedback", 0.9f);
-                     setParam(p, "moodDegrade", 0.8f);
+                     setParam(p, "fx.mood.mix", 1.0f);
+                     setParam(p, "fx.mood.feedback", 0.9f);
+                     setParam(p, "fx.mood.degrade", 0.8f);
                  });
     independence("Mood_UnaffectedByReverbParameterChanges", moodOnly,
                  [](PX3SynthAudioProcessor& p)
                  {
-                     setParam(p, "reverbSize", 1.0f);
-                     setParam(p, "reverbDecay", 1.0f);
-                     setParam(p, "reverbDamping", 0.0f);
+                     setParam(p, "fx.reverb.size", 1.0f);
+                     setParam(p, "fx.reverb.decay", 1.0f);
+                     setParam(p, "fx.reverb.damping", 0.0f);
                  });
     independence("Reverb_UnaffectedByVibeParameterChanges", reverbOnly,
                  [](PX3SynthAudioProcessor& p)
                  {
                      // Vibe is a voice-stage component; with vibeEnabled off its
                      // amount must not reach the FX bus at all.
-                     setParam(p, "vibeEnabled", 0.0f);
-                     setParam(p, "vibeAmount", 1.0f);
+                     setParam(p, "fx.vibe.enabled", 0.0f);
+                     setParam(p, "fx.vibe.amount", 1.0f);
                  });
 
     // FX send / return topology. A source panned hard left must place its DRY
@@ -1939,8 +1939,8 @@ void testEffectIndependence()
             setParam(processor, "mix.fx.pan", fxReturnPan);
             setParam(processor, "fxSendGain", 1.0f);
             setParam(processor, "fxReturnGain", fxActive ? 1.0f : 0.0f);
-            setParam(processor, "reverbEnabled", fxActive ? 1.0f : 0.0f);
-            setParam(processor, "reverbAmount", 1.0f);
+            setParam(processor, "fx.reverb.enabled", fxActive ? 1.0f : 0.0f);
+            setParam(processor, "fx.reverb.amount", 1.0f);
             return render(processor, 48000, { { 2000, true, 45, 0.9f } });
         };
 
@@ -2004,8 +2004,8 @@ void testEffectIndependence()
         {
             makePlainPatch(*p);
             setChoice(*p, "voice.osc1.mode", 1);
-            setParam(*p, "reverbEnabled", 1.0f);
-            setParam(*p, "reverbAmount", 1.0f);
+            setParam(*p, "fx.reverb.enabled", 1.0f);
+            setParam(*p, "fx.reverb.amount", 1.0f);
             setParam(*p, "fxSendGain", 1.0f);
         }
         setParam(dryOnly, "mix.osc1.fxSend", 0.0f);
@@ -2025,8 +2025,8 @@ void testEffectIndependence()
         PX3SynthAudioProcessor muted;
         makePlainPatch(muted);
         setChoice(muted, "voice.osc1.mode", 1);
-        setParam(muted, "reverbEnabled", 1.0f);
-        setParam(muted, "reverbAmount", 1.0f);
+        setParam(muted, "fx.reverb.enabled", 1.0f);
+        setParam(muted, "fx.reverb.amount", 1.0f);
         setParam(muted, "fxSendGain", 1.0f);
         setParam(muted, "mix.osc1.fxSend", 1.0f);
         setParam(muted, "fxReturnGain", 1.0f);
@@ -2045,10 +2045,10 @@ void testEffectIndependence()
         setParam(processor, "mix.osc1.fxSend", 1.0f);
         setParam(processor, "fxSendGain", 1.0f);
         setParam(processor, "fxReturnGain", 1.0f);
-        setParam(processor, "reverbEnabled", 1.0f);
-        setParam(processor, "reverbAmount", 1.0f);
-        setParam(processor, "reverbDecay", 0.9f);
-        setParam(processor, "reverbSize", 0.9f);
+        setParam(processor, "fx.reverb.enabled", 1.0f);
+        setParam(processor, "fx.reverb.amount", 1.0f);
+        setParam(processor, "fx.reverb.decay", 0.9f);
+        setParam(processor, "fx.reverb.size", 0.9f);
         const auto capture = render(processor, 96000,
                                     { { 2000, true, 45, 0.9f }, { 20000, false, 45, 0.0f } });
         check("FxPath_ReverbTailOutlivesTheNote", capture.rmsOver(30000, 60000) > 1.0e-5,
@@ -2081,18 +2081,18 @@ void testEffectIndependence()
         // than on the bus, so it is audible with the sends down - it is checked
         // here anyway because it is stage 0 of the same chain order.
         const std::vector<Stage> stages {
-            { "Vibe",         { { "vibeEnabled", 1.0f }, { "vibeAmount", 1.0f } } },
-            { "Delay",        { { "delayEnabled", 1.0f }, { "delayAmount", 1.0f },
-                                { "delayTime", 0.35f }, { "delayFeedback", 0.40f } } },
-            { "Reverb",       { { "reverbEnabled", 1.0f }, { "reverbAmount", 1.0f },
-                                { "reverbSize", 0.8f }, { "reverbDecay", 0.8f } } },
-            { "Mood",         { { "moodEnabled", 1.0f }, { "moodMix", 1.0f } } },
-            { "Doom",         { { "doomEnabled", 1.0f }, { "doomMix", 1.0f } } },
-            { "Lucy",         { { "lucyEnabled", 1.0f }, { "lucyGlobal", 1.0f } } },
-            { "Chorus",       { { "chorusEnabled", 1.0f }, { "chorusAmount", 1.0f },
-                                { "chorusMix", 1.0f } } },
-            { "StereoSpread", { { "spreadEnabled", 1.0f }, { "spreadAmount", 1.0f },
-                                { "spreadWidth", 1.0f }, { "spreadMix", 1.0f } } }
+            { "Vibe",         { { "fx.vibe.enabled", 1.0f }, { "fx.vibe.amount", 1.0f } } },
+            { "Delay",        { { "fx.delay.enabled", 1.0f }, { "fx.delay.amount", 1.0f },
+                                { "fx.delay.time", 0.35f }, { "fx.delay.feedback", 0.40f } } },
+            { "Reverb",       { { "fx.reverb.enabled", 1.0f }, { "fx.reverb.amount", 1.0f },
+                                { "fx.reverb.size", 0.8f }, { "fx.reverb.decay", 0.8f } } },
+            { "Mood",         { { "fx.mood.enabled", 1.0f }, { "fx.mood.mix", 1.0f } } },
+            { "Doom",         { { "fx.doom.enabled", 1.0f }, { "fx.doom.mix", 1.0f } } },
+            { "Lucy",         { { "fx.lucy.enabled", 1.0f }, { "fx.lucy.global", 1.0f } } },
+            { "Chorus",       { { "fx.chorus.enabled", 1.0f }, { "fx.chorus.amount", 1.0f },
+                                { "fx.chorus.mix", 1.0f } } },
+            { "StereoSpread", { { "fx.spread.enabled", 1.0f }, { "fx.spread.amount", 1.0f },
+                                { "fx.spread.width", 1.0f }, { "fx.spread.mix", 1.0f } } }
         };
 
         // makePlainPatch silences VIBE, DELAY, REVERB and MOOD but leaves the
@@ -2111,9 +2111,9 @@ void testEffectIndependence()
             setParam(processor, "fxSendGain", 1.0f);
             setParam(processor, "fxReturnGain", 1.0f);
 
-            for (const auto* id : { "vibeEnabled", "delayEnabled", "reverbEnabled",
-                                    "moodEnabled", "doomEnabled", "lucyEnabled",
-                                    "chorusEnabled", "spreadEnabled" })
+            for (const auto* id : { "fx.vibe.enabled", "fx.delay.enabled", "fx.reverb.enabled",
+                                    "fx.mood.enabled", "fx.doom.enabled", "fx.lucy.enabled",
+                                    "fx.chorus.enabled", "fx.spread.enabled" })
                 setParam(processor, id, 0.0f);
 
             if (engaged >= 0)
