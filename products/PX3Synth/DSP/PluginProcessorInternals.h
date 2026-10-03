@@ -148,7 +148,8 @@ inline const std::array<juce::String, kFxStageCount> kFxModuleIds { juce::String
                                                                      juce::String("doom"),
                                                                      juce::String("lucy"),
                                                                      juce::String("chorus"),
-                                                                     juce::String("stereoSpread") };
+                                                                     juce::String("stereoSpread"),
+                                                                     juce::String("distortion") };
 
 
 inline juce::String nowTimestamp()
@@ -220,26 +221,27 @@ inline FxOrder sanitizeFxOrder(const FxOrder& order)
     return sanitized;
 }
 
-inline uint32_t packFxOrder(const FxOrder& order)
+inline uint64_t packFxOrder(const FxOrder& order)
 {
-    // Three bits per stage. Widening past eight stages needs a wider word, so
-    // the assert is here rather than in a comment.
-    static_assert(kFxStageCount <= 10, "packFxOrder holds ten 3-bit stages at most");
+    // Four bits per stage in a 64-bit word: stage ids up to 15, sixteen stages.
+    // It was three bits in 32, whose assert allowed ten stages while three bits
+    // can only name ids 0-7 - a ninth stage silently became stage 0.
+    static_assert(kFxStageCount <= 16, "packFxOrder holds sixteen 4-bit stages at most");
 
-    uint32_t packed = 0u;
+    uint64_t packed = 0u;
     for (int i = 0; i < kFxStageCount; ++i)
     {
-        packed |= (static_cast<uint32_t>(order[static_cast<std::size_t>(i)]) & 0x7u) << (i * 3);
+        packed |= (static_cast<uint64_t>(order[static_cast<std::size_t>(i)]) & 0xFu) << (i * 4);
     }
     return packed;
 }
 
-inline FxOrder unpackFxOrder(uint32_t packed)
+inline FxOrder unpackFxOrder(uint64_t packed)
 {
     FxOrder order {};
     for (int i = 0; i < kFxStageCount; ++i)
     {
-        order[static_cast<std::size_t>(i)] = static_cast<int>((packed >> (i * 3)) & 0x7u);
+        order[static_cast<std::size_t>(i)] = static_cast<int>((packed >> (i * 4)) & 0xFu);
     }
     return order;
 }

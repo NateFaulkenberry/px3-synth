@@ -13,7 +13,7 @@ namespace px3
 // Stage ids are permanent - MODULE_ORDER stores them by name, and the FX panel
 // addresses its cards by id. Append new effects to the end; never renumber an
 // existing one, or every saved session loads with its chain shuffled.
-inline constexpr int kFxStageCount = 8;
+inline constexpr int kFxStageCount = 9;
 
 enum FxStage
 {
@@ -24,7 +24,8 @@ enum FxStage
     fxStageDoom = 4,
     fxStageLucy = 5,
     fxStageChorus = 6,
-    fxStageStereoSpread = 7
+    fxStageStereoSpread = 7,
+    fxStageDistortion = 8
 };
 
 // One name for the chain order, so widening it is a change to kFxStageCount
@@ -36,6 +37,7 @@ using FxOrder = std::array<int, kFxStageCount>;
 // the whole finished picture - which is why it is last rather than early: a
 // widener placed before a reverb only widens what the reverb then re-images.
 inline constexpr FxOrder kDefaultFxOrder { { fxStageVibe,
+                                             fxStageDistortion,
                                              fxStageChorus,
                                              fxStageDoom,
                                              fxStageLucy,

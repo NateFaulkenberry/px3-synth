@@ -718,3 +718,16 @@ void PX3SynthAudioProcessor::updateTransportState()
         }
     }
 }
+
+px3::DistortionSettings PX3SynthAudioProcessor::currentDistortionSettings() const
+{
+    px3::DistortionSettings settings;
+    settings.enabled = distortionEnabledParam != nullptr && distortionEnabledParam->get();
+    settings.type = distortionTypeParam != nullptr ? distortionTypeParam->getIndex() : 0;
+    settings.drive = modulatedParameterValue(distortionDriveParam);
+    settings.tight = modulatedParameterValue(distortionTightParam);
+    settings.tone = modulatedParameterValue(distortionToneParam);
+    settings.level = modulatedParameterValue(distortionLevelParam);
+    settings.mix = modulatedParameterValue(distortionMixParam);
+    return settings;
+}

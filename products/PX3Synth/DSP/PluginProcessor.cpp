@@ -672,6 +672,16 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     spreadHighFreqParam = parameterCatalog.createFloat("fx.spread.high.freq", "Spread High Freq", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
     spreadMixParam = parameterCatalog.createFloat("fx.spread.mix", "Spread Mix", juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f);
     spreadToneParam = parameterCatalog.createFloat("fx.spread.tone", "Spread Tone", juce::NormalisableRange<float>(-1.0f, 1.0f), 0.0f);
+
+    // ---- DRIVE (distortion / overdrive) -----------------------------------
+    // MIX defaults to zero: adding the stage changes no existing patch.
+    distortionEnabledParam = parameterCatalog.createBool("fx.distortion.enabled", "Drive Enabled", true);
+    distortionDriveParam = parameterCatalog.createFloat("fx.distortion.drive", "Drive Amount", juce::NormalisableRange<float>(0.0f, 1.0f), 0.35f);
+    distortionTypeParam = parameterCatalog.createChoice("fx.distortion.type", "Drive Type", juce::StringArray { "SOFT", "HARD", "ASYM" }, 0);
+    distortionTightParam = parameterCatalog.createFloat("fx.distortion.tight", "Drive Tight", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
+    distortionToneParam = parameterCatalog.createFloat("fx.distortion.tone", "Drive Tone", juce::NormalisableRange<float>(0.0f, 1.0f), 0.55f);
+    distortionLevelParam = parameterCatalog.createFloat("fx.distortion.level", "Drive Level", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
+    distortionMixParam = parameterCatalog.createFloat("fx.distortion.mix", "Drive Mix", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
     spreadModeParam = parameterCatalog.createChoice("fx.spread.mode",
                                                       "Spread Mode",
                                                       juce::StringArray { "CLASSIC", "WIDE", "DEEP", "MONO SAFE" },
@@ -968,6 +978,13 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     addParameter(spreadHighFreqParam);
     addParameter(spreadMixParam);
     addParameter(spreadToneParam);
+    addParameter(distortionEnabledParam);
+    addParameter(distortionDriveParam);
+    addParameter(distortionTypeParam);
+    addParameter(distortionTightParam);
+    addParameter(distortionToneParam);
+    addParameter(distortionLevelParam);
+    addParameter(distortionMixParam);
     addParameter(spreadModeParam);
 
     addParameter(analogEnabledParam);
@@ -1339,6 +1356,7 @@ void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
     lucyComponent.prepare(sampleRate);
     chorusComponent.prepare(sampleRate);
     stereoSpreadComponent.prepare(sampleRate);
+    distortionComponent.prepare(sampleRate);
     // Four mono source channels plus three stereo bus contexts.
     analogEngine.prepare(sampleRate, kMixerSourceCount);
     for (auto& insert : busInserts)
@@ -2349,6 +2367,7 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     lucyComponent.updateForBlock(currentLucyUserParameters());
     chorusComponent.updateForBlock(currentChorusSettings());
     stereoSpreadComponent.updateForBlock(currentStereoSpreadSettings());
+    distortionComponent.updateForBlock(currentDistortionSettings());
 
     // The engine's amount is a tuning constant; the parameter only gates it.
     // Smoothed inside the engine, so toggling it does not click.
@@ -2684,6 +2703,10 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
                     break;
 
                 case 7: // STEREO SPREAD (applied to the master bus below)
+                    break;
+
+                case 8: // DRIVE
+                    distortionComponent.processSampleFrame(stageL, stageR, stageL, stageR);
                     break;
 
                 default:

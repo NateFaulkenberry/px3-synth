@@ -17,6 +17,7 @@
 #include "Lucy.h"
 #include "LucyControlModel.h"
 #include "StereoSpread.h"
+#include "Distortion.h"
 #include "VoiceModulation.h"
 #include "Mood.h"
 #include "MoodControlModel.h"
@@ -1392,6 +1393,17 @@ private:
     px3::Lucy lucyComponent;
     px3::Chorus chorusComponent;
     px3::StereoSpread stereoSpreadComponent;
+    px3::Distortion distortionComponent;
+    juce::AudioParameterBool* distortionEnabledParam { nullptr };
+    juce::AudioParameterFloat* distortionDriveParam { nullptr };
+    juce::AudioParameterChoice* distortionTypeParam { nullptr };
+    juce::AudioParameterFloat* distortionTightParam { nullptr };
+    juce::AudioParameterFloat* distortionToneParam { nullptr };
+    juce::AudioParameterFloat* distortionLevelParam { nullptr };
+    juce::AudioParameterFloat* distortionMixParam { nullptr };
+public:
+    px3::DistortionSettings currentDistortionSettings() const;
+private:
     px3::AnalogEngine analogEngine;
     ::Reverb reverb;
 
@@ -1437,7 +1449,8 @@ private:
     // Recomputed in prepareToPlay; read once per block.
     std::atomic<int> soundingVoiceBudget { kSoundingVoiceBudgetAtReference };
 
-    std::atomic<uint32_t> fxProcessingOrderPacked { 0u };
+    std::atomic<uint64_t> fxProcessingOrderPacked { 0u };
+    static_assert(std::atomic<uint64_t>::is_always_lock_free, "the FX order is read on the audio thread");
     std::atomic<uint32_t> fxOrderRevision { 0u };
     juce::String debugInstanceId;
     juce::String debugProcessorCreatedTime;

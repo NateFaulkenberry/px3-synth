@@ -1,4 +1,5 @@
 #include "TestSupport.h"
+#include "Distortion.h"
 
 // testChorus, testStereoSpread
 
@@ -896,6 +897,53 @@ double sideFraction(const Result& r)
 void testStereoSpread()
 {
     suite("STEREO SPREAD");
+
+    {
+        // DRIVE: each clipper adds harmonics that grow with DRIVE, the level
+        // match holds the loudness steady, the output is finite, and MIX 0 is
+        // exactly transparent.
+        auto run = [](int type, float drive, float mix, double& levelDb, double& harmonicDb, bool& finite, bool& identical)
+        {
+            px3::Distortion distortion;
+            distortion.prepare(48000.0);
+            px3::DistortionSettings settings;
+            settings.type = type; settings.drive = drive; settings.mix = mix;
+            double inE = 0, outE = 0, c1 = 0, s1 = 0, c3 = 0, s3 = 0, c2 = 0, s2 = 0;
+            finite = true; identical = true;
+            for (int n = 0; n < 48000; ++n)
+            {
+                if (n % 512 == 0) distortion.updateForBlock(settings);
+                const auto x = 0.25f * static_cast<float>(std::sin(juce::MathConstants<double>::twoPi * 220.0 * n / 48000.0));
+                float l = 0, r = 0;
+                distortion.processSampleFrame(x, x, l, r);
+                finite = finite && std::isfinite(l);
+                identical = identical && l == x;
+                if (n < 24000) continue;
+                const auto w = juce::MathConstants<double>::twoPi * 220.0 * n / 48000.0;
+                inE += static_cast<double>(x) * x; outE += static_cast<double>(l) * l;
+                c1 += l * std::cos(w); s1 += l * std::sin(w);
+                c2 += l * std::cos(2 * w); s2 += l * std::sin(2 * w);
+                c3 += l * std::cos(3 * w); s3 += l * std::sin(3 * w);
+            }
+            levelDb = 10.0 * std::log10(outE / inE);
+            harmonicDb = 10.0 * std::log10((c2 * c2 + s2 * s2 + c3 * c3 + s3 * s3 + 1e-30) / (c1 * c1 + s1 * s1 + 1e-30));
+        };
+        juce::String report;
+        auto ok = true;
+        for (int type = 0; type < 3; ++type)
+        {
+            double lowLevel, lowHarm, highLevel, highHarm; bool f1, f2, i1, i2;
+            run(type, 0.1f, 1.0f, lowLevel, lowHarm, f1, i1);
+            run(type, 0.9f, 1.0f, highLevel, highHarm, f2, i2);
+            ok = ok && f1 && f2 && highHarm > lowHarm + 10.0 && std::abs(highLevel) < 3.0 && std::abs(lowLevel) < 3.0;
+            report << juce::StringArray { "SOFT", "HARD", "ASYM" }[type] << ": H2+H3 " << juce::String(lowHarm, 1) << " -> "
+                   << juce::String(highHarm, 1) << " dB, level " << juce::String(lowLevel, 1) << "/" << juce::String(highLevel, 1) << " dB  ";
+        }
+        check("Drive_EveryClipperGrowsHarmonicsAtSteadyLevel", ok, report);
+        double l0, h0; bool f0, same;
+        run(0, 1.0f, 0.0f, l0, h0, f0, same);
+        check("Drive_MixZeroIsTransparent", same, "MIX 0 returns the input sample for sample");
+    }
 
     using namespace spreadtest;
 

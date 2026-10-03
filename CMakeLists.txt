@@ -83,6 +83,7 @@ set(PX3_SHARED_SOURCES
         shared/DSP/Chorus/Chorus.cpp
         shared/DSP/Core/FetCompressor.cpp
         shared/DSP/StereoSpread/StereoSpread.cpp
+        shared/DSP/Distortion/Distortion.cpp
         shared/UI/Fx/FxSignalFlow.cpp
         shared/UI/Fx/FxChainLayout.cpp
         shared/UI/Components/BypassButton.cpp
@@ -261,6 +262,7 @@ set(PX3_INCLUDE_DIRS
         shared/DSP/Lucy
         shared/DSP/Chorus
         shared/DSP/StereoSpread
+        shared/DSP/Distortion
         shared/DSP/Vibe
         shared/DSP/Filter
         shared/DSP/Analog
