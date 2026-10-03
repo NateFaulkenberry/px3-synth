@@ -638,7 +638,11 @@ void EnvelopeComponent::layoutCompact()
     // MODE | AMOUNT | KEY
     {
         auto row = area.removeFromBottom(knobRow);
-        const auto cell = c::cells(row, 3);
+        // TYPE gets the wider share so "BREAKPOINT" / "ADSR" read in full.
+        auto typeCell = row.removeFromLeft(row.getWidth() * 2 / 5);
+        row.removeFromLeft(c::gap);
+        auto knobs = c::cells(row, 2);
+        const std::array<juce::Rectangle<int>, 3> cell { typeCell, knobs[0], knobs[1] };
         if (adsrOnly)
         {
             modeBox.setVisible(false);

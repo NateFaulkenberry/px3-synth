@@ -380,7 +380,23 @@ void FxPanel::resized()
 
     gridContent.setBounds(0, 0, contentWidth, juce::jmax(gridViewport.getHeight(), neededHeight));
 
-    const auto cells = px3::ui::fxGridCells(contentWidth, count, columns, gap, rowHeight);
+    auto cells = px3::ui::fxGridCells(contentWidth, count, columns, gap, rowHeight);
+
+    // Dense layout: a partial last row spreads across the full width, so the
+    // rack has no empty slot at its end.
+    if (const auto inLastRow = count % juce::jmax(1, columns); inLastRow > 0 && static_cast<int>(cells.size()) == count)
+    {
+        const auto first = count - inLastRow;
+        const auto width = (static_cast<float>(contentWidth) - static_cast<float>(gap * (inLastRow - 1)))
+                           / static_cast<float>(inLastRow);
+        for (int i = 0; i < inLastRow; ++i)
+        {
+            auto& cell = cells[static_cast<std::size_t>(first + i)];
+            const auto x = static_cast<float>(i) * (width + static_cast<float>(gap));
+            cell = juce::Rectangle<float>(x, static_cast<float>(cell.getY()), width, static_cast<float>(cell.getHeight()))
+                       .toNearestInt();
+        }
+    }
 
     for (int i = 0; i < count && i < static_cast<int>(cells.size()); ++i)
     {

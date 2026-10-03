@@ -421,7 +421,7 @@ void LfoComponent::layoutCompact()
         auto row = area.removeFromTop(rowH);
         if (rampControlsAttached)
         {
-            auto chip = row.removeFromRight(juce::jlimit(44, 64, row.getWidth() / 4));
+            auto chip = row.removeFromRight(juce::jlimit(54, 66, row.getWidth() / 4));
             row.removeFromRight(c::gap);
             c::boxCell(chip, &keySyncCaptionSpacer, keySyncButton);
             keySyncButton.setAccentColour(card.style().border.colour);

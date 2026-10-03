@@ -505,7 +505,8 @@ void FltPanel::layoutCardControls()
             // Key tracking: a smaller second line under CUTOFF / RESONANCE.
             if (keyTrackShown)
             {
-                auto keyLine = row.removeFromBottom(juce::jmin(row.getHeight() * 2 / 5, 96));
+                // At least ~64 px when the card is short, so the knobs stay usable.
+                auto keyLine = row.removeFromBottom(juce::jmin(96, juce::jmax(row.getHeight() * 2 / 5, juce::jmin(64, row.getHeight() / 2))));
                 auto flex = filterComponent->rowFlex(1);
                 const auto widths = px3::ui::fitRowItemWidths({ 72.0f, 72.0f }, gapMargin.left + gapMargin.right,
                                                               static_cast<float>(juce::jmax(1, keyLine.getWidth())));
