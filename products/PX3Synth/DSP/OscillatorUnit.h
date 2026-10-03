@@ -111,7 +111,7 @@ private:
         float hardSyncRatio { 1.0f };
         float hardSyncDrive { 1.0f };
 
-        float digitalHoldAt48k { 1.0f };   // samples at 48 kHz: a duration
+        float digitalDownsample { 1.0f };  // hold factor: 1 = full rate, 64 = 1/64
         float digitalFold { 1.0f };
         float digitalSteps { 4.0f };       // structural: stepped by design
         float digitalCrushSteps { 2.0f };
@@ -256,7 +256,7 @@ private:
     px3::dsp::Adaa organClip;
 
     // DIGITAL
-    int digitalHoldCounter { 0 };
+    double digitalHoldPhase { 1.0 };
     double digitalHeld { 0.0 };
     px3::dsp::Adaa digitalClip;
 

@@ -49,7 +49,7 @@ inline constexpr int oscillatorModeMacroCounts[oscillatorModeCount] {
     0, 0, 0, 0,   // SINE SAW SQUARE TRIANGLE
     1, 1, 1, 1,   // NOISE PINK NOISE SUPER SAW PWM
     0, 3, 2, 2,   // WAVETABLE ADDITIVE FORMANT FM
-    2, 2, 2, 2,   // HARD SYNC ORGAN DIGITAL PHYSICAL
+    2, 2, 3, 2,   // HARD SYNC ORGAN DIGITAL PHYSICAL
     3, 3, 3       // ROB ISAAC PX3
 };
 

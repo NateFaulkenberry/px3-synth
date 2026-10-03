@@ -203,7 +203,7 @@ modes these are the difference between a usable sound and an interesting one.
 | FM | RATIO | INDEX | — |
 | HARD SYNC | SYNC | DRIVE | — |
 | ORGAN | TONE | CLICK | — |
-| DIGITAL | BITS | RATE | — |
+| DIGITAL | BITS | RATE | FOLD |
 | PHYSICAL | DECAY | MATERIAL | — |
 | ROB | TRANS | BODY | CHAOS |
 | ISAAC | TILT | ODD/EVEN | STRETCH |
@@ -242,9 +242,10 @@ before it is restarted; DRIVE saturates the result.
 fifth above. TONE moves from a mellow flute registration to full drawbars; CLICK
 adds the key click at the start of each note.
 
-**DIGITAL** — BITS sets the resolution and RATE how long each sample is held.
-The grit and the aliasing are the point of this mode, and they sound the same at
-every sample rate.
+**DIGITAL** — a bitcrushed, folded sine. BITS sets the resolution (2 to 16
+bits), RATE divides the sample rate down (1x to 64x, smoothly), and FOLD
+wavefolds the sine before it is crushed, adding harmonics. All three are
+independent.
 
 **PHYSICAL** — a struck, ringing tone built from four inharmonic modes. DECAY is
 how long the strike rings before it settles to a held level; MATERIAL spreads the

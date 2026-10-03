@@ -905,6 +905,26 @@ void testOscillatorQuality()
                   "level by DETUNE " + curve + "dB");
         }
 
+        // DIGITAL's three controls are independent: RATE changes the held
+        // spectrum without touching the fold, FOLD adds harmonics at full rate.
+        {
+            auto upperShare = [&](float bits, float rate, float fold)
+            {
+                UnitSetup digital;
+                digital.mode = static_cast<int>(Mode::digital);
+                digital.a = bits; digital.b = rate; digital.c = fold;
+                const auto x = renderUnit(digital, 220.0, fs, 48000, 4800);
+                double e = 0.0, d = 0.0, prev = 0.0;
+                for (const auto v : x) { e += v * v; d += (v - prev) * (v - prev); prev = v; }
+                return 10.0 * std::log10(d / e);
+            };
+            const auto clean = upperShare(1.0f, 0.0f, 0.0f);
+            const auto folded = upperShare(1.0f, 0.0f, 1.0f);
+            const auto reduced = upperShare(1.0f, 1.0f, 0.0f);
+            check("OscQuality_DigitalFoldAndRateAreIndependentControls", folded > clean + 10.0 && reduced > clean + 6.0,
+                  "derivative energy: clean " + fmt(clean, 1) + " dB, FOLD 1 " + fmt(folded, 1) + " dB, RATE 1 " + fmt(reduced, 1) + " dB");
+        }
+
         UnitSetup quiet;
         quiet.mode = static_cast<int>(Mode::rob);
         quiet.c = 0.0f;

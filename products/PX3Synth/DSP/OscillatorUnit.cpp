@@ -316,7 +316,7 @@ void OscillatorUnit::activateMode(int modeIndex, bool strike)
             organClip.reset();
             break;
         case Mode::digital:
-            digitalHoldCounter = 0;
+            digitalHoldPhase = 1.0;
             digitalHeld = 0.0;
             digitalClip.reset();
             break;
@@ -522,12 +522,14 @@ void OscillatorUnit::updateDerivedCurves()
 
     // DIGITAL
     {
+        // Three independent controls, read like a bitcrusher: BITS is the
+        // resolution, RATE how far the sample rate is divided down, FOLD the
+        // wavefolder that shapes the sine before it is crushed. RATE used to
+        // drive the fold as well, so neither could be set on its own.
         const auto bitsCurve = std::pow(a, 1.25f);
-        const auto rateCurve = std::pow(b, 1.15f);
         const auto bitDepth = juce::jlimit(2, 16, static_cast<int>(std::round(juce::jmap(bitsCurve, 2.0f, 16.0f))));
-        // A duration: the number of samples it was at 48 kHz.
-        d.digitalHoldAt48k = std::round(juce::jmap(rateCurve, 1.0f, 52.0f));
-        d.digitalFold = 1.0f + juce::jmap(rateCurve, 0.4f, 6.8f);
+        d.digitalDownsample = std::exp2(6.0f * std::pow(b, 1.1f));   // 1x .. 64x, continuous
+        d.digitalFold = 1.0f + juce::jmap(std::pow(c, 1.15f), 0.0f, 6.8f);
         d.digitalSteps = static_cast<float>(1 << bitDepth);
         d.digitalCrushSteps = static_cast<float>(1 << juce::jmax(1, bitDepth - 1));
     }
@@ -569,7 +571,7 @@ void OscillatorUnit::updateDerivedCurves()
             case Mode::superSaw: trim = juce::jmap(std::pow(a, 1.35f), 1.0f, 0.84f); break;
             case Mode::fm:       trim = juce::jmap(std::pow(b, 1.2f), 1.0f, 0.82f); break;
             case Mode::hardSync: trim = juce::jmap(std::pow(b, 1.18f), 1.0f, 0.62f); break;
-            case Mode::digital:  trim = juce::jmap(std::pow(b, 1.1f), 1.0f, 0.86f); break;
+            case Mode::digital:  trim = juce::jmap(std::pow(c, 1.1f), 1.0f, 0.86f); break;
             case Mode::rob:
             case Mode::px3:      trim = juce::jmap(std::pow(c, 1.12f), 1.0f, 0.84f); break;
             default: break;
@@ -1037,10 +1039,15 @@ double OscillatorUnit::renderDigital(const MainPhase& main)
     // of it: a hold measured in samples (it changed character with the sample
     // rate), a floor() quantiser (half a step of DC), and a fold that read a
     // non-integer multiple of the wrapped phase (a jump every cycle).
-    const auto hold = px3::dsp::sampleCount(static_cast<double>(ramped(&DerivedCurves::digitalHoldAt48k)), sampleRate);
-    if (++digitalHoldCounter >= hold)
+    // RATE is a target sample rate - 48 kHz divided by 1x..64x, so down to
+    // 750 Hz - held with a fractional phase. It sweeps smoothly instead of
+    // stepping between whole sample counts, and the same setting sounds the
+    // same at every host sample rate.
+    const auto targetRate = 48000.0 / juce::jmax(1.0, static_cast<double>(ramped(&DerivedCurves::digitalDownsample)));
+    digitalHoldPhase += targetRate * inverseSampleRate;
+    if (digitalHoldPhase >= 1.0)
     {
-        digitalHoldCounter = 0;
+        digitalHoldPhase -= std::floor(digitalHoldPhase);
         const auto steps = static_cast<double>(target.digitalSteps);
         const auto quantised = std::round(main.phase * steps) / steps;
 

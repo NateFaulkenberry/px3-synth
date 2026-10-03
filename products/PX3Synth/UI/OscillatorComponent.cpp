@@ -646,7 +646,7 @@ void OscillatorComponent::applyModeUi()
         { "RATIO", "INDEX", "", 2, false },
         { "SYNC", "DRIVE", "", 2, false },
         { "TONE", "CLICK", "", 2, false },
-        { "BITS", "RATE", "", 2, false },
+        { "BITS", "RATE", "FOLD", 3, false },
         { "DECAY", "MATERIAL", "", 2, false },
         { "TRANS", "BODY", "CHAOS", 3, false },
         { "TILT", "ODD/EVEN", "STRETCH", 3, false },
