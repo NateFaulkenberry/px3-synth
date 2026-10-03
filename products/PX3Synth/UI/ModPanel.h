@@ -5,6 +5,7 @@
 #include "BypassButton.h"
 #include "MixerControls.h"
 #include "ChipLabel.h"
+#include "ToggleChipButton.h"
 
 #include <array>
 #include <memory>
@@ -12,6 +13,7 @@
 #include "EnvelopeComponent.h"
 #include "LfoComponent.h"
 #include "PluginProcessor.h"
+#include "ModRouting.h"
 
 class UIConfig;
 
@@ -46,6 +48,14 @@ public:
     void setUIConfig(std::shared_ptr<const UIConfig> configIn);
     int getPreferredContentWidth() const;
     int getPreferredContentHeight() const;
+    // Source jacks on the LFO 1-3 and ENV 1-3 cards (graph sources 0..5).
+    void attachModSources(px3::ui::modrouting::ModDragController& controller);
+    void refreshModSources(const std::vector<px3::ui::modrouting::RouteInfo>& routes);
+    // For the tests: ENV n's LOOP switch and KEY knob.
+    juce::Button* getEnvelopeLoopButton(int env) { return juce::isPositiveAndBelow(env, 3) ? &envelopes[static_cast<std::size_t>(env)].loopButton : nullptr; }
+    juce::Slider* getEnvelopeKeyKnob(int env) { return juce::isPositiveAndBelow(env, 3) ? &envelopes[static_cast<std::size_t>(env)].keyKnob : nullptr; }
+    px3::ui::modrouting::ModSourceSocket* getCardSocket(int source)
+    { return juce::isPositiveAndBelow(source, 6) ? cardSockets[static_cast<std::size_t>(source)].get() : nullptr; }
 
 private:
     struct LfoBundle
@@ -88,6 +98,13 @@ private:
         int lastAssignmentIndex { -1 };
         std::unique_ptr<juce::ButtonParameterAttachment> enabledAttachment;
         std::unique_ptr<juce::SliderParameterAttachment> amountAttachment;
+        // LOOP (mod.envN.loop) and KEY (mod.envN.keytrack).
+        px3::ui::ToggleChipButton loopButton;
+        juce::Slider keyKnob;
+        px3::ui::ChipLabel keyLabel;
+        juce::Label keyValueLabel;
+        std::unique_ptr<juce::ButtonParameterAttachment> loopAttachment;
+        std::unique_ptr<juce::SliderParameterAttachment> keyAttachment;
         std::unique_ptr<EnvelopeComponent> component;
     };
 
@@ -103,6 +120,5 @@ private:
     juce::Colour lfoHeaderAccent;
     juce::LookAndFeel* lfoKnobLookAndFeel { nullptr };
     std::shared_ptr<const UIConfig> uiConfig;
-    juce::TextButton routesButton { "ROUTES" };
-    std::unique_ptr<juce::DocumentWindow> routesWindow;
+    std::array<std::unique_ptr<px3::ui::modrouting::ModSourceSocket>, 6> cardSockets;
 };

@@ -301,7 +301,24 @@ void PX3SynthAudioProcessorEditor::bindSceneComponents()
     b.bind("header.gain.knob", gainKnob);
     if (macroStrip != nullptr) { b.bind("macros", *macroStrip); }
     b.bind("primary.osc", oscPanelViewport);
-    b.bind("view.mod", modPanelViewport);
+    b.bind("mod.cards", modPanelViewport);
+    if (modRoutingPanel != nullptr)
+    {
+        b.bind("mod.routing", *modRoutingPanel);
+        b.bind("mod.routing.title", modRoutingPanel->getTitle());
+        b.bind("mod.routing.patch", modRoutingPanel->getPatchView());
+        b.bind("mod.routing.list", modRoutingPanel->getList());
+    }
+    if (modPatchBar != nullptr)
+    {
+        b.bind("patchbar", *modPatchBar);
+        b.bind("patchbar.title", modPatchBar->getTitle());
+        const char* jacks[] { "lfo1", "lfo2", "lfo3", "env1", "env2", "env3", "m1", "m2", "m3", "m4", "m5" };
+        for (int source = 0; source < px3::ui::modrouting::kSourceCount; ++source)
+        {
+            b.bind(juce::String("patchbar.") + jacks[source], modPatchBar->getSocket(source));
+        }
+    }
     if (fxPanel != nullptr) { b.bind("view.fx", *fxPanel); }
     if (mixPanel != nullptr) { b.bind("view.mix", *mixPanel); }
     if (settingsPanel != nullptr) { b.bind("view.settings", *settingsPanel); }
@@ -380,6 +397,10 @@ void PX3SynthAudioProcessorEditor::bindSceneComponents()
             stretch(id + ".mode", o.modeLabel, o.mode);
             stretch(id + ".vowel", o.vowelLabel, o.vowel);
             tuning(id, oscTuning[static_cast<std::size_t>(i)]);
+            {
+                auto& t = oscTuning[static_cast<std::size_t>(i)];
+                knob(id + ".slop", t.slopLabel, t.slopKnob, t.slopValue);
+            }
             stretch(id + ".table", oscWtTableLabels[static_cast<std::size_t>(i)], oscWtTableBoxes[static_cast<std::size_t>(i)]);
             knob(id + ".position", oscWtPositionLabels[static_cast<std::size_t>(i)],
                  oscWtPositionKnobs[static_cast<std::size_t>(i)], oscWtPositionValues[static_cast<std::size_t>(i)]);
@@ -437,6 +458,8 @@ void PX3SynthAudioProcessorEditor::applySceneLayout()
     const auto showMacros = section != kSectionSettings;
     uiLayout.setRuntimeHidden("macros", ! showMacros);
     if (macroStrip != nullptr) { macroStrip->setVisible(showMacros); }
+    uiLayout.setRuntimeHidden("patchbar", ! showMacros);
+    if (modPatchBar != nullptr) { modPatchBar->setVisible(showMacros); }
 
     // OSC, FILTER and AMP share one row. On OSC at a size that fits, all three
     // show (the composite); otherwise the selected one takes the row. Off the

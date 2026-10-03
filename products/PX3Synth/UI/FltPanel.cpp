@@ -184,8 +184,71 @@ void FltPanel::attachRouting(juce::RangedAudioParameter& routingParameter,
     refreshFromParameters();
 }
 
+void FltPanel::attachKeyTracking(std::array<juce::RangedAudioParameter*, kFilterInstanceCount> amount,
+                                 std::array<juce::RangedAudioParameter*, kFilterInstanceCount> key,
+                                 juce::LookAndFeel* knobLook)
+{
+    for (int i = 0; i < kFilterInstanceCount; ++i)
+    {
+        auto& c = keyTrack[static_cast<std::size_t>(i)];
+        auto* amountParam = amount[static_cast<std::size_t>(i)];
+        auto* keyParam = key[static_cast<std::size_t>(i)];
+        if (amountParam == nullptr || keyParam == nullptr) { continue; }
+        for (auto* knob : { &c.amount, &c.key })
+        {
+            knob->setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+            knob->setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+            if (knobLook != nullptr) { knob->setLookAndFeel(knobLook); }
+            addAndMakeVisible(*knob);
+        }
+        c.amount.setTooltip("Key tracking: 100% keeps the cutoff at the same harmonic across the keyboard");
+        c.key.setTooltip("Key tracking reference note: the cutoff is exact here");
+        c.amount.setDoubleClickReturnValue(true, 0.0);
+        c.key.setDoubleClickReturnValue(true, 60.0);
+        for (auto [label, text] : { std::pair<px3::ui::ChipLabel*, const char*> { &c.amountLabel, "KEY TRK" },
+                                    std::pair<px3::ui::ChipLabel*, const char*> { &c.keyLabel, "KEY" } })
+        {
+            label->setText(text, juce::dontSendNotification);
+            label->setJustificationType(juce::Justification::centred);
+            label->setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
+            label->setFont(juce::FontOptions(11.0f));
+            label->setInterceptsMouseClicks(false, false);
+            addAndMakeVisible(*label);
+        }
+        for (auto* value : { &c.amountValue, &c.keyValue })
+        {
+            value->setJustificationType(juce::Justification::centred);
+            value->setColour(juce::Label::textColourId, juce::Colour::fromRGB(218, 218, 228));
+            value->setFont(juce::FontOptions(11.0f));
+            value->setInterceptsMouseClicks(false, false);
+            addAndMakeVisible(*value);
+        }
+        c.amountAttachment = px3::ui::makeParameterKnobAttachment(*amountParam, c.amount);
+        c.keyAttachment = px3::ui::makeParameterKnobAttachment(*keyParam, c.key);
+        c.amount.onValueChange = [&c]
+        {
+            const auto percent = juce::roundToInt(c.amount.getValue() * 100.0);
+            c.amountValue.setText((percent > 0 ? "+" : "") + juce::String(percent) + "%", juce::dontSendNotification);
+        };
+        c.key.onValueChange = [&c]
+        {
+            c.keyValue.setText(juce::MidiMessage::getMidiNoteName(juce::roundToInt(c.key.getValue()), true, true, 4),
+                               juce::dontSendNotification);
+        };
+        c.amount.onValueChange();
+        c.key.onValueChange();
+        c.attached = true;
+    }
+    layoutCardControls();
+}
+
 FltPanel::~FltPanel()
 {
+    for (auto& c : keyTrack)
+    {
+        c.amount.setLookAndFeel(nullptr);
+        c.key.setLookAndFeel(nullptr);
+    }
     for (auto* filterTypeBox : filterTypeBoxes)
     {
         if (filterTypeBox != nullptr)
@@ -393,6 +456,13 @@ void FltPanel::layoutCardControls()
                 }
             };
             show(cutoffKnobs[idx], ! combMode);
+            const auto keyTrackShown = keyTrack[idx].attached && ! combMode;
+            for (auto* c : { static_cast<juce::Component*>(&keyTrack[idx].amount), static_cast<juce::Component*>(&keyTrack[idx].key),
+                             static_cast<juce::Component*>(&keyTrack[idx].amountLabel), static_cast<juce::Component*>(&keyTrack[idx].keyLabel),
+                             static_cast<juce::Component*>(&keyTrack[idx].amountValue), static_cast<juce::Component*>(&keyTrack[idx].keyValue) })
+            {
+                c->setVisible(keyTrackShown);
+            }
             show(cutoffLabels[idx], ! combMode);
             show(resonanceKnobs[idx], ! combMode);
             show(resonanceLabels[idx], ! combMode);
@@ -430,6 +500,27 @@ void FltPanel::layoutCardControls()
                 combInvertButtons[idx]->setBounds(
                     juce::Rectangle<int>(switchWidth, switchHeight).withCentre(switchRow.getCentre()));
                 row.removeFromTop(switchGap);
+            }
+
+            // Key tracking: a smaller second line under CUTOFF / RESONANCE.
+            if (keyTrackShown)
+            {
+                auto keyLine = row.removeFromBottom(juce::jmin(row.getHeight() * 2 / 5, 96));
+                auto flex = filterComponent->rowFlex(1);
+                const auto widths = px3::ui::fitRowItemWidths({ 72.0f, 72.0f }, gapMargin.left + gapMargin.right,
+                                                              static_cast<float>(juce::jmax(1, keyLine.getWidth())));
+                for (const auto width : widths)
+                {
+                    flex.items.add(juce::FlexItem(width, static_cast<float>(keyLine.getHeight())).withMargin(gapMargin));
+                }
+                flex.performLayout(keyLine.toFloat());
+                auto& c = keyTrack[idx];
+                px3::ui::layoutLabelledControl(flex.items.getReference(0).currentBounds.toNearestInt(),
+                                               { &c.amountLabel, &c.amount, &c.amountValue, ControlShape::square, 16, 16, 46 },
+                                               filterComponent->rowControl(1));
+                px3::ui::layoutLabelledControl(flex.items.getReference(1).currentBounds.toNearestInt(),
+                                               { &c.keyLabel, &c.key, &c.keyValue, ControlShape::square, 16, 16, 46 },
+                                               filterComponent->rowControl(1));
             }
 
             const auto perRow = combMode ? 3 : static_cast<int>(knobs.size());

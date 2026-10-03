@@ -5,6 +5,7 @@
 #include "FilterTypes.h"
 #include "FilterComponent.h"
 #include "ToggleChipButton.h"
+#include "ChipLabel.h"
 
 #include <array>
 #include <memory>
@@ -64,6 +65,18 @@ public:
     void attachRouting(juce::RangedAudioParameter& routingParameter,
                        juce::RangedAudioParameter& balanceParameter);
 
+    // KEY TRK (voice.filterN.keytrack, -100..+200%) and KEY (the reference
+    // note, voice.filterN.keytrack.key), a smaller line under CUTOFF/RESONANCE.
+    void attachKeyTracking(std::array<juce::RangedAudioParameter*, kFilterInstanceCount> amount,
+                           std::array<juce::RangedAudioParameter*, kFilterInstanceCount> key,
+                           juce::LookAndFeel* knobLook);
+    juce::Slider* getKeyTrackKnob(int index) noexcept
+    { return index >= 0 && index < kFilterInstanceCount ? &keyTrack[static_cast<std::size_t>(index)].amount : nullptr; }
+    juce::Slider* getKeyTrackKeyKnob(int index) noexcept
+    { return index >= 0 && index < kFilterInstanceCount ? &keyTrack[static_cast<std::size_t>(index)].key : nullptr; }
+    juce::Label* getKeyTrackKeyReadout(int index) noexcept
+    { return index >= 0 && index < kFilterInstanceCount ? &keyTrack[static_cast<std::size_t>(index)].keyValue : nullptr; }
+
     // Scene-managed parts (InstrumentScene.json: filter.*).
     juce::Component& getRoutingButton() noexcept { return routingButton; }
     juce::Component& getBalanceLabel() noexcept { return balanceLabel; }
@@ -83,6 +96,16 @@ private:
         juce::PopupMenu::Options getOptionsForComboBoxPopupMenu(juce::ComboBox& box,
                                                                  juce::Label& label) override;
     };
+
+    struct KeyTrackControls
+    {
+        juce::Slider amount, key;
+        px3::ui::ChipLabel amountLabel, keyLabel;
+        juce::Label amountValue, keyValue;
+        std::unique_ptr<juce::SliderParameterAttachment> amountAttachment, keyAttachment;
+        bool attached { false };
+    };
+    std::array<KeyTrackControls, kFilterInstanceCount> keyTrack;
 
     std::array<juce::ToggleButton*, kFilterInstanceCount> enabledButtons;
     std::array<juce::Slider*, kFilterInstanceCount> cutoffKnobs;

@@ -1,5 +1,7 @@
 #include "TestSupport.h"
 
+#include <map>
+
 // testEditorLayout
 //
 // The gaps a refactor of PluginEditor.cpp would fall through.
@@ -46,80 +48,243 @@ void testEditorLayout()
         check("EditorPaint_BufferedPrimaryInvalidatesWhenParametersChange", parameterInvalidates);
         check("EditorPaint_BufferedPrimaryKeepsAnimationLive", animationInvalidates);
     }
+    // ---- in-window modulation routing (replaces the floating ROUTES window) --
+    {
+        using namespace px3::ui::modrouting;
+        PX3SynthAudioProcessor processor;
+        processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        processor.prepareToPlay(kSampleRate, kBlockSize);
+        auto& desktop = juce::Desktop::getInstance();
+        const auto desktopBefore = desktop.getNumComponents();
+        const auto windowsBefore = juce::TopLevelWindow::getNumTopLevelWindows();
+
+        std::unique_ptr<juce::AudioProcessorEditor> base(processor.createEditor());
+        auto* editor = dynamic_cast<PX3SynthAudioProcessorEditor*>(base.get());
+        check("ModRouteUi_EditorBuildsTheRoutingComponents",
+              editor != nullptr && editor->debugModDragController() != nullptr
+                  && editor->debugModPatchBar() != nullptr && editor->debugModRoutingPanel() != nullptr);
+        if (editor != nullptr && editor->debugModDragController() != nullptr)
+        {
+            editor->setSize(1518, 918);
+            const auto knobFor = [&](const juce::String& id) -> juce::Slider*
+            {
+                juce::Slider* found = nullptr;
+                std::function<void(juce::Component&)> walk = [&](juce::Component& c)
+                {
+                    for (auto* child : c.getChildren())
+                    {
+                        if (! child->isVisible()) { continue; }
+                        if (auto* s = dynamic_cast<juce::Slider*>(child); s != nullptr && px3::ui::parameterIdOf(*s) == id)
+                        {
+                            found = s;
+                        }
+                        walk(*child);
+                    }
+                };
+                walk(*editor);
+                return found;
+            };
+            const auto now = juce::Time::getCurrentTime();
+            // A real drag: mouse down on the jack, through a midpoint, up over
+            // the target, all as events delivered to the jack (as JUCE does).
+            const auto drag = [&](juce::Component& jack, juce::Component& target)
+            {
+                const auto start = jack.getLocalBounds().getCentre().toFloat();
+                const auto end = jack.getLocalPoint(&target, target.getLocalBounds().getCentre()).toFloat();
+                const auto event = [&](juce::Point<float> position, bool dragged)
+                {
+                    return juce::MouseEvent(desktop.getMainMouseSource(), position,
+                                            juce::ModifierKeys(juce::ModifierKeys::leftButtonModifier),
+                                            1.0f, 0.0f, 0.0f, 0.0f, 0.0f, &jack, &jack, now, start, now, 1, dragged);
+                };
+                jack.mouseDown(event(start, false));
+                jack.mouseDrag(event((start + end) * 0.5f, true));
+                jack.mouseDrag(event(end, true));
+                jack.mouseUp(event(end, true));
+            };
+
+            editor->debugSelectSection(0);   // OSC composite: OSC + FILTER + AMP
+            editor->debugRefreshModRouting();
+            auto* bar = editor->debugModPatchBar();
+            auto* cutoff = knobFor("voice.filter1.cutoff");
+            check("ModRouteUi_PatchBarShowsAllElevenSourcesOnTheVoicePage",
+                  bar->isVisible() && bar->getWidth() > 0 && bar->getSocket(10).getWidth() > 0);
+            if (cutoff != nullptr) { drag(bar->getSocket(0), *cutoff); }
+            const auto routed = processor.getGraphRoute(0);
+            check("ModRouteUi_DragFromAJackOntoAKnobCreatesTheRoute",
+                  cutoff != nullptr && routed.source == 0 && routed.destination == "voice.filter1.cutoff"
+                      && std::abs(processor.getGraphRouteDepthParam(0).get() - 0.5f) < 1.0e-6f);
+
+            editor->debugRefreshModRouting();
+            const auto rings = cutoff != nullptr ? cutoff->getProperties()[px3::knob_properties::modRings] : juce::var();
+            check("ModRouteUi_RoutedKnobCarriesARingInTheSourceColour",
+                  rings.isArray() && rings.size() == 3
+                      && static_cast<juce::uint32>(static_cast<juce::int64>(rings[0])) == sourceColour(0).getARGB()
+                      && static_cast<double>(rings[2]) > static_cast<double>(rings[1]));
+            auto* resonance = knobFor("voice.filter1.resonance");
+            check("ModRouteUi_UnroutedKnobHasNoRing",
+                  resonance != nullptr && ! resonance->getProperties().contains(px3::knob_properties::modRings));
+
+            // Fine tuning is a destination: ENV 1 onto OSC 1 FINE.
+            auto* fine = knobFor("voice.osc1.tuning.cents");
+            if (fine != nullptr) { drag(bar->getSocket(3), *fine); }
+            const auto fineRoute = processor.getGraphRoute(1);
+            check("ModRouteUi_EnvelopeCanBePatchedToFineTune",
+                  fine != nullptr && fineRoute.source == 3 && fineRoute.destination == "voice.osc1.tuning.cents");
+
+            // Dropping on something that is not a modulatable knob does nothing.
+            drag(bar->getSocket(1), *bar);
+            check("ModRouteUi_DropOnNothingCreatesNoRoute", processor.getGraphRoute(2).source == -1);
+
+            // MOD page: the card jacks, the patch view and the route list.
+            editor->debugSelectSection(1);
+            editor->debugRefreshModRouting();
+            auto* panel = editor->debugModRoutingPanel();
+            check("ModRouteUi_RoutingPanelIsInTheModPage",
+                  panel->isVisible() && panel->getParentComponent() == editor && panel->getWidth() > 300
+                      && panel->getPatchView().getHeight() > 100 && panel->getList().getHeight() > 100);
+            check("ModRouteUi_ListShowsEveryRoute", panel->getRowCount() == 2);
+
+            auto* cardJack = editor->debugModPanel()->getCardSocket(1);
+            auto* rate = knobFor(processor.getLfoFrequencyParam(0).getParameterID());
+            if (cardJack != nullptr && rate != nullptr && processor.isGraphDestination(processor.getLfoFrequencyParam(0).getParameterID()))
+            {
+                drag(*cardJack, *rate);
+            }
+            check("ModRouteUi_CardJackPatchesAKnobOnTheSamePage",
+                  cardJack != nullptr && rate != nullptr && processor.getGraphRoute(2).source == 1);
+            editor->debugRefreshModRouting();
+            check("ModRouteUi_NewRouteAppearsInTheList", panel->getRowCount() == 3);
+
+            // Depth, polarity and curve from the row.
+            auto* row = panel->getRow(0);
+            juce::Slider* depth = nullptr;
+            juce::ComboBox* polarity = nullptr;
+            juce::ComboBox* curve = nullptr;
+            if (row != nullptr)
+            {
+                for (auto* child : row->getChildren())
+                {
+                    if (child->getComponentID() == "mod.routing.depth") { depth = dynamic_cast<juce::Slider*>(child); }
+                    if (child->getComponentID() == "mod.routing.polarity") { polarity = dynamic_cast<juce::ComboBox*>(child); }
+                    if (child->getComponentID() == "mod.routing.curve") { curve = dynamic_cast<juce::ComboBox*>(child); }
+                }
+            }
+            if (depth != nullptr) { depth->setValue(-0.25, juce::sendNotificationSync); }
+            check("ModRouteUi_DepthSliderWritesTheRouteDepthParameter",
+                  depth != nullptr && std::abs(processor.getGraphRouteDepthParam(0).get() + 0.25f) < 1.0e-3f);
+            if (polarity != nullptr) { polarity->setSelectedId(2, juce::sendNotificationSync); }
+            if (curve != nullptr) { curve->setSelectedId(2, juce::sendNotificationSync); }
+            check("ModRouteUi_PolarityAndCurveEditTheRoute",
+                  processor.getGraphRoute(0).polarity == px3::synth::ModulationPolarity::unipolar
+                      && processor.getGraphRoute(0).curve == px3::synth::ModulationCurve::square);
+
+            // Select and Delete.
+            panel->refresh();
+            panel->select(panel->getRoutes().front().key());
+            panel->keyPressed(juce::KeyPress(juce::KeyPress::deleteKey));
+            editor->debugSelectSection(0);
+            editor->debugRefreshModRouting();
+            check("ModRouteUi_DeleteRemovesTheSelectedRoute",
+                  processor.getGraphRoute(0).source == -1 && processor.getGraphRoute(1).source == 3);
+            check("ModRouteUi_RingGoesWhenTheRouteGoes",
+                  cutoff != nullptr && ! cutoff->getProperties().contains(px3::knob_properties::modRings));
+
+            // Rendering: the MOD page draws the patch view with its cables.
+            editor->debugSelectSection(1);
+            editor->debugRefreshModRouting();
+            const auto image = panel->getPatchView().createComponentSnapshot(panel->getPatchView().getLocalBounds());
+            auto coloured = 0;
+            for (int y = 0; y < image.getHeight(); y += 2)
+            {
+                for (int x = 0; x < image.getWidth(); x += 2)
+                {
+                    const auto c = image.getPixelAt(x, y);
+                    if (c.getSaturation() > 0.4f && c.getBrightness() > 0.5f) { ++coloured; }
+                }
+            }
+            check("ModRouteUi_PatchViewDrawsCables", coloured > 200, juce::String(coloured));
+        }
+        check("ModRouteUi_NoWindowIsOpenedForRouting",
+              desktop.getNumComponents() == desktopBefore
+                  && juce::TopLevelWindow::getNumTopLevelWindows() == windowsBefore);
+    }
+
+    // ---- the 0.8.0 DSP controls are on the panels, bound to their parameters --
     {
         PX3SynthAudioProcessor processor;
         processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
         processor.prepareToPlay(kSampleRate, kBlockSize);
-        std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
-        std::function<juce::Component*(juce::Component&, const juce::String&)> find = [&](juce::Component& component, const juce::String& id)
+        std::unique_ptr<juce::AudioProcessorEditor> base(processor.createEditor());
+        auto* editor = dynamic_cast<PX3SynthAudioProcessorEditor*>(base.get());
+        if (editor != nullptr)
         {
-            if (component.getComponentID() == id) { return &component; }
-            for (auto* child : component.getChildren()) { if (auto* result = find(*child, id)) { return result; } }
-            return static_cast<juce::Component*>(nullptr);
-        };
-        auto* button = dynamic_cast<juce::Button*>(find(*editor, "mod.routes.open"));
-        if (button != nullptr && button->onClick) { button->onClick(); }
-        juce::Component* canvas = nullptr;
-        auto& desktop = juce::Desktop::getInstance();
-        for (int index = 0; index < desktop.getNumComponents(); ++index)
-        {
-            if (auto* candidate = find(*desktop.getComponent(index), "mod.graph.canvas")) { canvas = candidate; break; }
-        }
-        auto rendered = false;
-        auto connected = false;
-        juce::String snapshotPath;
-        if (canvas != nullptr)
-        {
-            const auto source = juce::Point<float>(150.0f, 40.0f);
-            const auto destination = juce::Point<float>(static_cast<float>(canvas->getWidth() - 220), 12.0f);
-            const auto now = juce::Time::getCurrentTime();
-            const auto event = [&](juce::Point<float> position, bool dragged)
+            editor->setSize(1518, 918);
+            const auto collect = [&](juce::Component& root)
             {
-                return juce::MouseEvent(desktop.getMainMouseSource(), position, juce::ModifierKeys(juce::ModifierKeys::leftButtonModifier),
-                                        1.0f, 0.0f, 0.0f, 0.0f, 0.0f, canvas, canvas, now, source, now, 1, dragged);
-            };
-            canvas->mouseDown(event(source, false));
-            canvas->mouseDrag(event(destination, true));
-            canvas->mouseUp(event(destination, true));
-            connected = processor.getGraphRoute(0).source == 1
-                && processor.getGraphRoute(0).destination == "voice.filter1.cutoff"
-                && std::abs(processor.getGraphRouteDepthParam(0).get() - 0.5f) < 1.0e-6f;
-            const auto image = canvas->createComponentSnapshot(canvas->getLocalBounds());
-            auto ink = 0;
-            for (int row = 0; row < image.getHeight(); row += 2)
-            {
-                for (int column = 0; column < image.getWidth(); column += 2)
+                std::map<juce::String, juce::Slider*> knobs;
+                std::vector<juce::ComboBox*> boxes;
+                std::function<void(juce::Component&)> walk = [&](juce::Component& c)
                 {
-                    const auto colour = image.getPixelAt(column, row);
-                    if (colour.getRed() + colour.getGreen() + colour.getBlue() > 300) { ++ink; }
-                }
-            }
-            rendered = image.isValid() && ink > 100;
-            const auto file = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("px3-route-canvas.png");
-            snapshotPath = file.getFullPathName();
-            juce::FileOutputStream output(file);
-            output.setPosition(0);
-            output.truncate();
-            rendered = rendered && output.openedOk() && juce::PNGImageFormat().writeImageToStream(image, output);
-            if (auto* window = canvas->findParentComponentOfClass<juce::DocumentWindow>())
+                    for (auto* child : c.getChildren())
+                    {
+                        if (auto* s = dynamic_cast<juce::Slider*>(child); s != nullptr && px3::ui::isParameterKnob(*s))
+                        {
+                            knobs[px3::ui::parameterIdOf(*s)] = s;
+                        }
+                        if (auto* box = dynamic_cast<juce::ComboBox*>(child)) { boxes.push_back(box); }
+                        walk(*child);
+                    }
+                };
+                walk(root);
+                return std::make_pair(knobs, boxes);
+            };
+            editor->debugSelectSection(0);
+            auto [knobs, boxes] = collect(*editor);
+            const auto visibleWithArea = [&](const juce::String& id)
             {
-                auto* content = window->getContentComponent();
-                const auto* sourceMenu = dynamic_cast<juce::ComboBox*>(find(*content, "mod.route.source"));
-                const auto* destinationMenu = dynamic_cast<juce::ComboBox*>(find(*content, "mod.route.destination"));
-                check("ModRouteUi_CableSelectionRefreshesItsEndpointMenus",
-                      sourceMenu != nullptr && sourceMenu->getSelectedId() == 3
-                          && destinationMenu != nullptr && destinationMenu->getSelectedId() > 1);
-                const auto fullImage = content->createComponentSnapshot(content->getLocalBounds());
-                juce::FileOutputStream fullOutput(file.getSiblingFile("px3-route-editor.png"));
-                fullOutput.setPosition(0);
-                fullOutput.truncate();
-                rendered = rendered && fullOutput.openedOk() && juce::PNGImageFormat().writeImageToStream(fullImage, fullOutput);
+                const auto found = knobs.find(id);
+                return found != knobs.end()
+                       && found->second->isVisible() && found->second->getWidth() > 8 && found->second->getHeight() > 8;
+            };
+            check("NewControls_SlopKnobOnEveryOscillatorCard",
+                  visibleWithArea("voice.osc1.tuning.slop") && visibleWithArea("voice.osc2.tuning.slop")
+                      && visibleWithArea("voice.osc3.tuning.slop"));
+            check("NewControls_FilterKeyTrackAndReferenceKnobs",
+                  visibleWithArea("voice.filter1.keytrack") && visibleWithArea("voice.filter1.keytrack.key")
+                      && visibleWithArea("voice.filter2.keytrack") && visibleWithArea("voice.filter2.keytrack.key"));
+            setParam(processor, "voice.filter1.keytrack.key", 67.0f);
+            auto* readout = editor->debugFltPanel() != nullptr ? editor->debugFltPanel()->getKeyTrackKeyReadout(0) : nullptr;
+            check("NewControls_KeyTrackReferenceShowsANoteName",
+                  readout != nullptr && readout->getText() == "G4", readout != nullptr ? readout->getText() : juce::String());
+            auto typeHasNewModels = false;
+            for (auto* box : boxes)
+            {
+                juce::StringArray items;
+                for (int i = 0; i < box->getNumItems(); ++i) { items.add(box->getItemText(i)); }
+                typeHasNewModels = typeHasNewModels || (items.contains("Curtis24") && items.contains("ARP12"));
             }
-            canvas->keyPressed(juce::KeyPress(juce::KeyPress::deleteKey));
-            check("ModRouteUi_DeleteRemovesTheSelectedCable", processor.getGraphRoute(0).source == -1);
+            check("NewControls_FilterTypeListOffersCurtisAndArp", typeHasNewModels);
+
+            editor->debugSelectSection(1);
+            std::tie(knobs, boxes) = collect(*editor);
+            check("NewControls_EnvelopeKeyKnobs",
+                  visibleWithArea("mod.env1.keytrack") && visibleWithArea("mod.env2.keytrack")
+                      && visibleWithArea("mod.env3.keytrack"));
+            auto* loop = editor->debugModPanel()->getEnvelopeLoopButton(1);
+            if (loop != nullptr) { loop->setToggleState(true, juce::sendNotificationSync); }
+            const auto* loopParam = dynamic_cast<juce::AudioParameterBool*>(processor.findRangedParameterById("mod.env2.loop"));
+            check("NewControls_EnvelopeLoopSwitchDrivesItsParameter",
+                  loop != nullptr && loop->isVisible() && loop->getWidth() > 20 && loopParam != nullptr && loopParam->get());
+            auto lfoWaves = 0;
+            for (auto* box : boxes)
+            {
+                juce::StringArray items;
+                for (int i = 0; i < box->getNumItems(); ++i) { items.add(box->getItemText(i)); }
+                lfoWaves += (items.contains("S&H") && items.contains("SMOOTH RND")) ? 1 : 0;
+            }
+            check("NewControls_EveryLfoOffersSampleAndHoldAndSmoothRandom", lfoWaves == 3, juce::String(lfoWaves));
         }
-        check("ModRouteUi_CableDragCreatesTheActualAutomatableRoute", connected);
-        check("ModRouteUi_CanvasRendersPortsLabelsAndCables", rendered, snapshotPath);
     }
 
     // ---- the bar, the panel and the keyboard never overlap -----------------

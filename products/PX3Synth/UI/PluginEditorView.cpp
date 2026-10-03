@@ -283,6 +283,7 @@ void PX3SynthAudioProcessorEditor::updatePanelVisibility()
         oscPanel->setVisible(true);
     }
     modPanelViewport.setVisible(isPanelVisible(kSectionMod));
+    if (modRoutingPanel != nullptr) { modRoutingPanel->setVisible(isPanelVisible(kSectionMod)); }
     if (modPanel != nullptr)
     {
         modPanel->setVisible(true);

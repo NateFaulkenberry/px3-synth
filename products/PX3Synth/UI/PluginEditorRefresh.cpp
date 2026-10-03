@@ -614,6 +614,7 @@ void PX3SynthAudioProcessorEditor::timerCallback()
     loadUiConfig(false);
     refreshWavetableDisplays();
     refreshModulationRings();
+    refreshModRouting();
     refreshMidiMappingUI();
 
     const auto nowSeconds = juce::Time::getMillisecondCounterHiRes() * 0.001;

@@ -290,6 +290,13 @@ public:
     // Switch panel the way the top menu does, so a test exercises the real
     // path rather than poking the index.
     void debugSelectSection(int sectionIndex) { applyTopMenuSectionSelection(sectionIndex, false); }
+    px3::ui::modrouting::ModDragController* debugModDragController() { return modDragController.get(); }
+    px3::ui::modrouting::ModPatchBar* debugModPatchBar() { return modPatchBar.get(); }
+    px3::ui::modrouting::ModRoutingPanel* debugModRoutingPanel() { return modRoutingPanel.get(); }
+    ModPanel* debugModPanel() { return modPanel.get(); }
+    FltPanel* debugFltPanel() { return fltPanel.get(); }
+    // The routing pass the timer runs, without the timer's section re-sync.
+    void debugRefreshModRouting() { refreshModRouting(); refreshMidiMappingUI(); }
     void debugSetUpdatePreview(bool shouldPreview) { setUpdatePreview(shouldPreview); }
     // What a click at this point would land on - the same hit test the overlay
     // uses, so a test can pick knobs that are actually reachable right now.
@@ -891,6 +898,16 @@ private:
     juce::Label envAmountValueLabel;
     KnobLabel lfoAssignLabel;
     std::unique_ptr<OscPanel> oscPanel;
+    // In-window modulation routing (docs/PX3_0.8.0_MODULATION_UI.md). The
+    // controller outlives every jack that refers to it: declared first.
+    std::unique_ptr<px3::ui::modrouting::ModDragController> modDragController;
+    std::unique_ptr<px3::ui::modrouting::ModPatchBar> modPatchBar;
+    std::unique_ptr<px3::ui::modrouting::ModRoutingPanel> modRoutingPanel;
+    void buildModRouting();
+    void refreshModRouting();
+    juce::var modRingsFor(const juce::String& parameterId) const;
+    std::vector<px3::ui::modrouting::RouteInfo> modRoutes;
+    std::map<juce::String, juce::var> modRingsByParameter;
     std::unique_ptr<ModPanel> modPanel;
     // The OSC panel is hosted in a viewport so panels.osc can declare a fixed
     // height and vertical scrolling. The viewport is always present; when the
