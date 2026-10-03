@@ -117,7 +117,8 @@ private:
         float digitalCrushSteps { 2.0f };
 
         std::array<float, kPhysicalModes> physicalDecayCoeff { {} };
-        float physicalSpread { 1.0f };
+        float physicalStiffness { 0.0f };                     // tiny upper-mode stretch, never pitch-like
+        std::array<float, kPhysicalModes> physicalWeight { {} };   // MATERIAL's spectral tilt
 
         float robTrans { 0.0f };
         float robBody { 0.0f };

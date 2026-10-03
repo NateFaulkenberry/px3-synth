@@ -534,15 +534,32 @@ void OscillatorUnit::updateDerivedCurves()
         d.digitalCrushSteps = static_cast<float>(1 << juce::jmax(1, bitDepth - 1));
     }
 
-    // PHYSICAL: DECAY is the ring time, MATERIAL the spread of the upper modes.
+    // PHYSICAL: DECAY is the ring time. MATERIAL runs wood -> glass -> metal and
+    // is timbre only: the modes stay at the bar's ratios (moving strong
+    // inharmonic partials reads as a pitch change, which is what it used to
+    // do), while the spectral tilt and the damping of the upper modes change.
+    // Wood is dark and its upper modes die fast; metal is bright and rings
+    // evenly. The weights are energy-normalised so MATERIAL is level-neutral.
     {
+        const auto material = static_cast<double>(b);
         const auto decaySeconds = 0.12 * std::pow(40.0, static_cast<double>(a));
+        const auto upperDamping = 0.15 + 2.6 * (1.0 - material);
         for (std::size_t i = 0; i < d.physicalDecayCoeff.size(); ++i)
         {
-            const auto seconds = decaySeconds / (1.0 + 0.8 * static_cast<double>(i));
+            const auto seconds = decaySeconds / (1.0 + upperDamping * static_cast<double>(i));
             d.physicalDecayCoeff[i] = static_cast<float>(std::exp(-1.0 / (seconds * sampleRate)));
         }
-        d.physicalSpread = 0.7f + 0.8f * std::pow(b, 1.2f);
+        double energy = 0.0;
+        for (std::size_t i = 0; i < d.physicalWeight.size(); ++i)
+        {
+            const auto w = kPhysicalWeights[i] * std::exp(static_cast<double>(i) * (material - 0.5) * 1.6);
+            d.physicalWeight[i] = static_cast<float>(w);
+            energy += w * w;
+        }
+        double reference = 0.0;
+        for (const auto w : kPhysicalWeights) { reference += w * w; }
+        for (auto& w : d.physicalWeight) { w *= static_cast<float>(std::sqrt(reference / energy)); }
+        d.physicalStiffness = static_cast<float>(0.02 * (material - 0.5));
     }
 
     d.robTrans = std::pow(a, 0.55f);
@@ -1070,15 +1087,15 @@ double OscillatorUnit::renderPhysical(const MainPhase& main)
 {
     // A synthetic modal resonator - not a physical model. Four sine modes at a
     // struck bar's partial ratios, each with a strike that decays to a held
-    // level. The fundamental is always at the played pitch; MATERIAL spreads
-    // only the modes above it.
-    const auto spread = static_cast<double>(ramped(&DerivedCurves::physicalSpread));
+    // level. The fundamental is always at the played pitch; MATERIAL shapes
+    // the modes' balance and damping, not their tuning.
+    const auto stiffness = static_cast<double>(ramped(&DerivedCurves::physicalStiffness));
     const auto t = currentRamp;
 
     double sum = 0.0;
     for (std::size_t i = 0; i < physicalPhases.size(); ++i)
     {
-        const auto ratio = 1.0 + (kPhysicalRatios[i] - 1.0) * spread;
+        const auto ratio = kPhysicalRatios[i] * (1.0 + stiffness * static_cast<double>(i));
         const auto increment = main.increment * ratio;
         physicalPhases[i] = wrap(physicalPhases[i] + increment);
 
@@ -1087,7 +1104,8 @@ double OscillatorUnit::renderPhysical(const MainPhase& main)
         auto& envelope = physicalEnvelopes[i];
         envelope = kPhysicalSustain[i] + (envelope - kPhysicalSustain[i]) * coeff;
 
-        sum += envelope * kPhysicalWeights[i] * px3::dsp::nyquistFade(increment) * fastSine(physicalPhases[i]);
+        const auto weight = static_cast<double>(previous.physicalWeight[i] + (target.physicalWeight[i] - previous.physicalWeight[i]) * t);
+        sum += envelope * weight * px3::dsp::nyquistFade(increment) * fastSine(physicalPhases[i]);
     }
 
     return plainDelays[static_cast<std::size_t>(Mode::physical)].push(physicalClip.process(kTanhAdaa, sum * kPhysicalDrive));

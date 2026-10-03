@@ -925,6 +925,29 @@ void testOscillatorQuality()
                   "derivative energy: clean " + fmt(clean, 1) + " dB, FOLD 1 " + fmt(folded, 1) + " dB, RATE 1 " + fmt(reduced, 1) + " dB");
         }
 
+        // MATERIAL is timbre, not tuning: wood to metal brightens the strike by
+        // a clear margin while the level stays put.
+        {
+            auto measure = [&](float material, double& level, double& bright)
+            {
+                UnitSetup physical;
+                physical.mode = static_cast<int>(Mode::physical);
+                physical.a = 0.5f;
+                physical.b = material;
+                const auto x = renderUnit(physical, 220.0, fs, 24000, 0);
+                double e = 0.0, d = 0.0, prev = 0.0;
+                for (const auto v : x) { e += v * v; d += (v - prev) * (v - prev); prev = v; }
+                level = 10.0 * std::log10(e / static_cast<double>(x.size()));
+                bright = 10.0 * std::log10(d / e);
+            };
+            double woodLevel = 0, woodBright = 0, metalLevel = 0, metalBright = 0;
+            measure(0.0f, woodLevel, woodBright);
+            measure(1.0f, metalLevel, metalBright);
+            check("OscQuality_PhysicalMaterialIsTimbreNotLevel", metalBright > woodBright + 6.0 && std::abs(metalLevel - woodLevel) < 3.0,
+                  "wood level " + fmt(woodLevel, 1) + " dB brightness " + fmt(woodBright, 1) + "; metal level " + fmt(metalLevel, 1)
+                      + " dB brightness " + fmt(metalBright, 1));
+        }
+
         UnitSetup quiet;
         quiet.mode = static_cast<int>(Mode::rob);
         quiet.c = 0.0f;

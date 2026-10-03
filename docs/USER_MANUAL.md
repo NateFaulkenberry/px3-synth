@@ -248,12 +248,15 @@ wavefolds the sine before it is crushed, adding harmonics. All three are
 independent.
 
 **PHYSICAL** — a struck, ringing tone built from four inharmonic modes. DECAY is
-how long the strike rings before it settles to a held level; MATERIAL spreads the
-upper modes wider, from wooden to metallic. The note itself stays at the pitch
-you play.
+how long the strike rings before it settles to a held level. MATERIAL runs from
+wood through glass to metal: darker with fast-dying overtones at the left, bright
+and evenly ringing at the right. It changes the tone only - the pitch stays where
+you play it.
 
-**ROB** — TRANS sets the attack transient, BODY the weight and shape of the tone,
-and CHAOS the instability. At zero CHAOS there is none at all.
+**ROB** — TRANS sets the attack transient. BODY thickens the tone with more and
+louder overtones and a harder drive, without moving its pitch. CHAOS makes the
+overtones flicker in random, grainy steps - faster as you turn it up. At zero
+CHAOS there is none at all.
 
 **PX3** — three engines in one. MORPH balances an FM tone against ISAAC-style
 partials, CHAR pushes the whole voice harder (a driven saw and more FM), and MOVE
