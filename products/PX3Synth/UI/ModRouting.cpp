@@ -541,7 +541,7 @@ namespace
 {
 namespace th = px3::ui::theme;
 const juce::Colour kMatrixAccent { 0xff8f7cf0 };   // the modulation family's purple
-constexpr float kBand = 22.0f;                      // module title band (theme::space::headerHeight)
+constexpr float kBand = px3::ui::theme::space::minTitleBand;   // same title band as every powered card
 
 juce::Path linkPath(juce::Point<float> a, juce::Point<float> b)
 {
@@ -915,6 +915,8 @@ public:
         remove.setComponentID("mod.routing.remove");
         remove.setButtonText(juce::CharPointer_UTF8("\xc3\x97"));
         remove.setTooltip("Unpatch (or select the route and press Delete)");
+        remove.setColour(juce::TextButton::buttonColourId, th::colour::inset);
+        remove.setColour(juce::TextButton::textColourOffId, th::colour::textLabel);
         remove.onClick = [this]
         {
             removeRoute(owner.processor, route);
@@ -958,7 +960,8 @@ public:
         g.setColour(colour.withAlpha(0.55f + 0.4f * juce::jlimit(0.0f, 1.0f, std::abs(route.depth))));
         const auto leadFrom = sourceNameArea.getRight() + 2.0f;
         g.fillRect(juce::Rectangle<float>(leadFrom, mid - 1.0f, depth.getX() - leadFrom, 2.0f));
-        const auto leadTo = destinationArea.getX() - 2.0f;
+        const auto textW = th::textWidth(destinationText, th::Type::label);
+        const auto leadTo = juce::jmax(destinationArea.getX(), destinationArea.getRight() - textW - 8.0f);
         const auto afterShape = static_cast<float>(curve.getRight()) + 2.0f;
         if (leadTo > afterShape) { g.fillRect(juce::Rectangle<float>(afterShape, mid - 1.0f, leadTo - afterShape, 2.0f)); }
 
@@ -970,8 +973,11 @@ public:
         auto dest = destinationArea;
         if (showOrigin)
         {
-            th::drawLabel(g, originText, dest.removeFromLeft(42.0f), th::Type::secondary, th::colour::textDim,
-                          juce::Justification::centredLeft);
+            // Slot / origin tag printed on the lead, on a small plate.
+            auto tag = juce::Rectangle<float>(36.0f, 14.0f).withCentre({ dest.getX() + 24.0f, mid });
+            g.setColour(th::colour::panelBottom);
+            g.fillRect(tag);
+            th::drawLabel(g, originText, tag, th::Type::secondary, th::colour::textSecondary);
         }
         if (showGroup && destinationGroup.isNotEmpty())
         {
@@ -1049,8 +1055,24 @@ class ModRoutingPanel::ListContent final : public juce::Component
 {
 public:
     std::vector<std::unique_ptr<Row>> rows;
+    int rowHeight { 30 };
     void paint(juce::Graphics& g) override
     {
+        // The unused part of the bay reads as empty slots, like an unpatched
+        // panel, rather than as a blank page.
+        const auto clip = g.getClipBounds();
+        for (int y = static_cast<int>(rows.size()) * rowHeight; y < clip.getBottom(); y += rowHeight)
+        {
+            if (y + rowHeight < clip.getY()) { continue; }
+            const auto mid = static_cast<float>(y) + rowHeight * 0.5f;
+            g.setColour(th::colour::panelEdge.withAlpha(0.5f));
+            g.drawHorizontalLine(y + rowHeight - 1, 0.0f, static_cast<float>(getWidth()));
+            g.setColour(th::colour::textDim.withAlpha(0.35f));
+            g.drawEllipse(juce::Rectangle<float>(9.0f, 9.0f).withCentre({ 25.0f, mid }), 1.0f);
+            g.drawEllipse(juce::Rectangle<float>(9.0f, 9.0f).withCentre({ getWidth() - 9.0f, mid }), 1.0f);
+            const float dashes[] { 3.0f, 5.0f };
+            g.drawDashedLine(juce::Line<float>(36.0f, mid, getWidth() - 20.0f, mid), dashes, 2, 1.0f);
+        }
         if (! rows.empty()) { return; }
         th::drawLabel(g, "NO CONNECTIONS", getLocalBounds().toFloat().withHeight(60.0f), th::Type::label,
                       th::colour::textSecondary);

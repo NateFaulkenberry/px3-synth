@@ -159,6 +159,10 @@ public:
     }
     std::function<void(const px3::BreakpointEnvelope&)> onEnvelopeEdited;
 
+    // Dense module interior (VOICE's modulator row): ASSIGN / LOOP / SYNC,
+    // the envelope display, A D S R, then MODE / AMOUNT / KEY.
+    void setCompactLayout(bool shouldBeCompact) { if (compactLayout != shouldBeCompact) { compactLayout = shouldBeCompact; resized(); } }
+
     void resized() override;
     void paint(juce::Graphics& g) override;
     void mouseMove(const juce::MouseEvent& event) override;
@@ -225,6 +229,11 @@ private:
     // no knobs and the second to last when there are; deriving it in one place
     // is what keeps the drawn graph and the draggable graph on one rectangle.
     int graphRowIndex() const;
+    bool compactLayout { false };
+    juce::Rectangle<int> compactGraph;
+    void layoutCompact();
+    // The display row: the compact graph, or CardInner's graph row.
+    juce::Rectangle<int> graphRowArea() const;
 
     // Where the editor sits: its row, less a gap at the bottom when the knob
     // row is below it.

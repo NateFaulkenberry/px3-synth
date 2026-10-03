@@ -3,6 +3,7 @@
 
 #include "BypassButton.h"
 #include "CardInner.h"
+#include "CompactModuleLayout.h"
 #include "ParameterKnob.h"
 
 #include "LfoMode.h"
@@ -315,6 +316,12 @@ void LfoComponent::resized()
     // so it stays put no matter what the first row contains.
     enabledButton.setBounds(card.powerBounds());
 
+    if (compactLayout)
+    {
+        layoutCompact();
+        return;
+    }
+
     using px3::ui::ControlShape;
 
     if (clockControlsAttached)
@@ -403,6 +410,68 @@ void LfoComponent::resized()
     // Row 3 is the wave graph, drawn by paint().
 }
 
+void LfoComponent::layoutCompact()
+{
+    namespace c = px3::ui::compact;
+    auto area = card.contentBelowTitle().reduced(c::pad, c::pad - 1);
+    const auto rowH = c::captionHeight + c::boxHeight;
+
+    // WAVE | ASSIGN | KEY SYNC
+    {
+        auto row = area.removeFromTop(rowH);
+        if (rampControlsAttached)
+        {
+            auto chip = row.removeFromRight(juce::jlimit(44, 64, row.getWidth() / 4));
+            row.removeFromRight(c::gap);
+            c::boxCell(chip, &keySyncCaptionSpacer, keySyncButton);
+            keySyncButton.setAccentColour(card.style().border.colour);
+        }
+        const auto boxes = c::cells(row, 2);
+        c::boxCell(boxes[0], &waveformLabel, waveformBox);
+        c::boxCell(boxes[1], &assignLabel, assignBox);
+    }
+    area.removeFromTop(c::gap);
+
+    // CLOCK | DIVISION
+    if (clockControlsAttached)
+    {
+        const auto boxes = c::cells(area.removeFromTop(rowH), 2);
+        c::boxCell(boxes[0], &clockModeLabel, clockModeBox);
+        c::boxCell(boxes[1], &clockDivisionLabel, clockDivisionBox);
+        area.removeFromTop(c::gap);
+    }
+
+    // RATE | AMOUNT: the knobs take what the display can spare.
+    {
+        const auto knob = juce::jlimit(26, 50, (area.getHeight() - 40) / 2);
+        const auto knobs = c::cells(area.removeFromTop(c::knobRowHeight(knob)), 2);
+        const auto showRampTime = rampControlsAttached && laidOutForRamp;
+        rateKnob.setVisible(! showRampTime);
+        rampTimeKnob.setVisible(showRampTime);
+        juce::Slider& timeKnob = showRampTime ? rampTimeKnob : rateKnob;
+        c::knobCell(knobs[0], &rateLabel, timeKnob, &rateValueLabel, knob);
+        c::knobCell(knobs[1], &amountLabel, amountKnob, &amountValueLabel, knob);
+    }
+    area.removeFromTop(c::gap);
+
+    compactGraph = area;
+    // The "NO HOST CLOCK" status sits in the display's top-left corner.
+    clockStatus.setBounds(clockControlsAttached ? compactGraph.reduced(4, 2).withHeight(c::captionHeight)
+                                                : juce::Rectangle<int>());
+    clockStatus.toFront(false);
+}
+
+juce::Rectangle<int> LfoComponent::graphArea() const
+{
+    if (compactLayout) { return compactGraph; }
+    return inner.rowContent(2).withTrimmedTop(clockControlsAttached ? 54 : 0);
+}
+
+juce::Rectangle<int> LfoComponent::graphHitArea() const
+{
+    return compactLayout ? compactGraph : inner.rowContent(2);
+}
+
 void LfoComponent::mouseUp(const juce::MouseEvent& event)
 {
     // Clicking the card's background toggles its power, the same as clicking
@@ -410,7 +479,7 @@ void LfoComponent::mouseUp(const juce::MouseEvent& event)
     // that explained itself on hover would be noise.
     // The wave graph is a display, not a switch: it shows no pointer and it
     // takes no click, so the two agree.
-    if (inner.rowContent(2).contains(event.getPosition()))
+    if (graphHitArea().contains(event.getPosition()))
     {
         return;
     }
@@ -425,7 +494,7 @@ void LfoComponent::mouseMove(const juce::MouseEvent& event)
 {
     // The wave graph is a display, not a control, so it does not take the
     // pointer that marks the rest of the card as clickable.
-    setMouseCursor(inner.rowContent(2).contains(event.getPosition())
+    setMouseCursor(graphHitArea().contains(event.getPosition())
                        ? juce::MouseCursor::NormalCursor
                        : juce::MouseCursor::PointingHandCursor);
 }
@@ -461,7 +530,7 @@ void LfoComponent::paint(juce::Graphics& g)
 
     // The graph is row 3. It used to be found by replaying resized()'s stack of
     // removeFromTop calls against a separately-derived card rectangle.
-    const auto graph = inner.rowContent(2).withTrimmedTop(clockControlsAttached ? 54 : 0).toFloat().reduced(0.0f, 2.0f);
+    const auto graph = graphArea().toFloat().reduced(0.0f, compactLayout ? 0.0f : 2.0f);
 
     if (graph.getWidth() < 40.0f || graph.getHeight() < 20.0f)
     {

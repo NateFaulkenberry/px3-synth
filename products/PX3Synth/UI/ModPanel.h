@@ -42,7 +42,7 @@ public:
 
     // When the editor's scene places the six cards (VOICE's "voice.mods" row),
     // this panel only keeps each card's source jack in its title band.
-    void setSceneManaged(bool managed) { sceneManaged = managed; }
+    void setSceneManaged(bool managed);
     bool isSceneManaged() const noexcept { return sceneManaged; }
     // 0..2 = LFO 1-3, 3..5 = ENV 1-3 (graph source order).
     juce::Component* getCard(int index);

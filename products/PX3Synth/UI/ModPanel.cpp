@@ -380,6 +380,15 @@ void ModPanel::configureOwnedEnvBundle(int envIndex, EnvBundle& bundle)
     };
 }
 
+void ModPanel::setSceneManaged(bool managed)
+{
+    sceneManaged = managed;
+    // Placed by the scene as compact modules: their interiors go dense too.
+    if (lfoComponent != nullptr) { lfoComponent->setCompactLayout(managed); }
+    for (auto& bundle : extraLfos) { if (bundle.component != nullptr) { bundle.component->setCompactLayout(managed); } }
+    for (auto& bundle : envelopes) { if (bundle.component != nullptr) { bundle.component->setCompactLayout(managed); } }
+}
+
 juce::Component* ModPanel::getCard(int index)
 {
     if (index == 0) { return lfoComponent.get(); }
@@ -401,13 +410,12 @@ void ModPanel::layoutSockets()
         auto* socket = cardSockets[static_cast<std::size_t>(i)].get();
         auto* card = getCard(i);
         if (socket == nullptr || card == nullptr) { continue; }
-        const auto cell = card->getBounds();
-        // Mirrors the power button: same inset from the edge, same clearance
-        // from the band's top and bottom (theme::space::powerInset).
-        constexpr int side = 16;
-        const auto inset = static_cast<int>(px3::ui::theme::space::powerInset);
-        const auto band = static_cast<int>(px3::ui::theme::space::headerHeight);
-        socket->setBounds(cell.getRight() - side - inset, cell.getY() + (band - side) / 2, side, side);
+        // The power button's own rectangle mirrored to the right edge, so the
+        // two are the same size and sit level in the title band.
+        const auto power = i < 3 ? static_cast<const LfoComponent*>(card)->powerBoundsInParent()
+                                 : static_cast<const EnvelopeComponent*>(card)->powerBoundsInParent();
+        const auto inset = power.getX() - card->getX();
+        socket->setBounds(card->getRight() - inset - power.getWidth(), power.getY(), power.getWidth(), power.getHeight());
         socket->toFront(false);
     }
 }
