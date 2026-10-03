@@ -16,6 +16,9 @@ class UIConfig;
 class LfoComponent final : public juce::Component
 {
 public:
+    // The power button's rectangle in the parent's coordinates, so a sibling
+    // (the MOD jack) can sit level with it.
+    juce::Rectangle<int> powerBoundsInParent() const { return card.powerBounds() + getPosition(); }
     LfoComponent(juce::ToggleButton& enabledButtonIn,
                         juce::Label& assignLabelIn,
                         juce::ComboBox& assignBoxIn,

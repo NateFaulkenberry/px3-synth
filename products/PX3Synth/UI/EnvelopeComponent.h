@@ -17,6 +17,9 @@ class UIConfig;
 class EnvelopeComponent final : public juce::Component
 {
 public:
+    // The power button's rectangle in the parent's coordinates, so a sibling
+    // (the MOD jack) can sit level with it.
+    juce::Rectangle<int> powerBoundsInParent() const { return card.powerBounds() + getPosition(); }
     EnvelopeComponent(juce::AudioParameterFloat& attackIn,
                       juce::AudioParameterFloat& decayIn,
                       juce::AudioParameterFloat& sustainIn,
