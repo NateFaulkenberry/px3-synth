@@ -330,7 +330,13 @@ void FxPanel::resized()
     // ---- the grid ---------------------------------------------------------
     // A wrapping grid whose cell order IS the chain order, so the grid is a
     // second reading of the strip rather than a second list to keep in step.
-    const auto columns = uiConfig != nullptr ? uiConfig->getInt("fx.grid.columns", 4) : 4;
+    // Columns follow the width: as many as fit at the minimum module width, up
+    // to the configured count. A narrow window gets fewer, wider modules and a
+    // scrolling rack rather than crushed ones.
+    const auto maxColumns = uiConfig != nullptr ? uiConfig->getInt("fx.grid.columns", 4) : 4;
+    const auto minCardWidth = uiConfig != nullptr ? uiConfig->getInt("fx.grid.minCardWidth", 260) : 260;
+    const auto columns = juce::jlimit(1, juce::jmax(1, maxColumns),
+                                      (gridViewport.getWidth() + 8) / juce::jmax(1, minCardWidth + 8));
     const auto gap = uiConfig != nullptr ? uiConfig->getInt("fx.grid.gap", 8) : 8;
     auto rowHeight = uiConfig != nullptr ? uiConfig->getInt("fx.grid.rowHeight", 400) : 400;
 

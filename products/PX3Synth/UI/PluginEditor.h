@@ -291,6 +291,8 @@ public:
     // Switch panel the way the top menu does, so a test exercises the real
     // path rather than poking the index.
     void debugSelectSection(int sectionIndex) { applyTopMenuSectionSelection(sectionIndex, false); }
+    // As a click on the tab does: the processor remembers it, so the timer keeps it.
+    void debugSelectSectionPersisted(int sectionIndex) { applyTopMenuSectionSelection(sectionIndex, true); }
     px3::ui::modrouting::ModDragController* debugModDragController() { return modDragController.get(); }
     px3::ui::modrouting::ModPatchBar* debugModPatchBar() { return modPatchBar.get(); }
     px3::ui::modrouting::ModRoutingPanel* debugModRoutingPanel() { return modRoutingPanel.get(); }

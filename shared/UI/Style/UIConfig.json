@@ -358,7 +358,8 @@
       "standaloneWidth": 318,
       "gap": 8,
       "rowHeight": 500,
-      "minRowHeight": 300
+      "minRowHeight": 330,
+      "minCardWidth": 262
     }
   },
   "osc": {
@@ -1679,7 +1680,7 @@
         "labelOutline": "#BA9DED",
         "labelOutlineOpacity": 0.45,
         "labelColour": "#DED0F7",
-        "knobSize": 56,
+        "knobSize": 46,
         "featureKnobSize": 88,
         "choiceWidth": 110,
         "toggleWidth": 104,

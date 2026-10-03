@@ -624,7 +624,9 @@ void testEditorLayout()
                 };
 
                 const auto primary = visiblePanelsFor(0);
-                const juce::StringArray sections { "MOD", "AMP", "FLT", "FX", "MIX", "SETTINGS" };
+                // 0.8.0: AMP and FILTER are part of the VOICE page, so selecting
+                // either shows the whole OSC + FILTER + AMP strip.
+                const juce::StringArray sections { "MOD", "OSC+AMP+FLT", "OSC+AMP+FLT", "FX", "MIX", "SETTINGS" };
                 juce::StringArray actual;
                 for (int section = 1; section <= 6; ++section)
                 {

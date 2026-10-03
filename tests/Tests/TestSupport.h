@@ -1553,5 +1553,6 @@ void testFilters();
 void testOscillatorModeRichness();
 void testAnalogEngine();
 void testEditorLayout();
+void testVisualRedesign();
 
 } // namespace px3tests

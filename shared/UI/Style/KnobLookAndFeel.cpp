@@ -36,7 +36,10 @@ void KnobLookAndFeel::drawRotarySlider(juce::Graphics& g,
                                                    static_cast<float>(y),
                                                    static_cast<float>(width),
                                                    static_cast<float>(height));
-    const auto diameter = juce::jmin(fullBounds.getWidth(), fullBounds.getHeight()) - 10.0f;
+    // The margin left for modulation rings scales with the knob, so a small
+    // knob is not mostly margin.
+    const auto side = juce::jmin(fullBounds.getWidth(), fullBounds.getHeight());
+    const auto diameter = side - juce::jlimit(4.0f, 10.0f, side * 0.14f);
     const auto bounds = juce::Rectangle<float>(diameter, diameter).withCentre(fullBounds.getCentre());
 
     const auto radius = juce::jmin(bounds.getWidth(), bounds.getHeight()) * 0.5f;

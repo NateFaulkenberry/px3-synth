@@ -120,7 +120,7 @@ inline void declareVibeRows(FxCardComponent& card,
                       { "intensity", "INTENSITY", "Depth of the Uni-Vibe effect (0 = off)" } });
 
     card.addHeadingRow("ANALOG DRIFT", "Per-voice analog imperfection");
-    card.addChoiceRow({ { "type", "CHARACTER", "Which kind of instability each voice gets", driftTypeChoices } });
+    card.addChoiceRow({ { "type", "STYLE", "Which kind of instability each voice gets", driftTypeChoices } });
     card.addKnobRow({ { "amount", "DRIFT", "How much each voice wanders: pitch, cutoff, saturation and noise" } });
 }
 

@@ -2884,6 +2884,7 @@ int main(int argc, char* argv[])
     if (wants("analog")) testAnalogEngine();
     if (wants("editor")) testEditorLifecycle();
     if (wants("editorlayout")) testEditorLayout();
+    if (wants("visual")) testVisualRedesign();
     if (wants("integration")) testIntegration();
 
     std::printf("\n------------------------------------------------------------\n");
