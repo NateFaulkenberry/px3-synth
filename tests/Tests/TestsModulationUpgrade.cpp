@@ -784,6 +784,45 @@ void testModulationUpgrade()
     suite("MODULATION UPGRADE");
 
     {
+        // MIDI clock: with no host timing, an external clock drives tempo and
+        // transport; when its ticks stop, timing is released again.
+        PX3SynthAudioProcessor processor;
+        processor.setPlayConfigDetails(0, 2, 48000.0, 512);
+        processor.prepareToPlay(48000.0, 512);
+        setParam(processor, "mod.lfo1.clock.mode", 1.0f);   // TEMPO
+        juce::AudioBuffer<float> buffer(2, 512);
+        const auto tickInterval = 60.0 * 48000.0 / (140.0 * 24.0);
+        double nextTick = 0.0;
+        for (int block = 0; block < 200; ++block)
+        {
+            juce::MidiBuffer midi;
+            if (block == 0) midi.addEvent(juce::MidiMessage::midiStart(), 0);
+            const auto blockStart = static_cast<double>(block) * 512.0;
+            while (nextTick < blockStart + 512.0)
+            {
+                midi.addEvent(juce::MidiMessage::midiClock(), static_cast<int>(nextTick - blockStart));
+                nextTick += tickInterval;
+            }
+            buffer.clear();
+            processor.processBlock(buffer, midi);
+        }
+        const auto following = processor.isFollowingMidiClock();
+        const auto bpm = processor.getMidiClockBpm();
+        const auto lfoClocked = processor.isLfoClockAvailable(0);
+        for (int block = 0; block < 100; ++block)
+        {
+            juce::MidiBuffer none;
+            buffer.clear();
+            processor.processBlock(buffer, none);
+        }
+        check("LfoClock_FollowsAnExternalMidiClockWithoutAHost",
+              following && std::abs(bpm - 140.0) < 1.0 && lfoClocked && ! processor.isFollowingMidiClock(),
+              "following " + juce::String(following ? "yes" : "no") + " at " + juce::String(bpm, 2)
+                  + " BPM (sent 140); LFO clock available " + juce::String(lfoClocked ? "yes" : "no")
+                  + "; released after ticks stop " + juce::String(processor.isFollowingMidiClock() ? "no" : "yes"));
+    }
+
+    {
         // Envelopes are per voice: a note's filter follows ITS envelope, not an
         // average over the chord. B starts while A's two-second attack is half
         // way up; B's own envelope is near zero, so B must sound the same as
