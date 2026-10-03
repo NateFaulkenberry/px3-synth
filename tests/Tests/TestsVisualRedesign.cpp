@@ -1,4 +1,5 @@
 #include "TestSupport.h"
+#include "BypassButton.h"
 #include "BreakpointEnvelopeEditor.h"
 
 #include "../../shared/UI/Style/Theme.h"
@@ -66,6 +67,44 @@ std::unique_ptr<juce::AudioProcessorEditor> makeEditor(PX3SynthAudioProcessor& p
 void testVisualRedesign()
 {
     suite("VISUAL REDESIGN");
+
+    {
+        // Every power button is the same: one size, and on the VOICE header row
+        // the same height on the page. They are card chrome placed by the card,
+        // never by a second authority.
+        PX3SynthAudioProcessor processor;
+        std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
+        editor->setSize(1518, 918);
+        std::vector<juce::Rectangle<int>> buttons;
+        std::function<void(juce::Component&)> collect = [&](juce::Component& c)
+        {
+            for (auto* child : c.getChildren())
+            {
+                if (auto* b = dynamic_cast<px3::ui::BypassButton*>(child))
+                {
+                    auto visible = true;
+                    for (auto* p = static_cast<juce::Component*>(b); p != nullptr && p != editor.get() && visible; p = p->getParentComponent())
+                        visible = p->isVisible();
+                    if (visible && ! b->getBounds().isEmpty()) buttons.push_back(editor->getLocalArea(b, b->getLocalBounds()));
+                }
+                collect(*child);
+            }
+        };
+        collect(*editor);
+        auto sameSize = ! buttons.empty();
+        int topRowY = 1 << 30;
+        for (const auto& r : buttons) topRowY = juce::jmin(topRowY, r.getY());
+        int inTopRow = 0, misaligned = 0;
+        for (const auto& r : buttons)
+        {
+            sameSize = sameSize && r.getWidth() == buttons.front().getWidth() && r.getHeight() == buttons.front().getHeight();
+            if (r.getY() - topRowY < 10) { ++inTopRow; if (r.getY() != topRowY) ++misaligned; }
+        }
+        check("PowerButtons_AreUniformAcrossCards", sameSize && inTopRow >= 6 && misaligned == 0,
+              juce::String(static_cast<int>(buttons.size())) + " visible power buttons, size "
+                  + juce::String(buttons.empty() ? 0 : buttons.front().getWidth()) + " px; " + juce::String(inTopRow)
+                  + " on the header row, " + juce::String(misaligned) + " out of line");
+    }
 
     {
         // The AMP envelope's note playhead animates on VOICE: the 30 Hz refresh

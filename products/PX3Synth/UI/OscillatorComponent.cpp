@@ -200,6 +200,10 @@ void OscillatorComponent::resized()
     // cannot drift apart.
     wavetableGraph.setAccentColour(card.style().border.colour);
 
+    // The power button is card chrome: the card places it the same way on
+    // every card, scene-managed or not, so all power buttons match.
+    enabledButton.setBounds(card.powerBounds());
+
     if (sceneManaged)
     {
         px3::ui::requestSceneLayout(*this);
