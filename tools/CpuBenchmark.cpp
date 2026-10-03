@@ -210,14 +210,14 @@ void configure(PX3SynthAudioProcessor& processor, const Scenario& scenario)
     for (int envIndex = 0; envIndex < 3; ++envIndex)
     {
         const auto slot = juce::String(envIndex + 1);
-        setParameter(processor, "env" + slot + "Enabled", scenario.modEnvelopes ? 1.0f : 0.0f);
+        setParameter(processor, juce::String("mod.env") + slot + ".enabled", scenario.modEnvelopes ? 1.0f : 0.0f);
         setParameter(processor,
-                     envIndex == 0 ? juce::String("envAmount") : "env" + slot + "Amount",
+                     envIndex == 0 ? juce::String("mod.env1.amount") : juce::String("mod.env") + slot + ".amount",
                      scenario.modEnvelopes ? 0.7f : 0.0f);
-        setParameter(processor, "env" + slot + "Attack", 0.02f + 0.05f * static_cast<float>(envIndex));
-        setParameter(processor, "env" + slot + "Decay", 0.25f);
-        setParameter(processor, "env" + slot + "Sustain", 0.5f);
-        setParameter(processor, "env" + slot + "Release", 0.8f);
+        setParameter(processor, juce::String("mod.env") + slot + ".attack", 0.02f + 0.05f * static_cast<float>(envIndex));
+        setParameter(processor, juce::String("mod.env") + slot + ".decay", 0.25f);
+        setParameter(processor, juce::String("mod.env") + slot + ".sustain", 0.5f);
+        setParameter(processor, juce::String("mod.env") + slot + ".release", 0.8f);
     }
     if (scenario.modEnvelopes)
     {
@@ -229,12 +229,12 @@ void configure(PX3SynthAudioProcessor& processor, const Scenario& scenario)
     for (int lfoIndex = 0; lfoIndex < 3; ++lfoIndex)
     {
         const auto slot = juce::String(lfoIndex + 1);
-        const auto prefix = lfoIndex == 0 ? juce::String("lfo") : "lfo" + slot;
-        setParameter(processor, lfoIndex == 0 ? juce::String("lfoEnabled") : prefix + "Enabled",
+        const auto prefix = juce::String("mod.lfo") + slot + ".";
+        setParameter(processor, lfoIndex == 0 ? juce::String("mod.lfo1.enabled") : prefix + "enabled",
                      scenario.lfos ? 1.0f : 0.0f);
-        setParameter(processor, lfoIndex == 0 ? juce::String("lfoAmount") : prefix + "Amount",
+        setParameter(processor, lfoIndex == 0 ? juce::String("mod.lfo1.amount") : prefix + "amount",
                      scenario.lfos ? 0.6f : 0.0f);
-        setParameter(processor, lfoIndex == 0 ? juce::String("lfoFrequency") : prefix + "Frequency",
+        setParameter(processor, lfoIndex == 0 ? juce::String("mod.lfo1.frequency") : prefix + "frequency",
                      2.0f + static_cast<float>(lfoIndex));
     }
     if (scenario.lfos)

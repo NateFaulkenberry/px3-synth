@@ -51,17 +51,10 @@ std::vector<ParameterCatalog::GroupSegment> ParameterCatalog::groupPathForId(con
     {
         return path("modulation", "MODULATION", "routes", "ROUTES");
     }
-    if (key.startsWith("env"))
+    if (key.startsWith("mod.env") || key.startsWith("mod.lfo"))
     {
-        const auto slot = key.startsWith("env3") ? juce::String("3")
-                          : key.startsWith("env2") ? juce::String("2") : juce::String("1");
-        return path("modulation", "MODULATION", "env" + slot, "ENV " + slot);
-    }
-    if (key.startsWith("lfo"))
-    {
-        const auto slot = key.startsWith("lfo3") ? juce::String("3")
-                          : key.startsWith("lfo2") ? juce::String("2") : juce::String("1");
-        return path("modulation", "MODULATION", "lfo" + slot, "LFO " + slot);
+        const auto module = key.substring(4).upToFirstOccurrenceOf(".", false, false);
+        return path("modulation", "MODULATION", module, module.substring(0, 3).toUpperCase() + " " + module.substring(3));
     }
     if (key.startsWith("macro"))
     {

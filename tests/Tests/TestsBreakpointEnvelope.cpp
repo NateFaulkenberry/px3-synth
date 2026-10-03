@@ -477,7 +477,7 @@ void testBreakpointEnvelope()
         processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
         processor.prepareToPlay(kSampleRate, kBlockSize);
 
-        setParam(processor, "env1Attack", 0.180f);
+        setParam(processor, "mod.env1.attack", 0.180f);
         {
             auto bent = processor.getShapedEnvelope(1);
             bent.setCurve(0, 0.62);
@@ -1644,10 +1644,10 @@ void testBreakpointEnvelope()
         processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
         processor.prepareToPlay(kSampleRate, kBlockSize);
 
-        setParam(processor, "env1Attack", 0.100f);
-        setParam(processor, "env1Decay", 0.200f);
-        setParam(processor, "env1Sustain", 0.50f);
-        setParam(processor, "env1Release", 0.300f);
+        setParam(processor, "mod.env1.attack", 0.100f);
+        setParam(processor, "mod.env1.decay", 0.200f);
+        setParam(processor, "mod.env1.sustain", 0.50f);
+        setParam(processor, "mod.env1.release", 0.300f);
 
         std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
         if (editor != nullptr)
@@ -1785,10 +1785,10 @@ void testBreakpointEnvelope()
         processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
         processor.prepareToPlay(kSampleRate, kBlockSize);
 
-        setParam(processor, "env1Attack", 0.120f);
-        setParam(processor, "env1Decay", 0.240f);
-        setParam(processor, "env1Sustain", 0.55f);
-        setParam(processor, "env1Release", 0.360f);
+        setParam(processor, "mod.env1.attack", 0.120f);
+        setParam(processor, "mod.env1.decay", 0.240f);
+        setParam(processor, "mod.env1.sustain", 0.55f);
+        setParam(processor, "mod.env1.release", 0.360f);
 
         std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
         if (editor != nullptr)
@@ -1876,9 +1876,9 @@ void testBreakpointEnvelope()
         // silently.
         for (int slot = 1; slot < 4; ++slot)
         {
-            const juce::String prefix = "env" + juce::String(slot);
-            const auto attackId = slot == 0 ? juce::String("voice.amp.attack") : prefix + "Attack";
-            const auto sustainId = slot == 0 ? juce::String("voice.amp.sustain") : prefix + "Sustain";
+            const juce::String prefix = juce::String("mod.env") + juce::String(slot) + ".";
+            const auto attackId = slot == 0 ? juce::String("voice.amp.attack") : prefix + "attack";
+            const auto sustainId = slot == 0 ? juce::String("voice.amp.sustain") : prefix + "sustain";
 
             const auto attackWanted = 0.080f + 0.020f * static_cast<float>(slot);
             const auto sustainWanted = 0.30f + 0.10f * static_cast<float>(slot);
@@ -2466,8 +2466,8 @@ void testBreakpointEnvelope()
         processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
         processor.prepareToPlay(kSampleRate, kBlockSize);
 
-        setParam(processor, "env1Attack", 0.150f);
-        setParam(processor, "env1Sustain", 0.45f);
+        setParam(processor, "mod.env1.attack", 0.150f);
+        setParam(processor, "mod.env1.sustain", 0.45f);
 
         processor.setEnvelopeMode(1, px3::BreakpointEnvelope::Mode::breakpoint);
         {
@@ -2635,8 +2635,8 @@ void testBreakpointEnvelope()
         processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
         processor.prepareToPlay(kSampleRate, kBlockSize);
 
-        setParam(processor, "env1Attack", 0.250f);
-        setParam(processor, "env1Sustain", 0.35f);
+        setParam(processor, "mod.env1.attack", 0.250f);
+        setParam(processor, "mod.env1.sustain", 0.35f);
         {
             auto bent = processor.getShapedEnvelope(1);
             bent.setCurve(0, 0.55);
@@ -2690,10 +2690,10 @@ void testBreakpointEnvelope()
         processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
         processor.prepareToPlay(kSampleRate, kBlockSize);
 
-        setParam(processor, "env1Attack", 0.120f);
-        setParam(processor, "env1Decay", 0.400f);
-        setParam(processor, "env1Sustain", 0.60f);
-        setParam(processor, "env1Release", 0.800f);
+        setParam(processor, "mod.env1.attack", 0.120f);
+        setParam(processor, "mod.env1.decay", 0.400f);
+        setParam(processor, "mod.env1.sustain", 0.60f);
+        setParam(processor, "mod.env1.release", 0.800f);
 
         const auto adsrBefore = processor.envelopeParameterSettings(0);
 
@@ -3244,12 +3244,12 @@ void testBreakpointEnvelope()
 
         for (int env = 1; env <= 3; ++env)
         {
-            const auto prefix = "env" + juce::String(env);
+            const auto prefix = juce::String("mod.env") + juce::String(env) + ".";
             const auto base = 0.200f * static_cast<float>(env);
-            setParam(processor, prefix + "Attack", base + 0.001f);
-            setParam(processor, prefix + "Decay", base + 0.003f);
-            setParam(processor, prefix + "Sustain", 0.10f * static_cast<float>(env));
-            setParam(processor, prefix + "Release", base + 0.005f);
+            setParam(processor, prefix + "attack", base + 0.001f);
+            setParam(processor, prefix + "decay", base + 0.003f);
+            setParam(processor, prefix + "sustain", 0.10f * static_cast<float>(env));
+            setParam(processor, prefix + "release", base + 0.005f);
         }
 
         const auto readBack = [](PX3SynthAudioProcessor& p)
@@ -3320,10 +3320,10 @@ void testBreakpointEnvelope()
         processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
         processor.prepareToPlay(kSampleRate, kBlockSize);
 
-        setParam(processor, "env1Attack", 0.310f);
-        setParam(processor, "env1Decay", 0.130f);
-        setParam(processor, "env1Sustain", 0.44f);
-        setParam(processor, "env1Release", 0.550f);
+        setParam(processor, "mod.env1.attack", 0.310f);
+        setParam(processor, "mod.env1.decay", 0.130f);
+        setParam(processor, "mod.env1.sustain", 0.44f);
+        setParam(processor, "mod.env1.release", 0.550f);
 
         const auto fromProcessor = processor.currentModEnvelope(0);
 
@@ -3344,7 +3344,7 @@ void testBreakpointEnvelope()
 
         // And the graph moves the way section 27 requires: sustain changes the
         // plateau's height and not its place in time.
-        setParam(processor, "env1Sustain", 0.80f);
+        setParam(processor, "mod.env1.sustain", 0.80f);
         const auto higher = processor.currentModEnvelope(0);
         const auto sustainIndex = higher.getSustainPoint();
         check("Envelopes_MoreSustainRaisesThePlateauWithoutMovingIt",
@@ -3610,9 +3610,9 @@ void testBreakpointEnvelope()
         const float decays[3] = { 0.100f, 0.200f, 0.400f };
         for (int env = 0; env < 3; ++env)
         {
-            const auto name = juce::String("env") + juce::String(env + 1);
-            setParam(processor, name + "Attack", attacks[static_cast<std::size_t>(env)]);
-            setParam(processor, name + "Decay", decays[static_cast<std::size_t>(env)]);
+            const auto name = juce::String("mod.env") + juce::String(env + 1) + ".";
+            setParam(processor, name + "attack", attacks[static_cast<std::size_t>(env)]);
+            setParam(processor, name + "decay", decays[static_cast<std::size_t>(env)]);
         }
 
         processor.setPlayConfigDetails(0, 2, kRate, kBlock);

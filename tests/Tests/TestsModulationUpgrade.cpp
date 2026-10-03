@@ -68,13 +68,11 @@ void testEnvelopeTimesUpgrade()
         juce::StringArray tooShort;
         auto shortest = 1.0e9f;
 
-        for (const auto* prefix : { "voice.amp.", "env1", "env2", "env3" })
+        for (const auto* prefix : { "voice.amp.", "mod.env1.", "mod.env2.", "mod.env3." })
         {
             for (const auto* stage : { "Attack", "Decay", "Release" })
             {
-                const auto id = juce::String(prefix) + (juce::String(prefix).startsWith("voice.")
-                                                           ? juce::String(stage).toLowerCase()
-                                                           : juce::String(stage));
+            const auto id = juce::String(prefix) + juce::String(stage).toLowerCase();
                 auto* parameter = findParameter(processor, id);
                 if (parameter == nullptr)
                 {
@@ -115,10 +113,10 @@ void testEnvelopeTimesUpgrade()
         expect("voice.amp.release", 0.500f);
         for (const auto* slot : { "1", "2", "3" })
         {
-            expect(juce::String("env") + slot + "Attack", 0.250f);
-            expect(juce::String("env") + slot + "Decay", 0.600f);
-            expect(juce::String("env") + slot + "Sustain", 0.7f);
-            expect(juce::String("env") + slot + "Release", 1.000f);
+            expect(juce::String("mod.env") + slot + ".attack", 0.250f);
+            expect(juce::String("mod.env") + slot + ".decay", 0.600f);
+            expect(juce::String("mod.env") + slot + ".sustain", 0.7f);
+            expect(juce::String("mod.env") + slot + ".release", 1.000f);
         }
 
         check("EnvUpgrade_DefaultsAreTheDocumentedValues", wrong.isEmpty(),
@@ -214,10 +212,10 @@ void testStateUpgrade()
     {
         PX3SynthAudioProcessor source;
         setParam(source, "voice.amp.release", 25.0f);
-        setParam(source, "env1Attack", 12.5f);
-        setChoice(source, "lfoWaveform", 5);
-        setParam(source, "lfoRampTime", 45.0f);
-        setParam(source, "lfoKeySync", 1.0f);
+        setParam(source, "mod.env1.attack", 12.5f);
+        setChoice(source, "mod.lfo1.waveform", 5);
+        setParam(source, "mod.lfo1.ramp.time", 45.0f);
+        setParam(source, "mod.lfo1.key.sync", 1.0f);
         setParam(source, "voice.osc2.tuning.cents", -7.0f);
         setChoice(source, "voice.filters.routing.mode", 1);
         setParam(source, "voice.filters.routing.balance", 0.27f);
@@ -228,18 +226,18 @@ void testStateUpgrade()
         target.setStateInformation(block.getData(), static_cast<int>(block.getSize()));
 
         const auto ok = std::abs(getParamValue(target, "voice.amp.release") - 25.0f) < 0.01f
-                     && std::abs(getParamValue(target, "env1Attack") - 12.5f) < 0.01f
-                     && upgradeChoiceIndex(target, "lfoWaveform") == 5
-                     && std::abs(getParamValue(target, "lfoRampTime") - 45.0f) < 0.01f
-                     && getParamValue(target, "lfoKeySync") > 0.5f
+                     && std::abs(getParamValue(target, "mod.env1.attack") - 12.5f) < 0.01f
+                     && upgradeChoiceIndex(target, "mod.lfo1.waveform") == 5
+                     && std::abs(getParamValue(target, "mod.lfo1.ramp.time") - 45.0f) < 0.01f
+                     && getParamValue(target, "mod.lfo1.key.sync") > 0.5f
                      && std::abs(getParamValue(target, "voice.osc2.tuning.cents") + 7.0f) < 0.01f
                      && upgradeChoiceIndex(target, "voice.filters.routing.mode") == 1
                      && std::abs(getParamValue(target, "voice.filters.routing.balance") - 0.27f) < 0.002f;
 
         check("StateUpgrade_NewValuesSurviveARoundTripUnmigrated", ok,
               "release " + fmt(getParamValue(target, "voice.amp.release"), 3) + " s, ramp "
-                  + fmt(getParamValue(target, "lfoRampTime"), 2) + " s, waveform "
-                  + juce::String(upgradeChoiceIndex(target, "lfoWaveform")) + ", routing "
+                  + fmt(getParamValue(target, "mod.lfo1.ramp.time"), 2) + " s, waveform "
+                  + juce::String(upgradeChoiceIndex(target, "mod.lfo1.waveform")) + ", routing "
                   + juce::String(upgradeChoiceIndex(target, "voice.filters.routing.mode")) + ", balance "
                   + fmt(getParamValue(target, "voice.filters.routing.balance"), 3));
     }
@@ -367,7 +365,7 @@ void testRampsAndKeySyncUpgrade()
     {
         PX3SynthAudioProcessor processor;
         auto ceilingOk = px3::lfoMaxRampSeconds >= 30.0f;
-        for (const auto* id : { "lfoRampTime", "lfo2RampTime", "lfo3RampTime" })
+        for (const auto* id : { "mod.lfo1.ramp.time", "mod.lfo2.ramp.time", "mod.lfo3.ramp.time" })
         {
             auto* parameter = findParameter(processor, id);
             ceilingOk = ceilingOk && parameter != nullptr && parameter->getNormalisableRange().end >= 30.0f;
@@ -434,12 +432,12 @@ void testRampsAndKeySyncUpgrade()
     const auto makeLfoPatch = [](PX3SynthAudioProcessor& processor, int waveform, bool keySync)
     {
         makePlainPatch(processor);
-        setParam(processor, "lfoEnabled", 1.0f);
-        setParam(processor, "lfoFrequency", 0.5f);
-        setParam(processor, "lfoAmount", 1.0f);
-        setChoice(processor, "lfoWaveform", waveform);
-        setParam(processor, "lfoRampTime", 1.0f);
-        setParam(processor, "lfoKeySync", keySync ? 1.0f : 0.0f);
+        setParam(processor, "mod.lfo1.enabled", 1.0f);
+        setParam(processor, "mod.lfo1.frequency", 0.5f);
+        setParam(processor, "mod.lfo1.amount", 1.0f);
+        setChoice(processor, "mod.lfo1.waveform", waveform);
+        setParam(processor, "mod.lfo1.ramp.time", 1.0f);
+        setParam(processor, "mod.lfo1.key.sync", keySync ? 1.0f : 0.0f);
         processor.setLfoAssignmentByParameterId(0, "voice.filter1.cutoff", false);
         findParameter(processor, "voice.filter1.cutoff")->setValueNotifyingHost(0.5f);
         prepareUpgrade(processor);
@@ -547,10 +545,10 @@ void testModulationRuleUpgrade()
     {
         PX3SynthAudioProcessor processor;
         makePlainPatch(processor);
-        setParam(processor, "lfoEnabled", 1.0f);
-        setParam(processor, "lfoFrequency", 0.01f);   // stays in the square's high half throughout
-        setParam(processor, "lfoAmount", 1.0f);
-        setChoice(processor, "lfoWaveform", 3);
+        setParam(processor, "mod.lfo1.enabled", 1.0f);
+        setParam(processor, "mod.lfo1.frequency", 0.01f);   // stays in the square's high half throughout
+        setParam(processor, "mod.lfo1.amount", 1.0f);
+        setChoice(processor, "mod.lfo1.waveform", 3);
         prepareUpgrade(processor);
 
         juce::StringArray attenuated, unreported;
@@ -594,10 +592,10 @@ void testModulationRuleUpgrade()
         makePlainPatch(processor);
         auto* cutoff = findParameter(processor, "voice.filter1.cutoff");
         cutoff->setValueNotifyingHost(cutoff->getDefaultValue());
-        setParam(processor, "lfoEnabled", 1.0f);
-        setParam(processor, "lfoFrequency", 2.0f);
-        setParam(processor, "lfoAmount", 1.0f);
-        setChoice(processor, "lfoWaveform", 0);
+        setParam(processor, "mod.lfo1.enabled", 1.0f);
+        setParam(processor, "mod.lfo1.frequency", 2.0f);
+        setParam(processor, "mod.lfo1.amount", 1.0f);
+        setChoice(processor, "mod.lfo1.waveform", 0);
         processor.setLfoAssignmentByParameterId(0, "voice.filter1.cutoff", false);
         prepareUpgrade(processor);
 
@@ -621,10 +619,10 @@ void testModulationRuleUpgrade()
         {
             PX3SynthAudioProcessor processor;
             makePlainPatch(processor);
-            setParam(processor, "lfoEnabled", 1.0f);
-            setParam(processor, "lfoFrequency", 0.01f);
-            setParam(processor, "lfoAmount", amount);
-            setChoice(processor, "lfoWaveform", 3);
+            setParam(processor, "mod.lfo1.enabled", 1.0f);
+            setParam(processor, "mod.lfo1.frequency", 0.01f);
+            setParam(processor, "mod.lfo1.amount", amount);
+            setChoice(processor, "mod.lfo1.waveform", 3);
             processor.setLfoAssignmentByParameterId(0, "voice.osc1.pitch.mod", false);
             prepareUpgrade(processor);
             runUpgradeBlocks(processor, 2);

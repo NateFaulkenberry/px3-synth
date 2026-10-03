@@ -189,10 +189,10 @@ void testOscillatorTuning()
         // square LFO at 50%: the two cancel exactly.
         const auto cancelled = measureCents(source, -1.0f, 0.0f, [source](PX3SynthAudioProcessor& processor)
         {
-            setParam(processor, "lfoEnabled", 1.0f);
-            setParam(processor, "lfoFrequency", 0.01f);
-            setParam(processor, "lfoAmount", 0.5f);
-            setChoice(processor, "lfoWaveform", 3);
+            setParam(processor, "mod.lfo1.enabled", 1.0f);
+            setParam(processor, "mod.lfo1.frequency", 0.01f);
+            setParam(processor, "mod.lfo1.amount", 0.5f);
+            setChoice(processor, "mod.lfo1.waveform", 3);
             processor.setLfoAssignmentByParameterId(0,
                                                     source == Source::osc ? "voice.osc1.pitch.mod"
                                                                           : "voice.sub.pitch.mod",

@@ -338,32 +338,32 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     for (int envIndex = 0; envIndex < kEnvelopeSourceCount; ++envIndex)
     {
         const auto slot = juce::String(envIndex + 1);
-        const auto idPrefix = juce::String("env") + slot;
+        const auto idPrefix = juce::String("mod.env") + slot + ".";
         const auto labelPrefix = juce::String("Env ") + slot + " ";
 
         attackParams[static_cast<std::size_t>(envIndex)] = parameterCatalog.createFloat(
-            idPrefix + "Attack",
+            idPrefix + "attack",
             labelPrefix + "Attack",
             envelopeTimeRange,
             // Slower than the amp's: a modulation envelope is usually a sweep.
             0.250f);
         decayParams[static_cast<std::size_t>(envIndex)] = parameterCatalog.createFloat(
-            idPrefix + "Decay",
+            idPrefix + "decay",
             labelPrefix + "Decay",
             envelopeTimeRange,
             0.600f);
         sustainParams[static_cast<std::size_t>(envIndex)] = parameterCatalog.createFloat(
-            idPrefix + "Sustain",
+            idPrefix + "sustain",
             labelPrefix + "Sustain",
             juce::NormalisableRange<float>(0.0f, 1.0f),
             0.7f);
         releaseParams[static_cast<std::size_t>(envIndex)] = parameterCatalog.createFloat(
-            idPrefix + "Release",
+            idPrefix + "release",
             labelPrefix + "Release",
             envelopeTimeRange,
             1.000f);
         envelopeEnabledParams[static_cast<std::size_t>(envIndex)] = parameterCatalog.createBool(
-            idPrefix + "Enabled",
+            idPrefix + "enabled",
             labelPrefix + "Enabled",
             true);
     }
@@ -682,36 +682,36 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     for (int lfoIndex = 0; lfoIndex < kLfoSourceCount; ++lfoIndex)
     {
         const auto slot = juce::String(lfoIndex + 1);
-        const auto idPrefix = (lfoIndex == 0) ? juce::String("lfo") : juce::String("lfo") + slot;
+        const auto idPrefix = juce::String("mod.lfo") + slot + ".";
         const auto labelPrefix = juce::String("LFO ") + slot + " ";
 
         lfoEnabledParams[static_cast<std::size_t>(lfoIndex)] = parameterCatalog.createBool(
-            (lfoIndex == 0) ? juce::String("lfoEnabled") : idPrefix + "Enabled",
+            idPrefix + "enabled",
             labelPrefix + "Enabled",
             true);
         lfoFrequencyParams[static_cast<std::size_t>(lfoIndex)] = parameterCatalog.createFloat(
-            (lfoIndex == 0) ? juce::String("lfoFrequency") : idPrefix + "Frequency",
+            idPrefix + "frequency",
             labelPrefix + "Frequency",
             juce::NormalisableRange<float>(0.01f, 20.0f, 0.0001f, 0.30f),
             1.0f + static_cast<float>(lfoIndex));
         lfoAmountParams[static_cast<std::size_t>(lfoIndex)] = parameterCatalog.createFloat(
-            (lfoIndex == 0) ? juce::String("lfoAmount") : idPrefix + "Amount",
+            idPrefix + "amount",
             labelPrefix + "Amount",
             juce::NormalisableRange<float>(-1.0f, 1.0f),
             0.0f);
         lfoWaveformParams[static_cast<std::size_t>(lfoIndex)] = parameterCatalog.createChoice(
-            (lfoIndex == 0) ? juce::String("lfoWaveform") : idPrefix + "Waveform",
+            idPrefix + "waveform",
             labelPrefix + "Waveform",
             px3::lfoWaveformChoices(),
             0);
         // Only RAMP UP and RAMP DOWN read it. Skewed so noon is about 4 s.
         lfoRampTimeParams[static_cast<std::size_t>(lfoIndex)] = parameterCatalog.createFloat(
-            juce::ParameterID(idPrefix + "RampTime", 1),
+            juce::ParameterID(idPrefix + "ramp.time", 1),
             labelPrefix + "Ramp Time",
             juce::NormalisableRange<float>(px3::lfoMinRampSeconds, px3::lfoMaxRampSeconds, 0.001f, 0.25f),
             4.0f);
         lfoKeySyncParams[static_cast<std::size_t>(lfoIndex)] = parameterCatalog.createBool(
-            juce::ParameterID(idPrefix + "KeySync", 1),
+            juce::ParameterID(idPrefix + "key.sync", 1),
             labelPrefix + "Key Sync",
             false);
     }
@@ -719,10 +719,10 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     for (int envIndex = 0; envIndex < kEnvelopeSourceCount; ++envIndex)
     {
         const auto slot = juce::String(envIndex + 1);
-        const auto idPrefix = juce::String("env") + slot;
+        const auto idPrefix = juce::String("mod.env") + slot + ".";
         const auto labelPrefix = juce::String("ENV ") + slot + " ";
         envelopeAmountParams[static_cast<std::size_t>(envIndex)] = parameterCatalog.createFloat(
-            (envIndex == 0) ? juce::String("envAmount") : idPrefix + "Amount",
+            idPrefix + "amount",
             labelPrefix + "Amount",
             juce::NormalisableRange<float>(-1.0f, 1.0f),
             0.0f);

@@ -562,11 +562,11 @@ inline void makePlainPatch(PX3SynthAudioProcessor& processor)
     for (int i = 0; i < 3; ++i)
     {
         const auto slot = juce::String(i + 1);
-        setParam(processor, "env" + slot + "Enabled", 0.0f);
-        setParam(processor, i == 0 ? juce::String("envAmount") : "env" + slot + "Amount", 0.0f);
-        const auto lfoPrefix = i == 0 ? juce::String("lfo") : "lfo" + slot;
-        setParam(processor, i == 0 ? juce::String("lfoEnabled") : lfoPrefix + "Enabled", 0.0f);
-        setParam(processor, i == 0 ? juce::String("lfoAmount") : lfoPrefix + "Amount", 0.0f);
+        setParam(processor, juce::String("mod.env") + slot + ".enabled", 0.0f);
+        setParam(processor, i == 0 ? juce::String("mod.env1.amount") : juce::String("mod.env") + slot + ".amount", 0.0f);
+        const auto lfoPrefix = juce::String("mod.lfo") + slot + ".";
+        setParam(processor, i == 0 ? juce::String("mod.lfo1.enabled") : lfoPrefix + "enabled", 0.0f);
+        setParam(processor, i == 0 ? juce::String("mod.lfo1.amount") : lfoPrefix + "amount", 0.0f);
         processor.setLfoAssignmentIndex(i, 0, false);
         processor.setEnvelopeAssignmentIndex(i, 0, false);
     }

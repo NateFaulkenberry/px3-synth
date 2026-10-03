@@ -1104,37 +1104,8 @@ void PX3SynthAudioProcessor::buildLfoAssignableTargets()
     {
         // Exclude controls that define modulation behavior itself, rather than
         // being destinations of modulation.
-                return id.startsWith("mod.routes.") || id.equalsIgnoreCase("lfoFrequency")
-                         || id.equalsIgnoreCase("lfoAmount")
-                         || id.equalsIgnoreCase("lfoEnabled")
-                             || id.equalsIgnoreCase("lfoWaveform")
-                             || id.equalsIgnoreCase("lfoRampTime")
-                             || id.containsIgnoreCase("lfo2")
-                             || id.containsIgnoreCase("lfo3")
-                             || id.equalsIgnoreCase("envAmount")
-                             || id.equalsIgnoreCase("env2Amount")
-                             || id.equalsIgnoreCase("env3Amount")
-                             || id.equalsIgnoreCase("voice.amp.attack")
-                             || id.equalsIgnoreCase("voice.amp.decay")
-                             || id.equalsIgnoreCase("voice.amp.sustain")
-                             || id.equalsIgnoreCase("voice.amp.release")
-                             || id.equalsIgnoreCase("voice.amp.enabled")
-                             || id.containsIgnoreCase("env1Attack")
-                             || id.containsIgnoreCase("env1Decay")
-                             || id.containsIgnoreCase("env1Sustain")
-                             || id.containsIgnoreCase("env1Release")
-                             || id.containsIgnoreCase("env1Enabled")
-                             || id.containsIgnoreCase("env2Attack")
-                             || id.containsIgnoreCase("env2Decay")
-                             || id.containsIgnoreCase("env2Sustain")
-                             || id.containsIgnoreCase("env2Release")
-                             || id.containsIgnoreCase("env2Enabled")
-                             || id.containsIgnoreCase("env3Attack")
-                             || id.containsIgnoreCase("env3Decay")
-                             || id.containsIgnoreCase("env3Sustain")
-                             || id.containsIgnoreCase("env3Release")
-                             || id.containsIgnoreCase("env3Enabled")
-               || id.equalsIgnoreCase("pitchBendRange");
+        return id.startsWith("mod.routes.") || id.startsWith("mod.lfo") || id.startsWith("mod.env")
+            || id.startsWith("voice.amp.") || id.equalsIgnoreCase("pitchBendRange");
     };
 
     for (auto* parameter : getParameters())
@@ -1423,7 +1394,7 @@ juce::String PX3SynthAudioProcessor::graphSourceId(int source)
 {
     if (juce::isPositiveAndBelow(source, kLfoSourceCount)) { return "mod.lfo" + juce::String(source + 1); }
     source -= kLfoSourceCount;
-    if (juce::isPositiveAndBelow(source, kEnvelopeSourceCount)) { return "mod.env" + juce::String(source + 1); }
+    if (juce::isPositiveAndBelow(source, kEnvelopeSourceCount)) { return juce::String("mod.env") + juce::String(source + 1); }
     source -= kEnvelopeSourceCount;
     return juce::isPositiveAndBelow(source, kMacroCount) ? "mod.macro" + juce::String(source + 1) : juce::String();
 }

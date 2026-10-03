@@ -160,6 +160,13 @@ void testEcosystem()
                   && catalog.find("ampAttack") == nullptr && catalog.find("ampEnvEnabled") == nullptr
                   && catalog.find("filter1Cutoff") == nullptr && catalog.find("filterRouting") == nullptr);
 
+        const auto* lfoSource = catalog.find("mod.lfo1.frequency");
+        const auto* envSource = catalog.find("mod.env3.amount");
+        check("ParameterCatalog_ModulationSourcesUseUniformCanonicalIds",
+              lfoSource != nullptr && lfoSource->groupPath == "MODULATION / LFO 1"
+                  && envSource != nullptr && envSource->groupPath == "MODULATION / ENV 3"
+                  && catalog.find("lfoFrequency") == nullptr && catalog.find("envAmount") == nullptr);
+
         const auto* chorus = catalog.find("fx.chorus.rate");
         const auto* granular = catalog.find("fx.delay.granular.mode");
         check("ParameterCatalog_EffectsUseCanonicalModuleIdsWithoutAliases",
@@ -208,12 +215,12 @@ void testEcosystem()
               stateError);
 
         PX3SynthAudioProcessor source;
-        setParam(source, "env1Attack", 12.5f);
+        setParam(source, "mod.env1.attack", 12.5f);
         const auto stateTree = source.createParameterStateTree();
         PX3SynthAudioProcessor treeRestored;
         const auto treeApplied = treeRestored.applyParameterStateTree(stateTree, &stateError);
         check("ParameterCatalog_GroupedStateAppliesWithoutXmlRoundTrip",
-              treeApplied && std::abs(getParamValue(treeRestored, "env1Attack") - 12.5f) < 0.01f,
+              treeApplied && std::abs(getParamValue(treeRestored, "mod.env1.attack") - 12.5f) < 0.01f,
               stateError);
 
         juce::MemoryBlock stateBytes;
@@ -225,12 +232,12 @@ void testEcosystem()
         juce::String xmlError;
         const auto xmlApplied = parsedState.isValid() && xmlRestored.applyParameterStateTree(parsedState, &xmlError);
         check("ParameterCatalog_GroupedStateSurvivesXmlParseAndDirectApply",
-              xmlApplied && std::abs(getParamValue(xmlRestored, "env1Attack") - 12.5f) < 0.01f,
+              xmlApplied && std::abs(getParamValue(xmlRestored, "mod.env1.attack") - 12.5f) < 0.01f,
               parsedState.getType().toString() + (xmlError.isEmpty() ? juce::String() : ": " + xmlError));
         PX3SynthAudioProcessor binaryRestored;
         binaryRestored.setStateInformation(stateBytes.getData(), static_cast<int>(stateBytes.getSize()));
         check("ParameterCatalog_GroupedStateSurvivesHostBinaryRoundTrip",
-              std::abs(getParamValue(binaryRestored, "env1Attack") - 12.5f) < 0.01f);
+              std::abs(getParamValue(binaryRestored, "mod.env1.attack") - 12.5f) < 0.01f);
     }
 
     // ---- one source of truth for the version --------------------------------

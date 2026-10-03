@@ -346,12 +346,12 @@ void testModEnvelopes()
             setChoice(processor, "voice.filter1.type", 0);   // LP12
             setParam(processor, "voice.filter1.cutoff", 900.0f);
             setParam(processor, "voice.filter1.resonance", 0.7f);
-            setParam(processor, "env1Enabled", 1.0f);
-            setParam(processor, "env1Attack", 0.005f);
-            setParam(processor, "env1Decay", 0.005f);
-            setParam(processor, "env1Sustain", 1.0f);
-            setParam(processor, "env1Release", 0.100f);
-            setParam(processor, "envAmount", amount);
+            setParam(processor, "mod.env1.enabled", 1.0f);
+            setParam(processor, "mod.env1.attack", 0.005f);
+            setParam(processor, "mod.env1.decay", 0.005f);
+            setParam(processor, "mod.env1.sustain", 1.0f);
+            setParam(processor, "mod.env1.release", 0.100f);
+            setParam(processor, "mod.env1.amount", amount);
             processor.setEnvelopeAssignmentByParameterId(0, "voice.filter1.cutoff", false);
             return render(processor, 48000, { { 2000, true, 45, 0.9f } });
         };
@@ -387,11 +387,11 @@ void testModEnvelopes()
             PX3SynthAudioProcessor processor;
             makePlainPatch(processor);
             setParam(processor, "mix.osc1.level", 0.5f);
-            setParam(processor, "env2Enabled", enabled ? 1.0f : 0.0f);
-            setParam(processor, "env2Attack", 0.005f);
-            setParam(processor, "env2Decay", 0.005f);
-            setParam(processor, "env2Sustain", 1.0f);
-            setParam(processor, "env2Amount", amount);
+            setParam(processor, "mod.env2.enabled", enabled ? 1.0f : 0.0f);
+            setParam(processor, "mod.env2.attack", 0.005f);
+            setParam(processor, "mod.env2.decay", 0.005f);
+            setParam(processor, "mod.env2.sustain", 1.0f);
+            setParam(processor, "mod.env2.amount", amount);
             processor.setEnvelopeAssignmentByParameterId(1, "osc1Level", false);
             return render(processor, 40000, { { 2000, true, 57, 0.9f } }).rmsOver(20000, 38000);
         };
@@ -417,11 +417,11 @@ void testModEnvelopes()
             setParam(processor, "voice.osc1.enabled", 0.0f);
             setParam(processor, "voice.sub.enabled", 1.0f);
             setParam(processor, "mix.sub.level", 0.5f);
-            setParam(processor, "env2Enabled", 1.0f);
-            setParam(processor, "env2Attack", 0.005f);
-            setParam(processor, "env2Decay", 0.005f);
-            setParam(processor, "env2Sustain", 1.0f);
-            setParam(processor, "env2Amount", amount);
+            setParam(processor, "mod.env2.enabled", 1.0f);
+            setParam(processor, "mod.env2.attack", 0.005f);
+            setParam(processor, "mod.env2.decay", 0.005f);
+            setParam(processor, "mod.env2.sustain", 1.0f);
+            setParam(processor, "mod.env2.amount", amount);
             const auto assigned = processor.setEnvelopeAssignmentByParameterId(1, "subOscLevel", false);
             juce::ignoreUnused(assigned);
             return render(processor, 40000, { { 2000, true, 57, 0.9f } }).rmsOver(20000, 38000);
@@ -466,9 +466,9 @@ void testModEnvelopes()
             setChoice(processor, "voice.osc1.mode", 1);
             setParam(processor, "voice.filter1.enabled", 1.0f);
             setParam(processor, "voice.filter1.cutoff", 900.0f);
-            setParam(processor, "env1Enabled", 1.0f);
-            setParam(processor, "env1Sustain", 1.0f);
-            setParam(processor, "envAmount", 0.8f);
+            setParam(processor, "mod.env1.enabled", 1.0f);
+            setParam(processor, "mod.env1.sustain", 1.0f);
+            setParam(processor, "mod.env1.amount", 0.8f);
             processor.setEnvelopeAssignmentByParameterId(0, "voice.filter1.cutoff", false);
             tweak(processor);
             return render(processor, 40000, { { 2000, true, 45, 0.9f } });
@@ -478,12 +478,12 @@ void testModEnvelopes()
         const auto controlB = renderEnv1ToCutoff([](PX3SynthAudioProcessor&) {});
         const auto withEnv2And3Changed = renderEnv1ToCutoff([](PX3SynthAudioProcessor& p)
         {
-            setParam(p, "env2Enabled", 1.0f);
-            setParam(p, "env2Attack", 2.0f);
-            setParam(p, "env2Sustain", 0.1f);
-            setParam(p, "env3Enabled", 1.0f);
-            setParam(p, "env3Release", 4.0f);
-            setParam(p, "env3Decay", 3.0f);
+            setParam(p, "mod.env2.enabled", 1.0f);
+            setParam(p, "mod.env2.attack", 2.0f);
+            setParam(p, "mod.env2.sustain", 0.1f);
+            setParam(p, "mod.env3.enabled", 1.0f);
+            setParam(p, "mod.env3.release", 4.0f);
+            setParam(p, "mod.env3.decay", 3.0f);
         });
         const auto selfVariation = std::abs(controlA.rms() - controlB.rms());
         const auto delta = std::abs(controlA.rms() - withEnv2And3Changed.rms());
@@ -510,9 +510,9 @@ void testModEnvelopes()
             PX3SynthAudioProcessor processor;
             makePlainPatch(processor);
             setParam(processor, "mix.osc1.level", 0.5f);
-            setParam(processor, "env3Enabled", enabled ? 1.0f : 0.0f);
-            setParam(processor, "env3Sustain", 1.0f);
-            setParam(processor, "env3Amount", 1.0f);
+            setParam(processor, "mod.env3.enabled", enabled ? 1.0f : 0.0f);
+            setParam(processor, "mod.env3.sustain", 1.0f);
+            setParam(processor, "mod.env3.amount", 1.0f);
             processor.setEnvelopeAssignmentByParameterId(2, "osc1Level", false);
             return render(processor, 40000, { { 2000, true, 57, 0.9f } }).rmsOver(20000, 38000);
         };
@@ -651,9 +651,9 @@ void testLfo()
             setChoice(processor, "voice.osc1.mode", 1);
             setParam(processor, "voice.filter1.enabled", 1.0f);
             setParam(processor, "voice.filter1.cutoff", 1200.0f);
-            setParam(processor, "lfoEnabled", lfoEnabled ? 1.0f : 0.0f);
-            setParam(processor, "lfoFrequency", 6.0f);
-            setParam(processor, "lfoAmount", amount);
+            setParam(processor, "mod.lfo1.enabled", lfoEnabled ? 1.0f : 0.0f);
+            setParam(processor, "mod.lfo1.frequency", 6.0f);
+            setParam(processor, "mod.lfo1.amount", amount);
             if (assigned)
             {
                 processor.setLfoAssignmentByParameterId(0, "voice.filter1.cutoff", false);
@@ -707,13 +707,13 @@ void testLfo()
             setChoice(processor, "voice.osc1.mode", 1);
             setParam(processor, "voice.filter1.enabled", 1.0f);
             setParam(processor, "voice.filter1.cutoff", 1200.0f);
-            setParam(processor, "lfoEnabled", 1.0f);
-            setParam(processor, "lfoFrequency", 6.0f);
-            setParam(processor, "lfoAmount", 1.0f);
+            setParam(processor, "mod.lfo1.enabled", 1.0f);
+            setParam(processor, "mod.lfo1.frequency", 6.0f);
+            setParam(processor, "mod.lfo1.amount", 1.0f);
             processor.setLfoAssignmentByParameterId(0, "voice.filter1.cutoff", false);
-            setParam(processor, "lfo2Enabled", 1.0f);
-            setParam(processor, "lfo2Frequency", 3.0f);
-            setParam(processor, "lfo2Amount", lfo2Amount);
+            setParam(processor, "mod.lfo2.enabled", 1.0f);
+            setParam(processor, "mod.lfo2.frequency", 3.0f);
+            setParam(processor, "mod.lfo2.amount", lfo2Amount);
             processor.setLfoAssignmentByParameterId(1, "mix.osc1.pan", false);
             return render(processor, 48000, { { 2000, true, 45, 0.9f } });
         };
@@ -746,9 +746,9 @@ void testLfo()
         makePlainPatch(processor);
         for (int i = 1; i <= 3; ++i) setParam(processor, "voice.osc" + juce::String(i) + ".enabled", 0.0f);
         setParam(processor, "voice.sub.enabled", 0.0f);
-        setParam(processor, "lfoEnabled", 1.0f);
-        setParam(processor, "lfoAmount", 1.0f);
-        setParam(processor, "lfoFrequency", 8.0f);
+        setParam(processor, "mod.lfo1.enabled", 1.0f);
+        setParam(processor, "mod.lfo1.amount", 1.0f);
+        setParam(processor, "mod.lfo1.frequency", 8.0f);
         processor.setLfoAssignmentByParameterId(0, "mix.osc1.level", false);
         const auto capture = render(processor, 32000, { { 2000, true, 57, 0.9f } });
         check("Lfo_IsNotAnAudioSource", capture.peak() < 1.0e-6,

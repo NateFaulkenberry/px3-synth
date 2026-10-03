@@ -410,7 +410,7 @@ void ModPanel::configureOwnedEnvBundle(int envIndex, EnvBundle& bundle)
                                                            &bundle.amountLabel,
                                                            &bundle.amountValueLabel,
                                                            accent,
-                                                           "mod.env" + juce::String(envIndex + 1));
+                                                           juce::String("mod.env") + juce::String(envIndex + 1));
 
     // ENV 1/2/3 occupy slots 1..3. AMP ENV is slot 0 and is reached by a
     // different component entirely, which is what keeps the two systems from

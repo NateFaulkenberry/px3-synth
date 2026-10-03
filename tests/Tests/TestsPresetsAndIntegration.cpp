@@ -70,9 +70,9 @@ void applyUnusualConfiguration(PX3SynthAudioProcessor& processor)
     setParam(processor, "mix.dry.phase", 1.0f);
 
     // 0.7.5's controls: ramp times, key sync, pitch mod and filter routing.
-    setParam(processor, "lfoRampTime", 17.3f);
-    setParam(processor, "lfo3RampTime", 52.0f);
-    setParam(processor, "lfo2KeySync", 1.0f);
+    setParam(processor, "mod.lfo1.ramp.time", 17.3f);
+    setParam(processor, "mod.lfo3.ramp.time", 52.0f);
+    setParam(processor, "mod.lfo2.key.sync", 1.0f);
     setChoice(processor, "voice.filters.routing.mode", 1);
     setParam(processor, "voice.filters.routing.balance", 0.27f);
 
@@ -83,12 +83,12 @@ void applyUnusualConfiguration(PX3SynthAudioProcessor& processor)
     for (int envIndex = 0; envIndex < 3; ++envIndex)
     {
         const auto slot = juce::String(envIndex + 1);
-        setParam(processor, "env" + slot + "Enabled", 1.0f);
-        setParam(processor, "env" + slot + "Attack", 0.11f + 0.23f * static_cast<float>(envIndex));
-        setParam(processor, "env" + slot + "Decay", 0.37f + 0.19f * static_cast<float>(envIndex));
-        setParam(processor, "env" + slot + "Sustain", 0.29f + 0.17f * static_cast<float>(envIndex));
-        setParam(processor, "env" + slot + "Release", 1.13f + 0.41f * static_cast<float>(envIndex));
-        setParam(processor, envIndex == 0 ? juce::String("envAmount") : "env" + slot + "Amount",
+        setParam(processor, juce::String("mod.env") + slot + ".enabled", 1.0f);
+        setParam(processor, juce::String("mod.env") + slot + ".attack", 0.11f + 0.23f * static_cast<float>(envIndex));
+        setParam(processor, juce::String("mod.env") + slot + ".decay", 0.37f + 0.19f * static_cast<float>(envIndex));
+        setParam(processor, juce::String("mod.env") + slot + ".sustain", 0.29f + 0.17f * static_cast<float>(envIndex));
+        setParam(processor, juce::String("mod.env") + slot + ".release", 1.13f + 0.41f * static_cast<float>(envIndex));
+        setParam(processor, envIndex == 0 ? juce::String("mod.env1.amount") : juce::String("mod.env") + slot + ".amount",
                  -0.63f + 0.44f * static_cast<float>(envIndex));
     }
     processor.setEnvelopeAssignmentByParameterId(0, "voice.filter1.cutoff", false);
@@ -98,13 +98,13 @@ void applyUnusualConfiguration(PX3SynthAudioProcessor& processor)
     for (int lfoIndex = 0; lfoIndex < 3; ++lfoIndex)
     {
         const auto slot = juce::String(lfoIndex + 1);
-        const auto prefix = lfoIndex == 0 ? juce::String("lfo") : "lfo" + slot;
-        setParam(processor, lfoIndex == 0 ? juce::String("lfoEnabled") : prefix + "Enabled", 1.0f);
-        setParam(processor, lfoIndex == 0 ? juce::String("lfoFrequency") : prefix + "Frequency",
+        const auto prefix = juce::String("mod.lfo") + slot + ".";
+        setParam(processor, lfoIndex == 0 ? juce::String("mod.lfo1.enabled") : prefix + "enabled", 1.0f);
+        setParam(processor, lfoIndex == 0 ? juce::String("mod.lfo1.frequency") : prefix + "frequency",
                  0.73f + 3.19f * static_cast<float>(lfoIndex));
-        setParam(processor, lfoIndex == 0 ? juce::String("lfoAmount") : prefix + "Amount",
+        setParam(processor, lfoIndex == 0 ? juce::String("mod.lfo1.amount") : prefix + "amount",
                  -0.81f + 0.57f * static_cast<float>(lfoIndex));
-        setChoice(processor, lfoIndex == 0 ? juce::String("lfoWaveform") : prefix + "Waveform",
+        setChoice(processor, lfoIndex == 0 ? juce::String("mod.lfo1.waveform") : prefix + "waveform",
                   (lfoIndex + 2) % 4);
     }
     processor.setLfoAssignmentByParameterId(0, "voice.filter2.cutoff", false);
@@ -971,12 +971,12 @@ void testIntegration()
                   for (int i = 0; i < 3; ++i)
                   {
                       const auto slot = juce::String(i + 1);
-                      setParam(p, "env" + slot + "Enabled", 1.0f);
-                      setParam(p, i == 0 ? juce::String("envAmount") : "env" + slot + "Amount", 1.0f);
-                      const auto prefix = i == 0 ? juce::String("lfo") : "lfo" + slot;
-                      setParam(p, i == 0 ? juce::String("lfoEnabled") : prefix + "Enabled", 1.0f);
-                      setParam(p, i == 0 ? juce::String("lfoAmount") : prefix + "Amount", 1.0f);
-                      setParam(p, i == 0 ? juce::String("lfoFrequency") : prefix + "Frequency", 20.0f);
+                      setParam(p, juce::String("mod.env") + slot + ".enabled", 1.0f);
+                      setParam(p, i == 0 ? juce::String("mod.env1.amount") : juce::String("mod.env") + slot + ".amount", 1.0f);
+                      const auto prefix = juce::String("mod.lfo") + slot + ".";
+                      setParam(p, i == 0 ? juce::String("mod.lfo1.enabled") : prefix + "enabled", 1.0f);
+                      setParam(p, i == 0 ? juce::String("mod.lfo1.amount") : prefix + "amount", 1.0f);
+                      setParam(p, i == 0 ? juce::String("mod.lfo1.frequency") : prefix + "frequency", 20.0f);
                   }
                   p.setLfoAssignmentByParameterId(0, "voice.filter1.cutoff", false);
                   p.setLfoAssignmentByParameterId(1, "voice.osc1.tuning.cents", false);

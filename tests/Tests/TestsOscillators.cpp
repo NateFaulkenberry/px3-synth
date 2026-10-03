@@ -662,9 +662,9 @@ void testWavetable()
         setChoice(processor, "voice.osc1.wavetable.table", 0);
         setParam(processor, "voice.osc1.wavetable.position", 0.5f);
         setParam(processor, "analogEnabled", 0.0f);
-        setParam(processor, "lfoEnabled", 1.0f);
-        setParam(processor, "lfoFrequency", 9.0f);
-        setParam(processor, "lfoAmount", 1.0f);
+        setParam(processor, "mod.lfo1.enabled", 1.0f);
+        setParam(processor, "mod.lfo1.frequency", 9.0f);
+        setParam(processor, "mod.lfo1.amount", 1.0f);
         processor.setLfoAssignmentByParameterId("voice.osc1.wavetable.position");
 
         const auto capture = render(processor, static_cast<int>(kSampleRate * 3.0),
@@ -1403,10 +1403,10 @@ void testWavetable()
                 makePlainPatch(processor);
                 setChoice(processor, "voice.osc1.mode", 8);
                 setParam(processor, "voice.osc1.wavetable.position", base);
-                setParam(processor, "lfoEnabled", 1.0f);
-                setParam(processor, "lfoFrequency", 0.5f);
-                setParam(processor, "lfoAmount", amount);
-                setChoice(processor, "lfoWaveform", 0);
+                setParam(processor, "mod.lfo1.enabled", 1.0f);
+                setParam(processor, "mod.lfo1.frequency", 0.5f);
+                setParam(processor, "mod.lfo1.amount", amount);
+                setChoice(processor, "mod.lfo1.waveform", 0);
                 processor.setLfoAssignmentByParameterId("voice.osc1.wavetable.position");
 
                 processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
@@ -1526,10 +1526,10 @@ void testWavetable()
                     {
                         PX3SynthAudioProcessor processor;
                         makePlainPatch(processor);
-                        setParam(processor, "lfoEnabled", 1.0f);
-                        setParam(processor, "lfoFrequency", 4.0f);
-                        setParam(processor, "lfoAmount", amount);
-                        setChoice(processor, "lfoWaveform", waveform);
+                        setParam(processor, "mod.lfo1.enabled", 1.0f);
+                        setParam(processor, "mod.lfo1.frequency", 4.0f);
+                        setParam(processor, "mod.lfo1.amount", amount);
+                        setChoice(processor, "mod.lfo1.waveform", waveform);
 
                         if (! processor.setLfoAssignmentByParameterId(destination.parameterId))
                         {
@@ -1608,10 +1608,10 @@ void testWavetable()
     {
         PX3SynthAudioProcessor processor;
         makePlainPatch(processor);
-        setParam(processor, "lfoEnabled", 1.0f);
-        setParam(processor, "lfoFrequency", 6.0f);
-        setParam(processor, "lfoAmount", 1.0f);
-        setChoice(processor, "lfoWaveform", 0);
+        setParam(processor, "mod.lfo1.enabled", 1.0f);
+        setParam(processor, "mod.lfo1.frequency", 6.0f);
+        setParam(processor, "mod.lfo1.amount", 1.0f);
+        setChoice(processor, "mod.lfo1.waveform", 0);
         processor.setLfoAssignmentByParameterId("voice.filter1.cutoff");
 
         auto* cutoff = findParameter(processor, "voice.filter1.cutoff");
@@ -1693,10 +1693,10 @@ void testWavetable()
                 {
                     PX3SynthAudioProcessor processor;
                     makePlainPatch(processor);
-                    setParam(processor, "lfoEnabled", 1.0f);
-                    setParam(processor, "lfoFrequency", 0.5f);
-                    setParam(processor, "lfoAmount", 1.0f);
-                    setChoice(processor, "lfoWaveform", waveform);
+                    setParam(processor, "mod.lfo1.enabled", 1.0f);
+                    setParam(processor, "mod.lfo1.frequency", 0.5f);
+                    setParam(processor, "mod.lfo1.amount", 1.0f);
+                    setChoice(processor, "mod.lfo1.waveform", waveform);
 
                     if (! processor.setLfoAssignmentByParameterId(destination.parameterId))
                     {
@@ -1764,10 +1764,10 @@ void testWavetable()
     {
         PX3SynthAudioProcessor processor;
         makePlainPatch(processor);
-        setParam(processor, "lfoEnabled", 1.0f);
-        setParam(processor, "lfoFrequency", 3.0f);
-        setParam(processor, "lfoAmount", 1.0f);
-        setChoice(processor, "lfoWaveform", 0);
+        setParam(processor, "mod.lfo1.enabled", 1.0f);
+        setParam(processor, "mod.lfo1.frequency", 3.0f);
+        setParam(processor, "mod.lfo1.amount", 1.0f);
+        setChoice(processor, "mod.lfo1.waveform", 0);
         processor.setLfoAssignmentByParameterId("voice.osc1.wavetable.position");
 
         auto& positionParam = processor.getOscillatorWtPositionParam(0);
@@ -1811,10 +1811,10 @@ void testWavetable()
         setChoice(processor, "voice.osc1.mode", 8);
         setChoice(processor, "voice.osc1.wavetable.table", 0);
         setParam(processor, "voice.osc1.wavetable.position", 0.5f);
-        setParam(processor, "lfoEnabled", 1.0f);
-        setParam(processor, "lfoFrequency", 0.5f);
-        setParam(processor, "lfoAmount", 1.0f);
-        setChoice(processor, "lfoWaveform", 0);
+        setParam(processor, "mod.lfo1.enabled", 1.0f);
+        setParam(processor, "mod.lfo1.frequency", 0.5f);
+        setParam(processor, "mod.lfo1.amount", 1.0f);
+        setChoice(processor, "mod.lfo1.waveform", 0);
         setParam(processor, "analogEnabled", 0.0f);
         processor.setLfoAssignmentByParameterId("voice.osc1.wavetable.position");
 
@@ -1865,8 +1865,8 @@ void testWavetable()
               processor.getModulatedNormalisedValue(cutoff) < 0.0f,
               "an unmodulated cutoff returns -1, which the knob draws as no ring");
 
-        setParam(processor, "lfoEnabled", 1.0f);
-        setParam(processor, "lfoAmount", 0.8f);
+        setParam(processor, "mod.lfo1.enabled", 1.0f);
+        setParam(processor, "mod.lfo1.amount", 0.8f);
         processor.setLfoAssignmentByParameterId("voice.filter1.cutoff");
 
         const auto modulated = processor.getModulatedNormalisedValue(cutoff);
@@ -1881,7 +1881,7 @@ void testWavetable()
 
         // A source that is switched off is not modulating anything, whatever it
         // is pointed at.
-        setParam(processor, "lfoEnabled", 0.0f);
+        setParam(processor, "mod.lfo1.enabled", 0.0f);
         check("ModulationRing_ADisabledSourceDrawsNoRing",
               processor.getModulatedNormalisedValue(cutoff) < 0.0f,
               "turning the LFO off removes the ring rather than freezing it");

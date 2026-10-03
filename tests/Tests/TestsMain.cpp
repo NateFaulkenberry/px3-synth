@@ -899,9 +899,9 @@ int main(int argc, char* argv[])
             for (int i = 0; i < 3; ++i)
             {
                 const auto slot = juce::String(i + 1);
-                setParam(processor, "env" + slot + "Enabled", 0.0f);
-                const auto lfoPrefix = i == 0 ? juce::String("lfo") : "lfo" + slot;
-                setParam(processor, i == 0 ? juce::String("lfoEnabled") : lfoPrefix + "Enabled",
+                setParam(processor, juce::String("mod.env") + slot + ".enabled", 0.0f);
+                const auto lfoPrefix = juce::String("mod.lfo") + slot + ".";
+                setParam(processor, i == 0 ? juce::String("mod.lfo1.enabled") : lfoPrefix + "enabled",
                          0.0f);
             }
 

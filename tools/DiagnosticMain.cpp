@@ -359,13 +359,13 @@ void applyPatch(PX3SynthAudioProcessor& processor, const PatchOptions& patch)
     for (int envIndex = 0; envIndex < 3; ++envIndex)
     {
         const auto slot = juce::String(envIndex + 1);
-        setParameter(processor, "env" + slot + "Enabled", patch.modEnvelopes ? 1.0f : 0.0f);
-        setParameter(processor, envIndex == 0 ? juce::String("envAmount") : "env" + slot + "Amount",
+        setParameter(processor, juce::String("mod.env") + slot + ".enabled", patch.modEnvelopes ? 1.0f : 0.0f);
+        setParameter(processor, envIndex == 0 ? juce::String("mod.env1.amount") : juce::String("mod.env") + slot + ".amount",
                      patch.modEnvelopes ? 0.7f : 0.0f);
-        setParameter(processor, "env" + slot + "Attack", 0.02f + 0.05f * static_cast<float>(envIndex));
-        setParameter(processor, "env" + slot + "Decay", 0.25f);
-        setParameter(processor, "env" + slot + "Sustain", 0.5f);
-        setParameter(processor, "env" + slot + "Release", 0.8f);
+        setParameter(processor, juce::String("mod.env") + slot + ".attack", 0.02f + 0.05f * static_cast<float>(envIndex));
+        setParameter(processor, juce::String("mod.env") + slot + ".decay", 0.25f);
+        setParameter(processor, juce::String("mod.env") + slot + ".sustain", 0.5f);
+        setParameter(processor, juce::String("mod.env") + slot + ".release", 0.8f);
     }
     if (patch.modEnvelopes)
     {
@@ -377,12 +377,12 @@ void applyPatch(PX3SynthAudioProcessor& processor, const PatchOptions& patch)
     for (int lfoIndex = 0; lfoIndex < 3; ++lfoIndex)
     {
         const auto slot = juce::String(lfoIndex + 1);
-        const auto prefix = lfoIndex == 0 ? juce::String("lfo") : "lfo" + slot;
-        setParameter(processor, lfoIndex == 0 ? juce::String("lfoEnabled") : prefix + "Enabled",
+        const auto prefix = juce::String("mod.lfo") + slot + ".";
+        setParameter(processor, lfoIndex == 0 ? juce::String("mod.lfo1.enabled") : prefix + "enabled",
                      patch.lfoModulation ? 1.0f : 0.0f);
-        setParameter(processor, lfoIndex == 0 ? juce::String("lfoAmount") : prefix + "Amount",
+        setParameter(processor, lfoIndex == 0 ? juce::String("mod.lfo1.amount") : prefix + "amount",
                      patch.lfoModulation ? 0.6f : 0.0f);
-        setParameter(processor, lfoIndex == 0 ? juce::String("lfoFrequency") : prefix + "Frequency",
+        setParameter(processor, lfoIndex == 0 ? juce::String("mod.lfo1.frequency") : prefix + "frequency",
                      2.0f + static_cast<float>(lfoIndex));
     }
     if (patch.lfoModulation)
@@ -393,9 +393,9 @@ void applyPatch(PX3SynthAudioProcessor& processor, const PatchOptions& patch)
     if (patch.pitchModulation)
     {
         processor.setLfoAssignmentByParameterId(2, "osc1Pitch", false);
-        setParameter(processor, "lfo3Enabled", 1.0f);
-        setParameter(processor, "lfo3Amount", 0.8f);
-        setParameter(processor, "lfo3Frequency", 5.0f);
+        setParameter(processor, "mod.lfo3.enabled", 1.0f);
+        setParameter(processor, "mod.lfo3.amount", 0.8f);
+        setParameter(processor, "mod.lfo3.frequency", 5.0f);
     }
 }
 
@@ -689,29 +689,29 @@ double measureVoiceFilterPeak(const FilterSynthConfig& config)
     for (int i = 0; i < 3; ++i)
     {
         const auto slot = juce::String(i + 1);
-        setParameter(processor, "env" + slot + "Enabled", 0.0f);
-        setParameter(processor, i == 0 ? juce::String("envAmount") : "env" + slot + "Amount", 0.0f);
-        const auto lfoPrefix = i == 0 ? juce::String("lfo") : "lfo" + juce::String(i + 1);
-        setParameter(processor, i == 0 ? juce::String("lfoEnabled") : lfoPrefix + "Enabled", 0.0f);
-        setParameter(processor, i == 0 ? juce::String("lfoAmount") : lfoPrefix + "Amount", 0.0f);
+        setParameter(processor, juce::String("mod.env") + slot + ".enabled", 0.0f);
+        setParameter(processor, i == 0 ? juce::String("mod.env1.amount") : juce::String("mod.env") + slot + ".amount", 0.0f);
+        const auto lfoPrefix = juce::String("mod.lfo") + slot + ".";
+        setParameter(processor, i == 0 ? juce::String("mod.lfo1.enabled") : lfoPrefix + "enabled", 0.0f);
+        setParameter(processor, i == 0 ? juce::String("mod.lfo1.amount") : lfoPrefix + "amount", 0.0f);
     }
     if (config.modDestination.isNotEmpty() && config.modAmount != 0.0f)
     {
         if (config.useEnvelopeSource)
         {
-            setParameter(processor, "env1Enabled", 1.0f);
-            setParameter(processor, "env1Attack", 0.001f);
-            setParameter(processor, "env1Decay", 0.001f);
-            setParameter(processor, "env1Sustain", 1.0f);   // held flat at full
-            setParameter(processor, "env1Release", 0.100f);
-            setParameter(processor, "envAmount", config.modAmount);
+            setParameter(processor, "mod.env1.enabled", 1.0f);
+            setParameter(processor, "mod.env1.attack", 0.001f);
+            setParameter(processor, "mod.env1.decay", 0.001f);
+            setParameter(processor, "mod.env1.sustain", 1.0f);   // held flat at full
+            setParameter(processor, "mod.env1.release", 0.100f);
+            setParameter(processor, "mod.env1.amount", config.modAmount);
             processor.setEnvelopeAssignmentByParameterId(0, config.modDestination, false);
         }
         else
         {
-            setParameter(processor, "lfoEnabled", 1.0f);
-            setParameter(processor, "lfoFrequency", 0.01f);  // near-DC: effectively a constant offset
-            setParameter(processor, "lfoAmount", config.modAmount);
+            setParameter(processor, "mod.lfo1.enabled", 1.0f);
+            setParameter(processor, "mod.lfo1.frequency", 0.01f);  // near-DC: effectively a constant offset
+            setParameter(processor, "mod.lfo1.amount", config.modAmount);
             processor.setLfoAssignmentByParameterId(0, config.modDestination, false);
         }
     }
