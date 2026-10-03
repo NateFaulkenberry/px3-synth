@@ -595,9 +595,9 @@ void testWavetable()
         {
             PX3SynthAudioProcessor processor;
             makePlainPatch(processor);
-            setChoice(processor, "osc1Mode", 8);             // WAVETABLE
-            setChoice(processor, "osc1WtTable", tableIndex);
-            setParam(processor, "osc1WtPos", position);
+            setChoice(processor, "voice.osc1.mode", 8);             // WAVETABLE
+            setChoice(processor, "voice.osc1.wavetable.table", tableIndex);
+            setParam(processor, "voice.osc1.wavetable.position", position);
             setParam(processor, "analogEnabled", 0.0f);
             return render(processor, static_cast<int>(kSampleRate * 1.0),
                           { { 1000, true, 57, 0.9f } });
@@ -647,7 +647,7 @@ void testWavetable()
                               : found.joinIntoString(", "));
 
         check("Wavetable_PositionAcceptsAnLfoAssignment",
-              processor.setLfoAssignmentByParameterId("osc1WtPos"),
+              processor.setLfoAssignmentByParameterId("voice.osc1.wavetable.position"),
               "an LFO can be pointed at osc1WtPos");
     }
 
@@ -658,14 +658,14 @@ void testWavetable()
     {
         PX3SynthAudioProcessor processor;
         makePlainPatch(processor);
-        setChoice(processor, "osc1Mode", 8);
-        setChoice(processor, "osc1WtTable", 0);
-        setParam(processor, "osc1WtPos", 0.5f);
+        setChoice(processor, "voice.osc1.mode", 8);
+        setChoice(processor, "voice.osc1.wavetable.table", 0);
+        setParam(processor, "voice.osc1.wavetable.position", 0.5f);
         setParam(processor, "analogEnabled", 0.0f);
         setParam(processor, "lfoEnabled", 1.0f);
         setParam(processor, "lfoFrequency", 9.0f);
         setParam(processor, "lfoAmount", 1.0f);
-        processor.setLfoAssignmentByParameterId("osc1WtPos");
+        processor.setLfoAssignmentByParameterId("voice.osc1.wavetable.position");
 
         const auto capture = render(processor, static_cast<int>(kSampleRate * 3.0),
                                     { { 1000, true, 57, 0.9f } });
@@ -715,9 +715,9 @@ void testWavetable()
     {
         PX3SynthAudioProcessor source;
         makePlainPatch(source);
-        setChoice(source, "osc1Mode", 8);
-        setChoice(source, "osc1WtTable", 4);       // Bell Partials, not the default
-        setParam(source, "osc1WtPos", 0.82f);
+        setChoice(source, "voice.osc1.mode", 8);
+        setChoice(source, "voice.osc1.wavetable.table", 4);       // Bell Partials, not the default
+        setParam(source, "voice.osc1.wavetable.position", 0.82f);
 
         juce::MemoryBlock state;
         source.getStateInformation(state);
@@ -730,8 +730,8 @@ void testWavetable()
         restored.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
 
         check("Wavetable_SelectionSurvivesTheStateRoundTrip",
-              getParamValue(restored, "osc1WtTable") == getParamValue(source, "osc1WtTable")
-                  && std::abs(getParamValue(restored, "osc1WtPos") - 0.82f) < 1.0e-4f,
+              getParamValue(restored, "voice.osc1.wavetable.table") == getParamValue(source, "voice.osc1.wavetable.table")
+                  && std::abs(getParamValue(restored, "voice.osc1.wavetable.position") - 0.82f) < 1.0e-4f,
               "table index and position restored");
 
         check("Wavetable_RestoreLoadsTheTableItRestored",
@@ -1118,7 +1118,7 @@ void testWavetable()
     // in isolation once read 0.02 ms where the real figure was 27.6 ms.
     {
         PX3SynthAudioProcessor processor;
-        setChoice(processor, "osc1Mode", 8);   // WAVETABLE, or the graph is hidden
+        setChoice(processor, "voice.osc1.mode", 8);   // WAVETABLE, or the graph is hidden
         processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
         processor.prepareToPlay(kSampleRate, kBlockSize);
 
@@ -1235,12 +1235,12 @@ void testWavetable()
                     return count;
                 };
 
-                setChoice(processor, "osc1Mode", 0);   // SINE: coarse and fine only
+                setChoice(processor, "voice.osc1.mode", 0);   // SINE: coarse and fine only
                 card->refreshFromParameters(true, 0, 0);
                 const auto sineSliders = visibleSliders(*card);
                 const auto sineModeBounds = card->debugModeBoxBounds();
 
-                setChoice(processor, "osc1Mode", 8);   // WAVETABLE
+                setChoice(processor, "voice.osc1.mode", 8);   // WAVETABLE
                 card->refreshFromParameters(true, 8, 0);
                 const auto wavetableSliders = visibleSliders(*card);
 
@@ -1346,11 +1346,11 @@ void testWavetable()
                         return best;
                     };
 
-                    setChoice(processor, "osc1Mode", 8);
+                    setChoice(processor, "voice.osc1.mode", 8);
                     card->refreshFromParameters(true, 8, 0);
                     const auto inWavetable = borderPixel();
 
-                    setChoice(processor, "osc1Mode", 1);   // SAW
+                    setChoice(processor, "voice.osc1.mode", 1);   // SAW
                     card->refreshFromParameters(true, 1, 0);
                     const auto inSaw = borderPixel();
 
@@ -1368,7 +1368,7 @@ void testWavetable()
                               + juce::String(channelGap));
                 }
 
-                setChoice(processor, "osc1Mode", 1);   // SAW
+                setChoice(processor, "voice.osc1.mode", 1);   // SAW
                 card->refreshFromParameters(true, 1, 0);
                 check("WavetableCard_GraphAndScanKnobHideInOtherModes",
                       ! graph->isVisible() && visibleSliders(*card) == sineSliders,
@@ -1401,20 +1401,20 @@ void testWavetable()
             {
                 PX3SynthAudioProcessor processor;
                 makePlainPatch(processor);
-                setChoice(processor, "osc1Mode", 8);
-                setParam(processor, "osc1WtPos", base);
+                setChoice(processor, "voice.osc1.mode", 8);
+                setParam(processor, "voice.osc1.wavetable.position", base);
                 setParam(processor, "lfoEnabled", 1.0f);
                 setParam(processor, "lfoFrequency", 0.5f);
                 setParam(processor, "lfoAmount", amount);
                 setChoice(processor, "lfoWaveform", 0);
-                processor.setLfoAssignmentByParameterId("osc1WtPos");
+                processor.setLfoAssignmentByParameterId("voice.osc1.wavetable.position");
 
                 processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
                 processor.prepareToPlay(kSampleRate, kBlockSize);
 
                 std::vector<float> trail;
                 auto rawLow = 10.0f, rawHigh = -10.0f;
-                auto* position = findParameter(processor, "osc1WtPos");
+                auto* position = findParameter(processor, "voice.osc1.wavetable.position");
                 juce::AudioBuffer<float> buffer(2, kBlockSize);
                 juce::MidiBuffer midi;
                 midi.addEvent(juce::MidiMessage::noteOn(1, 60, 0.9f), 0);
@@ -1503,8 +1503,8 @@ void testWavetable()
 
         struct Destination { const char* parameterId; const char* label; };
         const Destination destinations[] = {
-            { "osc1WtPos", "wavetable scan" },
-            { "osc1MacroA", "osc macro" },
+            { "voice.osc1.wavetable.position", "wavetable scan" },
+            { "voice.osc1.macro.a", "osc macro" },
             { "voice.osc1.tuning.cents", "osc fine tune" },
             { "filter1Cutoff", "filter cutoff" },
             { "osc1Level", "osc level" },
@@ -1671,8 +1671,8 @@ void testWavetable()
     {
         struct Destination { const char* parameterId; const char* label; };
         const Destination destinations[] = {
-            { "osc1WtPos", "wavetable scan" },
-            { "osc1MacroA", "osc macro" },
+            { "voice.osc1.wavetable.position", "wavetable scan" },
+            { "voice.osc1.macro.a", "osc macro" },
             { "voice.osc1.tuning.cents", "osc fine tune" },
             { "filter1Cutoff", "filter cutoff" },
         };
@@ -1768,7 +1768,7 @@ void testWavetable()
         setParam(processor, "lfoFrequency", 3.0f);
         setParam(processor, "lfoAmount", 1.0f);
         setChoice(processor, "lfoWaveform", 0);
-        processor.setLfoAssignmentByParameterId("osc1WtPos");
+        processor.setLfoAssignmentByParameterId("voice.osc1.wavetable.position");
 
         auto& positionParam = processor.getOscillatorWtPositionParam(0);
         auto& asRanged = static_cast<juce::RangedAudioParameter&>(positionParam);
@@ -1808,15 +1808,15 @@ void testWavetable()
     {
         PX3SynthAudioProcessor processor;
         makePlainPatch(processor);
-        setChoice(processor, "osc1Mode", 8);
-        setChoice(processor, "osc1WtTable", 0);
-        setParam(processor, "osc1WtPos", 0.5f);
+        setChoice(processor, "voice.osc1.mode", 8);
+        setChoice(processor, "voice.osc1.wavetable.table", 0);
+        setParam(processor, "voice.osc1.wavetable.position", 0.5f);
         setParam(processor, "lfoEnabled", 1.0f);
         setParam(processor, "lfoFrequency", 0.5f);
         setParam(processor, "lfoAmount", 1.0f);
         setChoice(processor, "lfoWaveform", 0);
         setParam(processor, "analogEnabled", 0.0f);
-        processor.setLfoAssignmentByParameterId("osc1WtPos");
+        processor.setLfoAssignmentByParameterId("voice.osc1.wavetable.position");
 
         const auto capture = render(processor, static_cast<int>(kSampleRate * 4.0),
                                     { { 1000, true, 45, 0.9f } });
@@ -2459,10 +2459,10 @@ void testSubOscillator()
     {
         PX3SynthAudioProcessor processor;
         makePlainPatch(processor);
-        setParam(processor, "osc1Enabled", 0.0f);
-        setParam(processor, "subOscEnabled", 1.0f);
+        setParam(processor, "voice.osc1.enabled", 0.0f);
+        setParam(processor, "voice.sub.enabled", 1.0f);
             setParam(processor, "voice.sub.tuning.octave", 0.0f);
-        setChoice(processor, "subOscWaveform", 0);
+        setChoice(processor, "voice.sub.waveform", 0);
         const auto capture = render(processor, 48000, { { 2000, true, 69, 0.9f } });
         // MIDI 69 is A440; the 0 OCT setting must reproduce it.
         const auto hz = estimateFrequency(capture.left, 12000, 24000, 200.0, 900.0);
@@ -2475,8 +2475,8 @@ void testSubOscillator()
     {
         PX3SynthAudioProcessor processor;
         makePlainPatch(processor);
-        setParam(processor, "osc1Enabled", 0.0f);
-        setParam(processor, "subOscEnabled", 0.0f);
+        setParam(processor, "voice.osc1.enabled", 0.0f);
+        setParam(processor, "voice.sub.enabled", 0.0f);
         const auto capture = render(processor, 24000, { { 2000, true, 69, 0.9f } });
         check("SubOscillator_DisabledInSignalPath_IsSilent", capture.peak() < 1.0e-6,
               "peak " + fmt(capture.peak(), 9));
@@ -2507,7 +2507,7 @@ void testOscillators()
             makePlainPatch(processor);
             for (const auto* other : { "1", "2", "3" })
             {
-                setParam(processor, juce::String("osc") + other + "Enabled",
+                setParam(processor, "voice.osc" + juce::String(other) + ".enabled",
                          juce::String(other) == slot ? 1.0f : 0.0f);
             }
             setParam(processor, "voice.osc" + slot + ".tuning.octave", coarse.octaves);
@@ -2530,7 +2530,7 @@ void testOscillators()
         makePlainPatch(processor);
         for (const auto* other : { "1", "2", "3" })
         {
-            setParam(processor, juce::String("osc") + other + "Enabled", 0.0f);
+            setParam(processor, "voice.osc" + juce::String(other) + ".enabled", 0.0f);
         }
         const auto silent = render(processor, 24000, { { 2000, true, 69, 0.9f } });
         check((juce::String("Osc") + slot + "_AllDisabledProducesSilence").toRawUTF8(),
@@ -2540,7 +2540,7 @@ void testOscillators()
         makePlainPatch(enabled);
         for (const auto* other : { "1", "2", "3" })
         {
-            setParam(enabled, juce::String("osc") + other + "Enabled",
+            setParam(enabled, "voice.osc" + juce::String(other) + ".enabled",
                      juce::String(other) == slot ? 1.0f : 0.0f);
         }
         const auto sounding = render(enabled, 24000, { { 2000, true, 69, 0.9f } });
@@ -2556,7 +2556,7 @@ void testOscillators()
         {
             PX3SynthAudioProcessor processor;
             makePlainPatch(processor);
-            setChoice(processor, "osc1Mode", mode);
+            setChoice(processor, "voice.osc1.mode", mode);
             const auto capture = render(processor, 24000, { { 2000, true, 57, 0.9f } });
             rmsByMode.push_back(capture.rms());
             juce::uint64 hash = 14695981039346656037ull;
@@ -2596,9 +2596,9 @@ void testOscillators()
             makePlainPatch(processor);
             for (int i = 1; i <= 3; ++i)
             {
-                setParam(processor, "osc" + juce::String(i) + "Enabled", i == soloIndex ? 1.0f : 0.0f);
+                setParam(processor, "voice.osc" + juce::String(i) + ".enabled", i == soloIndex ? 1.0f : 0.0f);
             }
-            setParam(processor, "subOscEnabled", 0.0f);
+            setParam(processor, "voice.sub.enabled", 0.0f);
             tweak(processor);
             return render(processor, 32000, { { 2000, true, 60, 0.9f } });
         };
@@ -2629,14 +2629,14 @@ void testOscillators()
         independenceCheck("Osc1_UnaffectedByOsc2ParameterChanges", 1, [](PX3SynthAudioProcessor& p)
         {
             setParam(p, "voice.osc2.tuning.octave", 1.0f);
-            setChoice(p, "osc2Mode", 6);
+            setChoice(p, "voice.osc2.mode", 6);
             setParam(p, "voice.osc2.tuning.cents", 20.0f);
         });
         independenceCheck("Osc2_UnaffectedByOsc1AndOsc3ParameterChanges", 2, [](PX3SynthAudioProcessor& p)
         {
             setParam(p, "voice.osc1.tuning.octave", -1.0f);
             setParam(p, "voice.osc3.tuning.cents", 20.0f);
-            setChoice(p, "osc1Mode", 1);
+            setChoice(p, "voice.osc1.mode", 1);
         });
         independenceCheck("Osc3_UnaffectedBySubOscillatorParameterChanges", 3, [](PX3SynthAudioProcessor& p)
         {
@@ -2654,10 +2654,10 @@ void testOscillators()
         for (auto* p : { &one, &two, &three }) makePlainPatch(*p);
         for (auto* p : { &two, &three })
         {
-            setParam(*p, "osc2Enabled", 1.0f);
+            setParam(*p, "voice.osc2.enabled", 1.0f);
             setParam(*p, "voice.osc2.tuning.octave", 1.0f);
         }
-        setParam(three, "osc3Enabled", 1.0f);
+        setParam(three, "voice.osc3.enabled", 1.0f);
         setParam(three, "voice.osc3.tuning.octave", 2.0f);
 
         const auto r1 = render(one, 32000, { { 2000, true, 57, 0.9f } }).rms();
@@ -2743,10 +2743,10 @@ void testOscillators()
         auto renderDefaultPatch = [](bool faderAtMaximum)
         {
             PX3SynthAudioProcessor processor;
-            setParam(processor, "osc1Enabled", 1.0f);
-            setParam(processor, "osc2Enabled", 0.0f);
-            setParam(processor, "osc3Enabled", 0.0f);
-            setParam(processor, "subOscEnabled", 0.0f);
+            setParam(processor, "voice.osc1.enabled", 1.0f);
+            setParam(processor, "voice.osc2.enabled", 0.0f);
+            setParam(processor, "voice.osc3.enabled", 0.0f);
+            setParam(processor, "voice.sub.enabled", 0.0f);
             setParam(processor, "vibeEnabled", 0.0f);
             setParam(processor, "reverbEnabled", 0.0f);
             setParam(processor, "delayEnabled", 0.0f);
@@ -2757,7 +2757,7 @@ void testOscillators()
             // structure, measured with every colour stage out of the way.
             setParam(processor, "analogEnabled", 0.0f);
             setParam(processor, "ampSustain", 1.0f);
-            setChoice(processor, "osc1Mode", 0);
+            setChoice(processor, "voice.osc1.mode", 0);
             if (faderAtMaximum)
             {
                 if (auto* lv = findParameter(processor, "mix.osc1.level")) lv->setValueNotifyingHost(1.0f);
@@ -2773,10 +2773,10 @@ void testOscillators()
         const auto renderDry = [](std::function<void(PX3SynthAudioProcessor&)> configure)
         {
             PX3SynthAudioProcessor processor;
-            setParam(processor, "osc1Enabled", 1.0f);
-            setParam(processor, "osc2Enabled", 0.0f);
-            setParam(processor, "osc3Enabled", 0.0f);
-            setParam(processor, "subOscEnabled", 0.0f);
+            setParam(processor, "voice.osc1.enabled", 1.0f);
+            setParam(processor, "voice.osc2.enabled", 0.0f);
+            setParam(processor, "voice.osc3.enabled", 0.0f);
+            setParam(processor, "voice.sub.enabled", 0.0f);
             setParam(processor, "vibeEnabled", 0.0f);
             setParam(processor, "reverbEnabled", 0.0f);
             setParam(processor, "delayEnabled", 0.0f);
@@ -2784,7 +2784,7 @@ void testOscillators()
             setParam(processor, "filter1Enabled", 0.0f);
             setParam(processor, "filter2Enabled", 0.0f);
             setParam(processor, "ampSustain", 1.0f);
-            setChoice(processor, "osc1Mode", 0);
+            setChoice(processor, "voice.osc1.mode", 0);
             configure(processor);
             return render(processor, 48000, { { 2000, true, 57, 0.9f } }).rmsOver(24000, 46000);
         };
@@ -2812,12 +2812,12 @@ void testOscillators()
         const auto renderWithWet = [](bool invertDry)
         {
             PX3SynthAudioProcessor processor;
-            setParam(processor, "osc1Enabled", 1.0f);
-            setParam(processor, "osc2Enabled", 0.0f);
-            setParam(processor, "osc3Enabled", 0.0f);
-            setParam(processor, "subOscEnabled", 0.0f);
+            setParam(processor, "voice.osc1.enabled", 1.0f);
+            setParam(processor, "voice.osc2.enabled", 0.0f);
+            setParam(processor, "voice.osc3.enabled", 0.0f);
+            setParam(processor, "voice.sub.enabled", 0.0f);
             setParam(processor, "ampSustain", 1.0f);
-            setChoice(processor, "osc1Mode", 0);
+            setChoice(processor, "voice.osc1.mode", 0);
             setParam(processor, "filter1Enabled", 0.0f);
             setParam(processor, "filter2Enabled", 0.0f);
             setParam(processor, "vibeEnabled", 0.0f);

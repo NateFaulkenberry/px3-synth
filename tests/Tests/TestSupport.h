@@ -539,13 +539,13 @@ inline void makePlainPatch(PX3SynthAudioProcessor& processor)
     // so rather than relying on a default.
     setParam(processor, "analogEnabled", 0.0f);
 
-    setParam(processor, "osc1Enabled", 1.0f);
-    setParam(processor, "osc2Enabled", 0.0f);
-    setParam(processor, "osc3Enabled", 0.0f);
-    setParam(processor, "subOscEnabled", 0.0f);
+    setParam(processor, "voice.osc1.enabled", 1.0f);
+    setParam(processor, "voice.osc2.enabled", 0.0f);
+    setParam(processor, "voice.osc3.enabled", 0.0f);
+    setParam(processor, "voice.sub.enabled", 0.0f);
     for (const auto* slot : { "1", "2", "3" })
     {
-        setChoice(processor, juce::String("osc") + slot + "Mode", 0); // SINE
+        setChoice(processor, "voice.osc" + juce::String(slot) + ".mode", 0); // SINE
         setParam(processor, "voice.osc" + juce::String(slot) + ".tuning.octave", 0.0f);
         setParam(processor, "voice.osc" + juce::String(slot) + ".tuning.cents", 0.0f);
     }

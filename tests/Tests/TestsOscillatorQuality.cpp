@@ -353,10 +353,10 @@ void testOscillatorQuality()
             {
                 auto on = false;
                 for (const auto* chosen : oscillators) { on = on || juce::String(chosen) == slot; }
-                setParam(processor, juce::String("osc") + slot + "Enabled", on ? 1.0f : 0.0f);
+                setParam(processor, juce::String("voice.osc") + slot + ".enabled", on ? 1.0f : 0.0f);
             }
-            setParam(processor, "subOscEnabled", sub ? 1.0f : 0.0f);
-            setChoice(processor, "subOscWaveform", 0);
+            setParam(processor, "voice.sub.enabled", sub ? 1.0f : 0.0f);
+            setChoice(processor, "voice.sub.waveform", 0);
             setParam(processor, "voice.sub.tuning.octave", 0.0f);
             return render(processor, 24000, { { 0, true, 57, 0.9f } }).rmsOver(8000, 22000);
         };
@@ -516,7 +516,7 @@ void testOscillatorQuality()
             {
                 PX3SynthAudioProcessor processor;
                 makePlainPatch(processor);
-                setChoice(processor, "osc1Mode", static_cast<int>(mode));
+                setChoice(processor, "voice.osc1.mode", static_cast<int>(mode));
                 return render(processor, 24000, { { 0, true, 57, 0.9f }, { 4000, true, 64, 0.9f } }).left;
             };
             check((juce::String("OscQuality_") + modeName(static_cast<int>(mode)).removeCharacters(" ") + "RendersTheSameTwice").toRawUTF8(),

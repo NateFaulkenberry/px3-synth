@@ -839,7 +839,7 @@ int main(int argc, char* argv[])
             setParam(processor, "ampDecay", 0.100f);
             setParam(processor, "ampSustain", 1.00f);
             setParam(processor, "ampRelease", 0.100f);
-            setChoice(processor, "osc1Mode", mode);
+            setChoice(processor, "voice.osc1.mode", mode);
             processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
             processor.prepareToPlay(kSampleRate, kBlockSize);
 
@@ -888,10 +888,10 @@ int main(int argc, char* argv[])
             // things the report did not say to turn off. This switches off only
             // what was described and leaves everything else where the plugin
             // loads it, including the analog engine.
-            setParam(processor, "osc1Enabled", 1.0f);
-            setParam(processor, "osc2Enabled", 0.0f);
-            setParam(processor, "osc3Enabled", 0.0f);
-            setParam(processor, "subOscEnabled", 0.0f);
+            setParam(processor, "voice.osc1.enabled", 1.0f);
+            setParam(processor, "voice.osc2.enabled", 0.0f);
+            setParam(processor, "voice.osc3.enabled", 0.0f);
+            setParam(processor, "voice.sub.enabled", 0.0f);
             setParam(processor, "delayEnabled", 0.0f);
             setParam(processor, "reverbEnabled", 0.0f);
             setParam(processor, "moodEnabled", 0.0f);
@@ -905,7 +905,7 @@ int main(int argc, char* argv[])
                          0.0f);
             }
 
-            setChoice(processor, "osc1Mode", 0);           // SINE
+            setChoice(processor, "voice.osc1.mode", 0);           // SINE
             setParam(processor, "ampAttack", 4.000f);
             setParam(processor, "ampDecay", 0.100f);
             setParam(processor, "ampSustain", 1.00f);
@@ -1024,15 +1024,15 @@ int main(int argc, char* argv[])
             for (const auto block : { 32, 64, 128, 256, 512 })
             {
                 PX3SynthAudioProcessor other;
-                setParam(other, "osc1Enabled", 1.0f);
-                setParam(other, "osc2Enabled", 0.0f);
-                setParam(other, "osc3Enabled", 0.0f);
-                setParam(other, "subOscEnabled", 0.0f);
+                setParam(other, "voice.osc1.enabled", 1.0f);
+                setParam(other, "voice.osc2.enabled", 0.0f);
+                setParam(other, "voice.osc3.enabled", 0.0f);
+                setParam(other, "voice.sub.enabled", 0.0f);
                 setParam(other, "delayEnabled", 0.0f);
                 setParam(other, "reverbEnabled", 0.0f);
                 setParam(other, "moodEnabled", 0.0f);
                 setParam(other, "vibeEnabled", 0.0f);
-                setChoice(other, "osc1Mode", 0);
+                setChoice(other, "voice.osc1.mode", 0);
                 setParam(other, "ampAttack", 4.000f);
                 setParam(other, "ampDecay", 0.100f);
                 setParam(other, "ampSustain", 1.00f);
@@ -1108,15 +1108,15 @@ int main(int argc, char* argv[])
         // first block or two after prepareToPlay.
         {
             PX3SynthAudioProcessor processor;
-            setParam(processor, "osc1Enabled", 1.0f);
-            setParam(processor, "osc2Enabled", 0.0f);
-            setParam(processor, "osc3Enabled", 0.0f);
-            setParam(processor, "subOscEnabled", 0.0f);
+            setParam(processor, "voice.osc1.enabled", 1.0f);
+            setParam(processor, "voice.osc2.enabled", 0.0f);
+            setParam(processor, "voice.osc3.enabled", 0.0f);
+            setParam(processor, "voice.sub.enabled", 0.0f);
             setParam(processor, "delayEnabled", 0.0f);
             setParam(processor, "reverbEnabled", 0.0f);
             setParam(processor, "moodEnabled", 0.0f);
             setParam(processor, "vibeEnabled", 0.0f);
-            setChoice(processor, "osc1Mode", 0);
+            setChoice(processor, "voice.osc1.mode", 0);
             setParam(processor, "ampAttack", 4.000f);
             setParam(processor, "ampDecay", 0.100f);
             setParam(processor, "ampSustain", 1.00f);
@@ -1157,15 +1157,15 @@ int main(int argc, char* argv[])
         // always has and every render here so far has not.
         {
             PX3SynthAudioProcessor processor;
-            setParam(processor, "osc1Enabled", 1.0f);
-            setParam(processor, "osc2Enabled", 0.0f);
-            setParam(processor, "osc3Enabled", 0.0f);
-            setParam(processor, "subOscEnabled", 0.0f);
+            setParam(processor, "voice.osc1.enabled", 1.0f);
+            setParam(processor, "voice.osc2.enabled", 0.0f);
+            setParam(processor, "voice.osc3.enabled", 0.0f);
+            setParam(processor, "voice.sub.enabled", 0.0f);
             setParam(processor, "delayEnabled", 0.0f);
             setParam(processor, "reverbEnabled", 0.0f);
             setParam(processor, "moodEnabled", 0.0f);
             setParam(processor, "vibeEnabled", 0.0f);
-            setChoice(processor, "osc1Mode", 0);
+            setChoice(processor, "voice.osc1.mode", 0);
             setParam(processor, "ampAttack", 4.000f);
             setParam(processor, "ampDecay", 0.100f);
             setParam(processor, "ampSustain", 1.00f);
@@ -1220,15 +1220,15 @@ int main(int argc, char* argv[])
         // it is still ringing.
         {
             PX3SynthAudioProcessor processor;
-            setParam(processor, "osc1Enabled", 1.0f);
-            setParam(processor, "osc2Enabled", 0.0f);
-            setParam(processor, "osc3Enabled", 0.0f);
-            setParam(processor, "subOscEnabled", 0.0f);
+            setParam(processor, "voice.osc1.enabled", 1.0f);
+            setParam(processor, "voice.osc2.enabled", 0.0f);
+            setParam(processor, "voice.osc3.enabled", 0.0f);
+            setParam(processor, "voice.sub.enabled", 0.0f);
             setParam(processor, "delayEnabled", 0.0f);
             setParam(processor, "reverbEnabled", 0.0f);
             setParam(processor, "moodEnabled", 0.0f);
             setParam(processor, "vibeEnabled", 0.0f);
-            setChoice(processor, "osc1Mode", 0);
+            setChoice(processor, "voice.osc1.mode", 0);
             setParam(processor, "ampAttack", 4.000f);
             setParam(processor, "ampDecay", 0.100f);
             setParam(processor, "ampSustain", 1.00f);
@@ -1295,15 +1295,15 @@ int main(int argc, char* argv[])
             const auto repress = [](const int* second)
             {
                 PX3SynthAudioProcessor processor;
-                setParam(processor, "osc1Enabled", 1.0f);
-                setParam(processor, "osc2Enabled", 0.0f);
-                setParam(processor, "osc3Enabled", 0.0f);
-                setParam(processor, "subOscEnabled", 0.0f);
+                setParam(processor, "voice.osc1.enabled", 1.0f);
+                setParam(processor, "voice.osc2.enabled", 0.0f);
+                setParam(processor, "voice.osc3.enabled", 0.0f);
+                setParam(processor, "voice.sub.enabled", 0.0f);
                 setParam(processor, "delayEnabled", 0.0f);
                 setParam(processor, "reverbEnabled", 0.0f);
                 setParam(processor, "moodEnabled", 0.0f);
                 setParam(processor, "vibeEnabled", 0.0f);
-                setChoice(processor, "osc1Mode", 0);
+                setChoice(processor, "voice.osc1.mode", 0);
                 setParam(processor, "ampAttack", 4.000f);
                 setParam(processor, "ampDecay", 0.100f);
                 setParam(processor, "ampSustain", 1.00f);
@@ -1347,15 +1347,15 @@ int main(int argc, char* argv[])
             // The samples either side of the worst step.
             {
                 PX3SynthAudioProcessor processor;
-                setParam(processor, "osc1Enabled", 1.0f);
-                setParam(processor, "osc2Enabled", 0.0f);
-                setParam(processor, "osc3Enabled", 0.0f);
-                setParam(processor, "subOscEnabled", 0.0f);
+                setParam(processor, "voice.osc1.enabled", 1.0f);
+                setParam(processor, "voice.osc2.enabled", 0.0f);
+                setParam(processor, "voice.osc3.enabled", 0.0f);
+                setParam(processor, "voice.sub.enabled", 0.0f);
                 setParam(processor, "delayEnabled", 0.0f);
                 setParam(processor, "reverbEnabled", 0.0f);
                 setParam(processor, "moodEnabled", 0.0f);
                 setParam(processor, "vibeEnabled", 0.0f);
-                setChoice(processor, "osc1Mode", 0);
+                setChoice(processor, "voice.osc1.mode", 0);
                 setParam(processor, "ampAttack", 4.000f);
                 setParam(processor, "ampSustain", 1.00f);
                 setParam(processor, "ampRelease", 0.500f);
@@ -2439,7 +2439,7 @@ int main(int argc, char* argv[])
             {
                 PX3SynthAudioProcessor processor;
                 makePlainPatch(processor);
-                setChoice(processor, "osc1Mode", 0);
+                setChoice(processor, "voice.osc1.mode", 0);
                 setParam(processor, "vibeEnabled", 1.0f);
                 setParam(processor, "vibeAmount", amount);
                 const auto c = render(processor, 96000, { { 2000, true, 57, 0.9f } });
@@ -2453,8 +2453,8 @@ int main(int argc, char* argv[])
         {
             PX3SynthAudioProcessor processor;
             makePlainPatch(processor);
-            for (int i = 1; i <= 3; ++i) setParam(processor, "osc" + juce::String(i) + "Enabled", 0.0f);
-            setParam(processor, "subOscEnabled", 0.0f);
+            for (int i = 1; i <= 3; ++i) setParam(processor, "voice.osc" + juce::String(i) + ".enabled", 0.0f);
+            setParam(processor, "voice.sub.enabled", 0.0f);
             setParam(processor, "vibeEnabled", 1.0f);
             setParam(processor, "vibeAmount", 1.0f);
             const auto c = render(processor, 96000, { { 2000, true, 57, 0.9f } });
@@ -2472,7 +2472,7 @@ int main(int argc, char* argv[])
             {
                 PX3SynthAudioProcessor processor;
                 makePlainPatch(processor);
-                setChoice(processor, "osc1Mode", 0);
+                setChoice(processor, "voice.osc1.mode", 0);
                 setParam(processor, "vibeEnabled", 1.0f);
                 setParam(processor, "vibeAmount", amount);
                 const auto c = render(processor, 96000, { { 2000, true, 57, 0.9f } });
@@ -2525,10 +2525,10 @@ int main(int argc, char* argv[])
         {
             PX3SynthAudioProcessor processor;
             // Defaults everywhere except: one oscillator on, no FX, no vibe.
-            setParam(processor, "osc1Enabled", 1.0f);
-            setParam(processor, "osc2Enabled", 0.0f);
-            setParam(processor, "osc3Enabled", 0.0f);
-            setParam(processor, "subOscEnabled", 0.0f);
+            setParam(processor, "voice.osc1.enabled", 1.0f);
+            setParam(processor, "voice.osc2.enabled", 0.0f);
+            setParam(processor, "voice.osc3.enabled", 0.0f);
+            setParam(processor, "voice.sub.enabled", 0.0f);
             setParam(processor, "vibeEnabled", 0.0f);
             setParam(processor, "reverbEnabled", 0.0f);
             setParam(processor, "delayEnabled", 0.0f);
@@ -2536,7 +2536,7 @@ int main(int argc, char* argv[])
             setParam(processor, "filter1Enabled", 0.0f);
             setParam(processor, "filter2Enabled", 0.0f);
             setParam(processor, "ampSustain", 1.0f);
-            setChoice(processor, "osc1Mode", 0);
+            setChoice(processor, "voice.osc1.mode", 0);
             if (juce::String(label) == "maximum")
             {
                 if (auto* lv = findParameter(processor, "mix.osc1.level"))
@@ -2577,9 +2577,9 @@ int main(int argc, char* argv[])
         {
             PX3SynthAudioProcessor processor;
             makePlainPatch(processor);
-            setParam(processor, "osc2Enabled", count >= 2 ? 1.0f : 0.0f);
+            setParam(processor, "voice.osc2.enabled", count >= 2 ? 1.0f : 0.0f);
             setParam(processor, "voice.osc2.tuning.octave", 1.0f);
-            setParam(processor, "osc3Enabled", count >= 3 ? 1.0f : 0.0f);
+            setParam(processor, "voice.osc3.enabled", count >= 3 ? 1.0f : 0.0f);
             setParam(processor, "voice.osc3.tuning.octave", 2.0f);
             const auto capture = render(processor, 48000, { { 2000, true, 57, 0.9f } });
             std::printf("  %-14d %12.6f %12.6f %12.6f\n",
@@ -2593,7 +2593,7 @@ int main(int argc, char* argv[])
         {
             PX3SynthAudioProcessor processor;
             makePlainPatch(processor);
-            setChoice(processor, "osc1Mode", 1);
+            setChoice(processor, "voice.osc1.mode", 1);
             setParam(processor, "filter1Enabled", 1.0f);
             setParam(processor, "filter1Cutoff", 2500.0f);
             setParam(processor, "vibeEnabled", 1.0f);
@@ -2607,8 +2607,8 @@ int main(int argc, char* argv[])
         {
             PX3SynthAudioProcessor processor;
             makePlainPatch(processor);
-            setChoice(processor, "osc1Mode", 13);
-            setParam(processor, "osc1MacroA", macro);
+            setChoice(processor, "voice.osc1.mode", 13);
+            setParam(processor, "voice.osc1.macro.a", macro);
             const auto capture = render(processor, 48000, { { 2000, true, 57, 0.9f } });
             std::printf("  %-10.3f %12.6f\n", macro, capture.rms());
         }

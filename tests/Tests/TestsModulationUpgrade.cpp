@@ -622,10 +622,10 @@ void testModulationRuleUpgrade()
             setParam(processor, "lfoFrequency", 0.01f);
             setParam(processor, "lfoAmount", amount);
             setChoice(processor, "lfoWaveform", 3);
-            processor.setLfoAssignmentByParameterId(0, "osc1PitchMod", false);
+            processor.setLfoAssignmentByParameterId(0, "voice.osc1.pitch.mod", false);
             prepareUpgrade(processor);
             runUpgradeBlocks(processor, 2);
-            auto* pitchMod = findParameter(processor, "osc1PitchMod");
+            auto* pitchMod = findParameter(processor, "voice.osc1.pitch.mod");
             return pitchMod->convertFrom0to1(processor.getModulatedNormalisedValue(*pitchMod));
         };
         const auto up = semitonesAt(1.0f);
@@ -657,7 +657,7 @@ Capture renderRouting(int oscMode,
 {
     PX3SynthAudioProcessor processor;
     makePlainPatch(processor);
-    setChoice(processor, "osc1Mode", oscMode);
+    setChoice(processor, "voice.osc1.mode", oscMode);
 
     const auto apply = [&processor](const juce::String& prefix, const RoutingStage& stage)
     {

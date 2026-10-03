@@ -55,9 +55,9 @@ double measureCents(Source source,
 
     if (source == Source::sub)
     {
-        setParam(processor, "osc1Enabled", 0.0f);
-        setParam(processor, "subOscEnabled", 1.0f);
-        setChoice(processor, "subOscWaveform", 0);
+        setParam(processor, "voice.osc1.enabled", 0.0f);
+        setParam(processor, "voice.sub.enabled", 1.0f);
+        setChoice(processor, "voice.sub.waveform", 0);
         setParam(processor, "voice.sub.tuning.octave", coarseOctaves);
         setParam(processor, "voice.sub.tuning.cents", fineCents);
     }
@@ -193,7 +193,10 @@ void testOscillatorTuning()
             setParam(processor, "lfoFrequency", 0.01f);
             setParam(processor, "lfoAmount", 0.5f);
             setChoice(processor, "lfoWaveform", 3);
-            processor.setLfoAssignmentByParameterId(0, source == Source::osc ? "osc1PitchMod" : "subOscPitchMod", false);
+            processor.setLfoAssignmentByParameterId(0,
+                                                    source == Source::osc ? "voice.osc1.pitch.mod"
+                                                                          : "voice.sub.pitch.mod",
+                                                    false);
         });
         check((juce::String("Tuning_") + nameOf(source) + "_PitchModulationAddsToStaticTuning").toRawUTF8(),
               std::abs(cancelled) < 1.0,
@@ -203,11 +206,11 @@ void testOscillatorTuning()
         // Pitch Mod's own value is not a tuning: only modulation moves pitch.
         const auto osc = measureCents(Source::osc, 0.0f, 0.0f, [](PX3SynthAudioProcessor& processor)
         {
-            setParam(processor, "osc1PitchMod", 12.0f);
+            setParam(processor, "voice.osc1.pitch.mod", 12.0f);
         });
         const auto sub = measureCents(Source::sub, 0.0f, 0.0f, [](PX3SynthAudioProcessor& processor)
         {
-            setParam(processor, "subOscPitchMod", -12.0f);
+            setParam(processor, "voice.sub.pitch.mod", -12.0f);
         });
         check("Tuning_PitchModsOwnValueNeverOffsetsPitch", std::abs(osc) < 1.0 && std::abs(sub) < 1.0,
               "Pitch Mod parameter set to +12 / -12 st with no modulation: osc " + fmt(osc, 2)

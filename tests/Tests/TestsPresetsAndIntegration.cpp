@@ -21,27 +21,27 @@ void applyUnusualConfiguration(PX3SynthAudioProcessor& processor)
     setParam(processor, "masterGain", 0.83f);
     setParam(processor, "pitchBendRange", 7.0f);
 
-    setParam(processor, "osc1Enabled", 1.0f);
-    setParam(processor, "osc2Enabled", 1.0f);
-    setParam(processor, "osc3Enabled", 0.0f);
-    setChoice(processor, "osc1Mode", 13);
-    setChoice(processor, "osc2Mode", 6);
-    setChoice(processor, "osc3Mode", 18);
+    setParam(processor, "voice.osc1.enabled", 1.0f);
+    setParam(processor, "voice.osc2.enabled", 1.0f);
+    setParam(processor, "voice.osc3.enabled", 0.0f);
+    setChoice(processor, "voice.osc1.mode", 13);
+    setChoice(processor, "voice.osc2.mode", 6);
+    setChoice(processor, "voice.osc3.mode", 18);
     setParam(processor, "voice.osc1.tuning.octave", -1.0f);
     setParam(processor, "voice.osc2.tuning.octave", 1.0f);
     setParam(processor, "voice.osc3.tuning.octave", 2.0f);
     setParam(processor, "voice.osc1.tuning.cents", -17.0f);
     setParam(processor, "voice.osc2.tuning.cents", 23.0f);
-    setParam(processor, "osc2MacroA", 0.234f);
-    setParam(processor, "osc2MacroB", 0.876f);
-    setParam(processor, "osc3MacroC", 0.412f);
-    setChoice(processor, "osc1Vowel", 3);
-    setParam(processor, "osc1H3", 0.913f);
-    setParam(processor, "osc2H7", 0.041f);
+    setParam(processor, "voice.osc2.macro.a", 0.234f);
+    setParam(processor, "voice.osc2.macro.b", 0.876f);
+    setParam(processor, "voice.osc3.macro.c", 0.412f);
+    setChoice(processor, "voice.osc1.vowel", 3);
+    setParam(processor, "voice.osc1.harmonics.3", 0.913f);
+    setParam(processor, "voice.osc2.harmonics.7", 0.041f);
 
-    setParam(processor, "subOscEnabled", 1.0f);
+    setParam(processor, "voice.sub.enabled", 1.0f);
     setParam(processor, "voice.sub.tuning.octave", -2.0f);
-    setChoice(processor, "subOscWaveform", 0);
+    setChoice(processor, "voice.sub.waveform", 0);
     setParam(processor, "voice.sub.tuning.cents", -19.0f);
 
     for (const auto* slot : { "1", "2" })
@@ -324,8 +324,8 @@ void testPresets()
         setParam(original, "reverbEnabled", 0.0f);
         setParam(original, "moodEnabled", 0.0f);
         setParam(original, "delayEnabled", 0.0f);
-        setChoice(original, "osc1Mode", 1);
-        setChoice(original, "osc2Mode", 3);
+        setChoice(original, "voice.osc1.mode", 1);
+        setChoice(original, "voice.osc2.mode", 3);
         setParam(original, "mix.osc3.mute", 0.0f);
 
         juce::MemoryBlock state;
@@ -729,7 +729,7 @@ void testIntegration()
     {
         PX3SynthAudioProcessor processor;
         makePlainPatch(processor);
-        setChoice(processor, "osc1Mode", 1);
+        setChoice(processor, "voice.osc1.mode", 1);
         const auto first = render(processor, 32000, { { 2000, true, 57, 0.9f } });
         processor.reset();
         const auto second = render(processor, 32000, { { 2000, true, 57, 0.9f } });
@@ -744,7 +744,7 @@ void testIntegration()
     {
         PX3SynthAudioProcessor processor;
         makePlainPatch(processor);
-        setChoice(processor, "osc1Mode", 0);
+        setChoice(processor, "voice.osc1.mode", 0);
         setParam(processor, "ampRelease", 0.020f);
         const auto capture = render(processor, 96000,
                                     { { 2000, true, 57, 0.9f },
@@ -769,7 +769,7 @@ void testIntegration()
         {
             PX3SynthAudioProcessor processor;
             makePlainPatch(processor);
-            setChoice(processor, "osc1Mode", 0);
+            setChoice(processor, "voice.osc1.mode", 0);
             setParam(processor, "ampRelease", 0.300f);
             std::vector<NoteEvent> events { { 2000, true, 57, 0.9f } };
             if (withSecondVoice)
@@ -808,7 +808,7 @@ void testIntegration()
         {
             PX3SynthAudioProcessor processor;
             makePlainPatch(processor);
-            setChoice(processor, "osc1Mode", 0);
+            setChoice(processor, "voice.osc1.mode", 0);
             setParam(processor, "ampRelease", 0.300f);
             std::vector<NoteEvent> events { { 2000, true, 57, 0.9f } };
             if (withSecondVoice)
@@ -832,10 +832,10 @@ void testIntegration()
     {
         PX3SynthAudioProcessor processor;
         makePlainPatch(processor);
-        setChoice(processor, "osc1Mode", 1);
-        setParam(processor, "osc2Enabled", 1.0f);
-        setParam(processor, "osc3Enabled", 1.0f);
-        setParam(processor, "subOscEnabled", 1.0f);
+        setChoice(processor, "voice.osc1.mode", 1);
+        setParam(processor, "voice.osc2.enabled", 1.0f);
+        setParam(processor, "voice.osc3.enabled", 1.0f);
+        setParam(processor, "voice.sub.enabled", 1.0f);
         setParam(processor, "ampRelease", 3.0f);
         std::vector<NoteEvent> events;
         for (int voice = 0; voice < 64; ++voice)
@@ -918,7 +918,7 @@ void testIntegration()
     {
         PX3SynthAudioProcessor processor;
         makePlainPatch(processor);
-        setChoice(processor, "osc1Mode", 1);
+        setChoice(processor, "voice.osc1.mode", 1);
         setParam(processor, "ampRelease", 4.0f);
         std::vector<NoteEvent> events;
         for (int note = 0; note < 200; ++note)
@@ -938,8 +938,8 @@ void testIntegration()
         const EdgeCase cases[] = {
             { "AllOscillatorsDisabled", [](PX3SynthAudioProcessor& p)
               {
-                  for (int i = 1; i <= 3; ++i) setParam(p, "osc" + juce::String(i) + "Enabled", 0.0f);
-                  setParam(p, "subOscEnabled", 0.0f);
+                  for (int i = 1; i <= 3; ++i) setParam(p, "voice.osc" + juce::String(i) + ".enabled", 0.0f);
+                  setParam(p, "voice.sub.enabled", 0.0f);
               } },
             { "ShortestEnvelopes", [](PX3SynthAudioProcessor& p)
               {
@@ -1007,12 +1007,12 @@ void testIntegration()
               {
                   for (int i = 1; i <= 3; ++i)
                   {
-                      setParam(p, "osc" + juce::String(i) + "Enabled", 1.0f);
-                      setParam(p, "osc" + juce::String(i) + "MacroA", 1.0f);
-                      setParam(p, "osc" + juce::String(i) + "MacroB", 1.0f);
-                      setParam(p, "osc" + juce::String(i) + "MacroC", 1.0f);
+                      setParam(p, "voice.osc" + juce::String(i) + ".enabled", 1.0f);
+                      setParam(p, "voice.osc" + juce::String(i) + ".macro.a", 1.0f);
+                      setParam(p, "voice.osc" + juce::String(i) + ".macro.b", 1.0f);
+                      setParam(p, "voice.osc" + juce::String(i) + ".macro.c", 1.0f);
                   }
-                  setParam(p, "subOscEnabled", 1.0f);
+                  setParam(p, "voice.sub.enabled", 1.0f);
                   setParam(p, "masterGain", 1.0f);
                   for (const auto* id : { "sub", "osc1", "osc2", "osc3" })
                   {
@@ -1055,9 +1055,9 @@ void testIntegration()
         {
             PX3SynthAudioProcessor processor;
             makePlainPatch(processor);
-            setChoice(processor, "osc1Mode", 0); // SINE: nothing of its own to mask a step
-            setParam(processor, "osc2Enabled", 1.0f);
-            setParam(processor, "subOscEnabled", 1.0f);
+            setChoice(processor, "voice.osc1.mode", 0); // SINE: nothing of its own to mask a step
+            setParam(processor, "voice.osc2.enabled", 1.0f);
+            setParam(processor, "voice.sub.enabled", 1.0f);
 
             std::function<void(int)> perBlock;
             if (toggleParameterId.isNotEmpty())
@@ -1079,8 +1079,8 @@ void testIntegration()
 
         struct SwitchCase { const char* name; juce::String parameterId; };
         const SwitchCase switches[] = {
-            { "OscillatorEnable", "osc2Enabled" },
-            { "SubOscillatorEnable", "subOscEnabled" },
+            { "OscillatorEnable", "voice.osc2.enabled" },
+            { "SubOscillatorEnable", "voice.sub.enabled" },
             { "FilterEnable", "filter1Enabled" },
             { "ReverbEnable", "reverbEnabled" },
         };
@@ -1099,7 +1099,7 @@ void testIntegration()
     {
         PX3SynthAudioProcessor processor;
         makePlainPatch(processor);
-        setChoice(processor, "osc1Mode", 1);
+        setChoice(processor, "voice.osc1.mode", 1);
         setParam(processor, "filter1Enabled", 1.0f);
         const auto capture = render(processor, 64000, { { 2000, true, 45, 0.9f } },
                                     [&processor](int blockIndex)
@@ -1122,7 +1122,7 @@ void testIntegration()
     {
         PX3SynthAudioProcessor processor;
         makePlainPatch(processor);
-        setChoice(processor, "osc1Mode", 1);
+        setChoice(processor, "voice.osc1.mode", 1);
         setParam(processor, "ampRelease", 1.0f);
         std::vector<NoteEvent> events;
         for (int note = 0; note < 24; ++note)
@@ -1148,7 +1148,7 @@ void testIntegration()
         {
             PX3SynthAudioProcessor processor;
             makePlainPatch(processor);
-            setChoice(processor, "osc1Mode", 1);
+            setChoice(processor, "voice.osc1.mode", 1);
             setParam(processor, "filter1Enabled", 1.0f);
             setParam(processor, "reverbEnabled", 1.0f);
             setParam(processor, "reverbAmount", 0.6f);
