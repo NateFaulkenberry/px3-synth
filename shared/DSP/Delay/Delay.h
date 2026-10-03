@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+
 #include "DelayTypes.h"
 
 #include <JuceHeader.h>
@@ -153,6 +155,13 @@ private:
     float tapeFlutterPhase { 0.0f };
     float tapeScrapePhase { 0.0f };
     float tapeDriftPhase { 0.0f };
+    // TAPE SLIP state: extra delay that grows two samples per sample while the
+    // head runs backward, then a crossfade back onto the normal head.
+    float slipExtra { 0.0f };
+    int slipRemaining { 0 };
+    int slipReturnRemaining { 0 };
+    int slipReturnLength { 1 };
+    std::uint32_t slipRandom { 0x2545F491u };
     std::array<float, 2> tapeGapLoss { { 0.0f, 0.0f } };
     std::array<Svf, 2> tapeHeadBump {};
     std::array<float, 2> tapeDcX1 { { 0.0f, 0.0f } };

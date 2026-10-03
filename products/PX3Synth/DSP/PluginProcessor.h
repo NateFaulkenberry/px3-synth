@@ -932,6 +932,7 @@ private:
     juce::AudioParameterFloat* delayWobbleParam { nullptr };
     juce::AudioParameterFloat* delayTapeQualityParam { nullptr };
     juce::AudioParameterFloat* delayModDepthParam { nullptr };
+    juce::AudioParameterFloat* delayTapeSlipParam { nullptr };
     juce::AudioParameterFloat* fxSendGainParam { nullptr };
     juce::AudioParameterFloat* fxReturnGainParam { nullptr };
     std::array<juce::AudioParameterFloat*, kMixerSourceCount> mixerLevelParams { { nullptr, nullptr, nullptr, nullptr } };

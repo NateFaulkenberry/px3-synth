@@ -32,6 +32,8 @@ PX3DelayAudioProcessor::PX3DelayAudioProcessor()
         "fx.delay.tape.quality", "Delay Tape Quality", juce::NormalisableRange<float>(0.0f, 1.0f), 0.71f));
     addParameter(modDepthParam = new juce::AudioParameterFloat(
         "fx.delay.mod.depth", "Delay Mod Depth", juce::NormalisableRange<float>(0.0f, 1.0f), 0.3f));
+    addParameter(tapeSlipParam = new juce::AudioParameterFloat(
+        "fx.delay.tape.slip", "Delay Tape Slip", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f));
 }
 
 void PX3DelayAudioProcessor::prepareFx(double sampleRate, int)
@@ -57,6 +59,7 @@ DelaySettings PX3DelayAudioProcessor::settingsForBlock() const
     settings.wobble = wobbleParam->get();
     settings.tapeQuality = tapeQualityParam->get();
     settings.modDepth = modDepthParam->get();
+    settings.tapeSlip = tapeSlipParam->get();
     return settings;
 }
 

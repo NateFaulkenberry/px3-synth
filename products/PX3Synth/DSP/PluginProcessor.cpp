@@ -461,6 +461,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     delayWobbleParam = parameterCatalog.createFloat("fx.delay.wobble", "Delay Tape Wobble", juce::NormalisableRange<float>(0.0f, 1.0f), 0.275f);
     delayTapeQualityParam = parameterCatalog.createFloat("fx.delay.tape.quality", "Delay Tape Quality", juce::NormalisableRange<float>(0.0f, 1.0f), 0.71f);
     delayModDepthParam = parameterCatalog.createFloat("fx.delay.mod.depth", "Delay Mod Depth", juce::NormalisableRange<float>(0.0f, 1.0f), 0.3f);
+    delayTapeSlipParam = parameterCatalog.createFloat("fx.delay.tape.slip", "Delay Tape Slip", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
     fxSendGainParam = parameterCatalog.createFloat("mix.send.fx.level", "FX Send", juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f);
     fxReturnGainParam = parameterCatalog.createFloat("mix.fx.level",
                                                        "FX Return",
@@ -871,6 +872,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     addParameter(delayWobbleParam);
     addParameter(delayTapeQualityParam);
     addParameter(delayModDepthParam);
+    addParameter(delayTapeSlipParam);
     addParameter(fxSendGainParam);
     addParameter(fxReturnGainParam);
     for (int i = 0; i < kMixerSourceCount; ++i)

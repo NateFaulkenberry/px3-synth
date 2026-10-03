@@ -149,6 +149,8 @@ void Delay::prepare(double sampleRate)
 
 void Delay::reset()
 {
+    slipExtra = 0.0f;
+    slipRemaining = slipReturnRemaining = 0;
     for (auto& line : delayBuffer)
     {
         std::fill(line.begin(), line.end(), 0.0f);
@@ -231,6 +233,7 @@ void Delay::updateForBlock(const DelaySettings& settings)
     currentSettings.wobble = clamp01(settings.wobble);
     currentSettings.tapeQuality = clamp01(settings.tapeQuality);
     currentSettings.modDepth = clamp01(settings.modDepth);
+    currentSettings.tapeSlip = clamp01(settings.tapeSlip);
     currentBpm = juce::jmax(20.0, settings.bpm);
 
     if (!smoothingPrimed)
@@ -1176,6 +1179,48 @@ void Delay::processDelayAlgorithmSample(float inL,
         const auto limit = static_cast<float>(delayBufferSize - 4);
         wetL = readDelaySample(0, static_cast<float>(writePos) - juce::jlimit(4.0f, limit, samplesL));
         wetR = readDelaySample(1, static_cast<float>(writePos) - juce::jlimit(4.0f, limit, samplesR));
+
+        // TAPE SLIP: now and then the head slips backward. While it does, the
+        // read point runs in reverse (the delay grows two samples per sample),
+        // so the echo plays backwards; then it crossfades back onto the head.
+        const auto slip = currentSettings.tapeSlip;
+        if (slip > 0.0f && slipRemaining == 0 && slipReturnRemaining == 0)
+        {
+            // About 0.1 to 1.5 slips a second, more as the knob rises.
+            slipRandom = slipRandom * 1664525u + 1013904223u;
+            const auto chance = (0.1f + 1.4f * slip) / sr;
+            if (static_cast<float>(slipRandom >> 8) / static_cast<float>(1u << 24) < chance)
+            {
+                slipRandom = slipRandom * 1664525u + 1013904223u;
+                const auto seconds = 0.08f + (0.12f + 0.15f * slip) * static_cast<float>(slipRandom >> 8) / static_cast<float>(1u << 24);
+                slipRemaining = juce::jmax(1, static_cast<int>(seconds * sr));
+            }
+        }
+        if (slipRemaining > 0 || slipReturnRemaining > 0)
+        {
+            if (slipRemaining > 0)
+            {
+                slipExtra = juce::jmin(slipExtra + 2.0f, limit - samplesL - 8.0f);
+                if (--slipRemaining == 0)
+                {
+                    slipReturnLength = juce::jmax(1, static_cast<int>(0.025f * sr));
+                    slipReturnRemaining = slipReturnLength;
+                }
+            }
+            const auto slippedL = readDelaySample(0, static_cast<float>(writePos) - juce::jlimit(4.0f, limit, samplesL + slipExtra));
+            const auto slippedR = readDelaySample(1, static_cast<float>(writePos) - juce::jlimit(4.0f, limit, samplesR + slipExtra));
+            // Equal-power: 1 while slipping, falling to 0 over the return.
+            auto toSlipped = 1.0f;
+            if (slipRemaining == 0)
+            {
+                const auto t = static_cast<float>(slipReturnRemaining) / static_cast<float>(slipReturnLength);
+                toSlipped = std::sin(t * juce::MathConstants<float>::halfPi);
+                if (--slipReturnRemaining == 0) { slipExtra = 0.0f; }
+            }
+            const auto toHead = std::sqrt(juce::jmax(0.0f, 1.0f - toSlipped * toSlipped));
+            wetL = slippedL * toSlipped + wetL * toHead;
+            wetR = slippedR * toSlipped + wetR * toHead;
+        }
 
         for (int channel = 0; channel < 2; ++channel)
         {

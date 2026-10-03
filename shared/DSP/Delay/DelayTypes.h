@@ -18,4 +18,7 @@ struct DelaySettings
     float tapeQuality { 0.71f };
     // MODULATED: chorus-like depth of the modulated taps. Default 1.8 ms.
     float modDepth { 0.3f };
+    // TAPE: how often the playback head slips backward - a burst of reversed
+    // echo, then back onto the head. 0 = never (the default).
+    float tapeSlip { 0.0f };
 };

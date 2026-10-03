@@ -83,6 +83,71 @@ void testDelay()
         const auto newTilt = level(1.0f, 6000.0) - level(1.0f, 500.0);
         check("Delay_WornTapeIsDarker", wornTilt < newTilt - 6.0,
               "6 kHz vs 500 Hz in the echo: worn " + juce::String(wornTilt, 1) + " dB, pristine " + juce::String(newTilt, 1) + " dB");
+
+        // TAPE SLIP: normal tape playback is the input a fixed delay later, so
+        // the echo correlates with the input at that lag. While the head slips
+        // backward the echo is reversed and the correlation collapses. Counted
+        // as the share of 40 ms windows that lose it.
+        auto render = [](float slip, std::vector<float>& in, std::vector<float>& out)
+        {
+            Delay delay;
+            delay.prepare(48000.0);
+            DelaySettings settings;
+            settings.enabled = true; settings.amount = 1.0f; settings.algorithmIndex = 1;
+            settings.feedbackControl = 0.0f; settings.timeControl = 0.15f; settings.wobble = 0.0f; settings.tapeSlip = slip;
+            juce::Random random(17);
+            in.clear(); out.clear();
+            float lowpassed = 0.0f;
+            for (int n = 0; n < 48000 * 8; ++n)
+            {
+                if (n % 512 == 0) delay.updateForBlock(settings);
+                // Noise kept below about 1 kHz, where the tape's own colour
+                // does not decorrelate it.
+                lowpassed += (random.nextFloat() * 0.8f - 0.4f - lowpassed) * 0.12f;
+                const auto x = lowpassed;
+                float l = 0, r = 0;
+                delay.processSampleFrame(x, x, l, r);
+                in.push_back(x);
+                out.push_back(l - x);
+            }
+        };
+        auto correlationAt = [](const std::vector<float>& in, const std::vector<float>& out, std::size_t from, std::size_t lag)
+        {
+            double xy = 0, xx = 0, yy = 0;
+            for (std::size_t k = from; k < from + 1920; ++k)
+            {
+                const auto x = static_cast<double>(in[k - lag]), y = static_cast<double>(out[k]);
+                xy += x * y; xx += x * x; yy += y * y;
+            }
+            return xy / std::sqrt(xx * yy + 1e-30);
+        };
+        std::vector<float> in0, out0, in1, out1;
+        render(0.0f, in0, out0);
+        render(1.0f, in1, out1);
+        std::size_t lag = 1;
+        double best = -2.0;
+        for (std::size_t candidate = 1; candidate < 96000; ++candidate)
+        {
+            const auto c = correlationAt(in0, out0, 200000, candidate);
+            if (c > best) { best = c; lag = candidate; }
+        }
+        auto lostShare = [&](const std::vector<float>& in, const std::vector<float>& out)
+        {
+            int lost = 0, windows = 0;
+            for (std::size_t from = 120000; from + 1920 <= out.size(); from += 1920)
+            {
+                double peak = 0.0;
+                for (std::size_t l = lag - 40; l <= lag + 40; ++l) peak = juce::jmax(peak, correlationAt(in, out, from, l));
+                if (peak < 0.5 * best) ++lost;
+                ++windows;
+            }
+            return static_cast<double>(lost) / windows;
+        };
+        const auto noSlip = lostShare(in0, out0);
+        const auto slipping = lostShare(in1, out1);
+        check("Delay_TapeSlipPlaysTheEchoBackwards", best > 0.6 && noSlip < 0.02 && slipping > 0.08,
+              "delay " + juce::String(static_cast<int>(lag)) + " samples (corr " + juce::String(best, 2) + "); windows off the head: SLIP 0 "
+                  + juce::String(noSlip, 3) + ", SLIP 1 " + juce::String(slipping, 3));
     }
 
     // ---- the engine is deterministic ---------------------------------------

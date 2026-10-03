@@ -483,6 +483,7 @@ DelaySettings PX3SynthAudioProcessor::currentDelaySettings() const
     settings.wobble = modulatedParameterValue(delayWobbleParam);
     settings.tapeQuality = modulatedParameterValue(delayTapeQualityParam);
     settings.modDepth = modulatedParameterValue(delayModDepthParam);
+    settings.tapeSlip = modulatedParameterValue(delayTapeSlipParam);
     return settings;
 }
 

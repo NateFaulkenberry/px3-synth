@@ -60,6 +60,7 @@ private:
     juce::AudioParameterFloat* wobbleParam { nullptr };
     juce::AudioParameterFloat* tapeQualityParam { nullptr };
     juce::AudioParameterFloat* modDepthParam { nullptr };
+    juce::AudioParameterFloat* tapeSlipParam { nullptr };
     juce::AudioParameterBool* enabledParam { nullptr };
     juce::AudioParameterChoice* algorithmParam { nullptr };
     juce::AudioParameterChoice* granularModeParam { nullptr };
