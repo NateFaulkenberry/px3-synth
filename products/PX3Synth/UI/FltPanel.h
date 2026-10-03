@@ -64,6 +64,19 @@ public:
     void attachRouting(juce::RangedAudioParameter& routingParameter,
                        juce::RangedAudioParameter& balanceParameter);
 
+    // Scene-managed parts (InstrumentScene.json: filter.*).
+    juce::Component& getRoutingButton() noexcept { return routingButton; }
+    juce::Component& getBalanceLabel() noexcept { return balanceLabel; }
+    juce::Component& getBalanceSlider() noexcept { return balanceSlider; }
+    juce::Component* getFilterCard(int index) const noexcept
+    {
+        return index >= 0 && index < kFilterInstanceCount ? filterComponents[static_cast<std::size_t>(index)].get() : nullptr;
+    }
+    // The controls inside each card, placed against the card's current bounds.
+    // Still hand-laid (CardInner rows); the editor calls it after every scene
+    // pass.
+    void layoutCardControls();
+
 private:
     struct FilterComboLookAndFeel final : public juce::LookAndFeel_V4
     {

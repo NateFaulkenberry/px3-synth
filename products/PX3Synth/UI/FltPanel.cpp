@@ -1,4 +1,5 @@
 #include "FltPanel.h"
+#include "SceneBinding.h"
 
 #include "BypassButton.h"
 #include "CardInner.h"
@@ -268,52 +269,29 @@ void FltPanel::setSceneStyle(juce::Colour background,
 
 void FltPanel::resized()
 {
-    const auto panelPadX = uiConfig != nullptr ? uiConfig->getInt("flt.panel.layout.padX", 12) : 12;
-    const auto panelPadY = uiConfig != nullptr ? uiConfig->getInt("flt.panel.layout.padY", 10) : 10;
-    auto panelArea = getLocalBounds().reduced(panelPadX, panelPadY);
-
-    // How the two filters connect, in a strip above both cards.
-    if (routingAttached)
+    // The routing strip and the two cards are placed by the instrument scene
+    // (primary.filter in InstrumentScene.json). Outside a scene host - a panel
+    // built on its own - nothing places them, which is the honest result.
+    if (! px3::ui::requestSceneLayout(*this))
     {
-        constexpr int stripHeight = 24;
-        constexpr int stripGap = 6;
-        constexpr int chipWidth = 96;
-        constexpr int labelWidth = 116;
-        constexpr int sliderWidth = 180;
-        constexpr int spacing = 10;
-
-        const auto strip = panelArea.removeFromTop(stripHeight);
-        panelArea.removeFromTop(stripGap);
-
-        const auto groupWidth = juce::jmin(strip.getWidth(), chipWidth + spacing + labelWidth + spacing + sliderWidth);
-        auto group = juce::Rectangle<int>(groupWidth, stripHeight).withCentre(strip.getCentre());
-        routingButton.setBounds(group.removeFromLeft(chipWidth).reduced(0, 1));
-        group.removeFromLeft(spacing);
-        balanceLabel.setBounds(group.removeFromLeft(labelWidth));
-        group.removeFromLeft(spacing);
-        balanceSlider.setBounds(group);
+        layoutCardControls();
     }
+}
 
-    constexpr int gap = 8;
-    const auto totalGap = gap * (kFilterInstanceCount - 1);
-    const auto columnWidth = juce::jmax(1, (panelArea.getWidth() - totalGap) / kFilterInstanceCount);
-
+void FltPanel::layoutCardControls()
+{
+    const auto panelArea = getLocalBounds();
     for (int filterIndex = 0; filterIndex < kFilterInstanceCount; ++filterIndex)
     {
-        auto filterArea = juce::Rectangle<int>(panelArea.getX() + filterIndex * (columnWidth + gap),
-                                               panelArea.getY(),
-                                               columnWidth,
-                                               panelArea.getHeight()).reduced(2, 0);
-
         auto& filterComponent = filterComponents[static_cast<std::size_t>(filterIndex)];
         if (filterComponent == nullptr)
         {
             continue;
         }
+        const auto filterArea = filterComponent->getBounds();
 
         filterComponent->setInstanceIndex(filterIndex + 1);
         filterComponent->setPanelContentBounds(panelArea);
-        filterComponent->setBounds(filterArea);
 
         // The panel used to lay out the card's interior itself - a 24px enabled
         // row, a 6px gap, a 24px type row, a 120px knob band - in parallel with

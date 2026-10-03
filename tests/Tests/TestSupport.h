@@ -1509,6 +1509,7 @@ inline px3::DoomUserParameters audible()
 
 // One entry point per suite. main() calls them in the order the output has
 // always been in.
+int runUISnapshot(const juce::String& outDir, int width, int height);
 void testBreakpointEnvelope();
 void testWavetable();
 void testSubOscillator();

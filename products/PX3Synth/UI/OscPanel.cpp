@@ -1,6 +1,6 @@
 #include "OscPanel.h"
 
-#include "CardInner.h"
+#include "SceneBinding.h"
 
 #include "UIConfig.h"
 
@@ -206,71 +206,30 @@ void OscPanel::setSceneStyle(juce::Colour background,
 
 void OscPanel::resized()
 {
-    const auto padX = uiConfig != nullptr ? uiConfig->getInt("osc.panel.layout.padX", 12) : 12;
-    const auto padY = uiConfig != nullptr ? uiConfig->getInt("osc.panel.layout.padY", 10) : 10;
-    auto panelArea = getLocalBounds().reduced(padX, padY);
-
-    // Laid out by FlexBox rather than by hand. The old arithmetic divided the
-    // panel into FIVE columns for four cards - the fifth was dead space on the
-    // right - and each card then narrowed itself again with its own `width`.
-    // One row of four items replaces both.
-    const px3::ui::FlexStyle fallback { true,
-                                        px3::ui::FlexDirection::row,
-                                        px3::ui::FlexWrapMode::noWrap,
-                                        px3::ui::JustifyContent::spaceBetween,
-                                        px3::ui::AlignItems::stretch,
-                                        px3::ui::AlignItems::centre,
-                                        8.0f };
-    const auto flexStyle = px3::ui::FlexStyle::readLayered(uiConfig.get(), { "panels.osc.flex" }, fallback);
-
-    constexpr int cardCount = 4;
-    const auto gapMargin = flexStyle.gapMargin();
-    const auto gapWidth = gapMargin.left + gapMargin.right;
-
-    // `itemWidth` 0 means "share the row equally", which is the default and the
-    // only mode in which `gap` decides the spacing.
-    //
-    // With a fixed width the cards are narrower than the row on a wide window,
-    // and justifyContent then distributes the leftover space between them -
-    // which swamps the gap entirely. That is why editing `gap` appeared to do
-    // nothing: space-between was setting the spacing, not the gap.
-    const auto preferred = uiConfig != nullptr ? uiConfig->getFloat("panels.osc.itemWidth", 0.0f) : 0.0f;
-    const auto laidOutWidth = static_cast<float>(panelArea.getWidth()) + gapWidth;
-    const auto share = juce::jmax(1.0f, (laidOutWidth - gapWidth * static_cast<float>(cardCount))
-                                            / static_cast<float>(cardCount));
-    const auto itemWidth = preferred > 0.0f ? juce::jmin(preferred, share) : share;
-
-    auto box = flexStyle.toFlexBox();
-    for (int i = 0; i < cardCount; ++i)
-    {
-        box.items.add(juce::FlexItem(itemWidth, static_cast<float>(panelArea.getHeight()))
-                          .withMargin(gapMargin));
-    }
-    // Laid out into the area widened by half a gap on each side, so the outer
-    // half-margins fall outside it and the first and last cards sit flush with
-    // the panel edge - which is what lines them up with the top nav.
-    box.performLayout(panelArea.toFloat().expanded(gapMargin.left, 0.0f));
-
-    const auto slot = [&box](int i) { return box.items.getReference(i).currentBounds.toNearestInt(); };
-
-    // Percentage card dimensions resolve against this box, so every card is
-    // told what it is. Without it a card would have to guess, and "50%" would
-    // quietly mean something different in each column.
+    // The four cards are placed by the instrument scene (primary.osc / osc.* in
+    // InstrumentScene.json). What stays here is what each card is TOLD: its
+    // index, and the box its percentage dimensions resolve against.
+    const auto panelArea = getLocalBounds();
     if (subOscComponent != nullptr)
     {
         subOscComponent->setPanelContentBounds(panelArea);
-        subOscComponent->setBounds(slot(0));
     }
-
     for (int oscIndex = 0; oscIndex < static_cast<int>(oscillatorComponents.size()); ++oscIndex)
     {
         if (auto* component = oscillatorComponents[static_cast<std::size_t>(oscIndex)].get())
         {
             component->setInstanceIndex(oscIndex + 1);
             component->setPanelContentBounds(panelArea);
-            component->setBounds(slot(oscIndex + 1));
         }
     }
+    px3::ui::requestSceneLayout(*this);
+}
+
+juce::Component* OscPanel::getCard(int index) const noexcept
+{
+    if (index == 0) { return subOscComponent.get(); }
+    if (index >= 1 && index <= 3) { return oscillatorComponents[static_cast<std::size_t>(index - 1)].get(); }
+    return nullptr;
 }
 
 void OscPanel::refreshOscillatorFromParameters(int oscIndex, bool enabled, int modeIndex, int vowelIndex)

@@ -124,6 +124,7 @@ set(PX3_SYNTH_SOURCES
         products/PX3Synth/UI/PluginEditorConfig.cpp
         products/PX3Synth/UI/PluginEditorBuild.cpp
         products/PX3Synth/UI/UILayout.cpp
+        products/PX3Synth/UI/SceneBinding.cpp
         products/PX3Synth/UI/MacroStrip.cpp
         products/PX3Synth/UI/MacroDepthPanel.cpp
         products/PX3Synth/UI/SettingsPanel.cpp
@@ -416,6 +417,9 @@ px3_add_product(
 juce_add_binary_data(PX3Assets
     SOURCES
         products/PX3Synth/Assets/px3.gif
+        # The shipped default layout. Release builds read it from here and
+        # nowhere else; designer builds may override it from the source tree.
+        shared/UI/Style/InstrumentScene.json
 )
 
 

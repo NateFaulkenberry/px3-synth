@@ -1202,7 +1202,9 @@ void PX3SynthAudioProcessorEditor::finishConstruction()
     // Seed visual slot layout with the processor order before the first setSize/resized pass.
     fxSectionOrder = audioProcessor.getFxProcessingOrder();
     // The larger default accommodates a complete FX row without changing layout.
+    bindSceneComponents();
     setSize(1518, 918);
+    resized();
 
     juce::String presetInitError;
     if (!presetManager.initialise(presetInitError))

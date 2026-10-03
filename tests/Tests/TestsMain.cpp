@@ -2064,6 +2064,14 @@ int main(int argc, char* argv[])
         return allOk ? 0 : 1;
     }
 
+    if (filter == "uisnapshot")
+    {
+        const juce::String dir = argc > 2 ? argv[2] : "/tmp/px3-uisnapshot";
+        const auto w = argc > 3 ? juce::String(argv[3]).getIntValue() : 1518;
+        const auto h = argc > 4 ? juce::String(argv[4]).getIntValue() : 918;
+        return runUISnapshot(dir, w, h);
+    }
+
     if (filter == "installpresets")
     {
         // Runs the real factory-library install and reports what landed on

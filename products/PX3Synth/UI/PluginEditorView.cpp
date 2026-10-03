@@ -67,117 +67,11 @@ void PX3SynthAudioProcessorEditor::resized()
         return;
     }
 
-    // Layout policy:
-    // - Header prioritizes logo/preset bar/fx cards for quick performance edits.
-    // - Mid section hosts core synth controls.
-    // - Bottom section reserves reliable space for performance strip + keyboard.
-    // This balancing intentionally avoids dramatic jumps while resizing.
-    auto bounds = getLocalBounds().reduced(16);
+    // Every box the editor shows - header, macro strip, sections, cards,
+    // keyboard - comes from the instrument scene (InstrumentScene.json). What
+    // remains below is overlays and sheets that float above the layout.
+    applySceneLayout();
 
-    const auto headerHeight = uiConfig != nullptr ? uiConfig->getInt("editor.layout.headerHeight", 120) : 120;
-    const auto controlsHeight = juce::jlimit(150, 270, static_cast<int>(std::lround(static_cast<double>(getHeight()) * 0.34)));
-    // Fixed, not a fraction of the window. It was height * 0.15, which meant
-    // every time the window grew to give the FX cards room the keyboard
-    // silently took a share of it - and the fraction had to be re-based to
-    // claw that back. 106px is what the fraction produced at every window
-    // height up to about 707 anyway, because the lower clamp bound was doing
-    // the work; making it explicit means the panels get all of any extra
-    // height, at the default size and on resize.
-    constexpr auto keyboardHeight = 106;
-    const auto sectionGap = uiConfig != nullptr ? uiConfig->getInt("editor.layout.sectionGap", 10) : 10;
-
-    headerArea = bounds.removeFromTop(headerHeight);
-    topMenuStripArea = headerArea;
-
-    // How far the bar's contents sit inside the strip. The tabs are meant to
-    // read as part of the bar rather than as buttons placed on it, so this is
-    // deliberately small.
-    const auto stripPadX = uiConfig != nullptr ? uiConfig->getInt("topMenu.layout.stripPadX", 3) : 3;
-    const auto stripPadY = uiConfig != nullptr ? uiConfig->getInt("topMenu.layout.stripPadY", 3) : 3;
-    auto topStripContent = topMenuStripArea.reduced(stripPadX, stripPadY);
-    const auto logoWidth = uiConfig != nullptr ? uiConfig->getInt("editor.layout.logoPanelWidth", 150) : 150;
-    logoPanelArea = topStripContent.removeFromLeft(logoWidth);
-
-    // The logo is drawn across its whole panel but only opens the site from the
-    // left of it. The right edge butts against the OSC button now that the
-    // sections are flush, and losing the panel you meant to click because a
-    // browser opened is a bad trade.
-    const auto logoClickInset = uiConfig != nullptr ? uiConfig->getInt("editor.layout.logoClickInsetRight", 18) : 18;
-    logoClickArea = logoPanelArea.withTrimmedRight(juce::jlimit(0, logoPanelArea.getWidth() / 2, logoClickInset));
-
-    const auto gainWidth = uiConfig != nullptr ? uiConfig->getInt("editor.layout.gainPanelWidth", 100) : 100;
-    topMenuGainArea = topStripContent.removeFromRight(gainWidth);
-
-    headerPlaceholderArea = topStripContent;
-    if (topMenuBar != nullptr)
-    {
-        topMenuBar->setBounds(headerPlaceholderArea);
-
-        const auto menuOrigin = topMenuBar->getPosition();
-        topMenuSectionButtonsArea = topMenuBar->getSectionButtonsArea().translated(menuOrigin.x, menuOrigin.y);
-        topMenuPresetClusterArea = topMenuBar->getPresetClusterArea().translated(menuOrigin.x, menuOrigin.y);
-        topMenuMenuButtonArea = topMenuBar->getPresetMenuButtonBounds().translated(menuOrigin.x, menuOrigin.y);
-        presetBarArea = topMenuPresetClusterArea;
-    }
-
-    // Knob and label as one group: the label sits directly under the knob
-    // rather than pinned to the bottom of the area, which left a gap that grew
-    // with the header height.
-    auto gainArea = topMenuGainArea.reduced(9, 4);
-    // The knob stands alone: no caption, and its name is on hover instead. The
-    // top bar is the tightest space in the interface, and a permanent label
-    // under a control whose function is obvious costs more than it explains.
-    const auto gainKnobSize = juce::jlimit(46, 60,
-                                           juce::jmin(gainArea.getWidth() - 6,
-                                                      gainArea.getHeight() - 4));
-
-    gainKnob.setBounds(juce::Rectangle<int>(gainKnobSize, gainKnobSize)
-                           .withCentre(gainArea.getCentre()));
-    gainLabel.setBounds({});
-
-    bounds.removeFromTop(sectionGap);
-
-    const auto desiredControlsHeight = juce::jmax(controlsHeight, bounds.getHeight() - keyboardHeight);
-    controlsArea = bounds.removeFromTop(juce::jlimit(0, bounds.getHeight(), desiredControlsHeight));
-
-    // No horizontal inset: the header, the panels and the keyboard all derive
-    // from the same `bounds`, and a 4px reduce here was the only thing making
-    // the keyboard start and end inboard of the other two.
-    auto keyboardRow = bounds;
-    const auto perfWidth = juce::jlimit(112, 190, keyboardRow.getWidth() / 8);
-    performanceControlsArea = keyboardRow.removeFromLeft(perfWidth);
-
-    // Both sit exactly where they belong; nothing is grown. Their particles are
-    // drawn by sparkOverlay, which covers the pair plus the room the animation
-    // needs above them.
-    pianoKeyboard.setBounds(keyboardRow);
-    performanceControls.setBounds(performanceControlsArea);
-
-    const auto headroom = juce::jmin(keyboardSparkHeadroom, controlsArea.getHeight());
-    const auto spill = juce::jmax(0, performanceSparkSpill);
-
-    sparkOverlay.setBounds(performanceControlsArea.getUnion(keyboardRow)
-                               .expanded(spill, 0)
-                               .withTop(keyboardRow.getY() - headroom)
-                               .withBottom(keyboardRow.getBottom() + spill)
-                               .getIntersection(getLocalBounds()));
-
-    // The overlay goes last, above both, and takes no mouse events - so the
-    // keys and the wheels keep every click that was ever theirs.
-    pianoKeyboard.toFront(false);
-    performanceControls.toFront(false);
-    sparkOverlay.toFront(false);
-
-    // Vertical inset only. The horizontal 8 here was the reason the cards sat
-    // inboard of the top nav: the header strip is drawn at the full width of
-    // `bounds`, so any extra horizontal reduce on the panel area misaligns the
-    // two edges.
-    panelViewportArea = controlsArea.reduced(0, 8);
-
-    // The macro strip comes off the LEFT of the one rectangle every panel is
-    // laid out in. Doing it here rather than in each panel is what puts the
-    // same four knobs on OSC, MOD, FLT, FX, AMP and MIX with one instance and
-    // no panel needing to know they exist.
     // The look-and-feel is shared by every knob and has no config prefix of
     // its own, so the macro colours are resolved here and handed to it.
     knobLookAndFeel.macroAccent = px3::ui::macroAccentColour(uiConfig.get());
@@ -192,29 +86,6 @@ void PX3SynthAudioProcessorEditor::resized()
     macroKnobLookAndFeel.pointerColour = px3::ui::macroPointerColour(uiConfig.get());
     macroKnobLookAndFeel.pointerDisabledColour
         = px3::ui::macroPointerDisabledColour(uiConfig.get());
-
-    // SETTINGS is the one view without the macro strip: it is a form, and a
-    // performance surface beside it would be four knobs with nothing on this
-    // page to assign them to. The strip's width goes back to the panel rather
-    // than being left as a gap, so the form is genuinely full width.
-    const auto showMacroStrip = selectedTopMenuSection != kSectionSettings;
-
-    if (showMacroStrip)
-    {
-        macroStripArea = panelViewportArea.removeFromLeft(
-            MacroStrip::preferredWidth(uiConfig.get()));
-        panelViewportArea.removeFromLeft(2);
-    }
-    else
-    {
-        macroStripArea = {};
-    }
-
-    if (macroStrip != nullptr)
-    {
-        macroStrip->setVisible(showMacroStrip);
-        macroStrip->setBounds(macroStripArea);
-    }
 
     if (macroAssignOverlay != nullptr)
     {
@@ -309,39 +180,7 @@ void PX3SynthAudioProcessorEditor::resized()
         layoutMacroDepthPanel();
         macroAssignOverlay->toFront(false);
     }
-    const auto coreComposite = isPrimaryCoreComposite();
-    auto oscArea = panelViewportArea;
-    auto filterArea = panelViewportArea;
-    auto ampArea = panelViewportArea;
-    if (coreComposite)
-    {
-        oscArea = layoutBoundsForRegion("primary.osc", panelViewportArea);
-        filterArea = layoutBoundsForRegion("primary.filter", panelViewportArea);
-        ampArea = layoutBoundsForRegion("primary.amp", panelViewportArea);
-    }
-
-    oscPanelViewport.setBounds(layoutBoundsForRegion("primary.osc", oscArea));
-    oscPanelViewport.setScrollBarsShown(false, false);
-    oscPanel->setSize(juce::jmax(1, oscPanelViewport.getMaximumVisibleWidth()),
-                      juce::jmax(1, oscPanelViewport.getMaximumVisibleHeight()));
-    modPanelViewport.setBounds(layoutBoundsForRegion("view.mod", panelViewportArea));
-    ampPanel->setBounds(layoutBoundsForRegion(coreComposite ? "primary.amp" : "view.amp",
-                                              coreComposite ? ampArea : panelViewportArea));
-    fltPanel->setBounds(layoutBoundsForRegion(coreComposite ? "primary.filter" : "view.filter",
-                                              coreComposite ? filterArea : panelViewportArea));
-    fxPanel->setBounds(layoutBoundsForRegion("view.fx", panelViewportArea));
-    mixPanel->setBounds(layoutBoundsForRegion("view.mix", panelViewportArea));
-    if (settingsPanel != nullptr)
-    {
-        settingsPanel->setBounds(layoutBoundsForRegion("view.settings", panelViewportArea));
-    }
-
-    layoutOscPanel();
     layoutModPanel();
-    layoutAmpPanel();
-    layoutFilterPanel();
-    layoutFxPanel();
-    layoutMixPanel();
     updatePanelVisibility();
 
     const auto browserWidth = juce::jlimit(520, 760, getWidth() - 120);
@@ -394,25 +233,24 @@ void PX3SynthAudioProcessorEditor::resized()
     presetBrowserCloseButton.setBounds(footerRight.removeFromLeft(90));
 
 #if PX3_UI_DESIGNER
-    if (uiSelectionOverlay != nullptr)
+    if (layoutDesigner != nullptr)
     {
-        uiSelectionOverlay->setBounds(getLocalBounds());
-        refreshUILayoutSelection();
-        uiSelectionOverlay->setVisible(uiDesignerWindow != nullptr && uiDesignerWindow->isVisible());
-        uiSelectionOverlay->toFront(false);
+        layoutDesigner->editorLaidOut();
     }
 #endif
 
 }
 bool PX3SynthAudioProcessorEditor::isPanelVisible(int sectionIndex) const
 {
+    // OSC, FILTER and AMP live side by side in one scene row (view.osc); the
+    // others each have a view of their own.
     auto nodeId = juce::String();
     switch (sectionIndex)
     {
-        case kSectionOsc: nodeId = "view.osc"; break;
+        case kSectionOsc: nodeId = "primary.osc"; break;
         case kSectionMod: nodeId = "view.mod"; break;
-        case kSectionAmp: nodeId = "view.amp"; break;
-        case kSectionFilter: nodeId = "view.filter"; break;
+        case kSectionAmp: nodeId = "primary.amp"; break;
+        case kSectionFilter: nodeId = "primary.filter"; break;
         case kSectionFx: nodeId = "view.fx"; break;
         case kSectionMix: nodeId = "view.mix"; break;
         case kSectionSettings: nodeId = "view.settings"; break;
@@ -423,28 +261,9 @@ bool PX3SynthAudioProcessorEditor::isPanelVisible(int sectionIndex) const
         return false;
     }
 
-    if (isPrimaryCoreComposite())
+    if (isPrimaryCoreComposite() && (sectionIndex == kSectionAmp || sectionIndex == kSectionFilter))
     {
-        auto primaryNodeId = juce::String();
-        switch (sectionIndex)
-        {
-            case kSectionOsc: primaryNodeId = "primary.osc"; break;
-            case kSectionFilter: primaryNodeId = "primary.filter"; break;
-            case kSectionAmp: primaryNodeId = "primary.amp"; break;
-            default: break;
-        }
-        if (primaryNodeId.isNotEmpty())
-        {
-            if (uiLayout.findNode(primaryNodeId) != nullptr
-                && ! uiLayout.isNodeVisible(primaryNodeId))
-            {
-                return false;
-            }
-        }
-        if (sectionIndex == kSectionAmp || sectionIndex == kSectionFilter)
-        {
-            return true;
-        }
+        return true;
     }
     return selectedTopMenuSection == juce::jlimit(0, kSectionSettings, sectionIndex);
 }
@@ -520,13 +339,15 @@ void PX3SynthAudioProcessorEditor::layoutModPanel()
     {
         const auto preferredWidth = modPanel->getPreferredContentWidth();
         const auto preferredHeight = modPanel->getPreferredContentHeight();
-        // A scrolling panel's content stops short of the scrollbar. getWidth()
-        // includes the bar, so sizing to it put the cards underneath it.
-        const auto gutter = modPanelViewport.isVerticalScrollBarShown() ? kScrollBarGutter : 0;
-        const auto available = juce::jmax(1, modPanelViewport.getMaximumVisibleWidth() - gutter);
-        const auto contentWidth = juce::jmax(available, preferredWidth);
         const auto scrollTail = uiConfig != nullptr ? uiConfig->getInt("editor.layout.scrollTail", 30) : 30;
         const auto contentHeight = preferredHeight + scrollTail;
+        // A scrolling panel's content stops short of the scrollbar. Decided from
+        // the sizes rather than from the viewport's current bar, which lags a
+        // viewport that has only just been given its bounds.
+        const auto scrolls = contentHeight > modPanelViewport.getHeight();
+        const auto gutter = scrolls ? modPanelViewport.getScrollBarThickness() + kScrollBarGutter : 0;
+        const auto available = juce::jmax(1, modPanelViewport.getWidth() - gutter);
+        const auto contentWidth = juce::jmax(available, preferredWidth);
         modPanel->setBounds(0, 0, contentWidth, contentHeight);
         modPanel->resized();
     }

@@ -182,11 +182,7 @@ PX3SynthAudioProcessorEditor::~PX3SynthAudioProcessorEditor()
 {
     stopTimer();
 #if PX3_UI_DESIGNER
-    if (uiDesignerWindow != nullptr)
-    {
-        uiDesignerWindow->setVisible(false);
-        uiDesignerWindow.reset();
-    }
+    layoutDesigner.reset();
 #endif
 
     // A key held while the window closes gets no mouse-up. Release it now,

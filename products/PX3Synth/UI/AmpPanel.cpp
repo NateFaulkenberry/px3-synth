@@ -1,6 +1,7 @@
 #include "AmpPanel.h"
 
 #include "UIConfig.h"
+#include "SceneBinding.h"
 
 AmpPanel::AmpPanel(PX3SynthAudioProcessor& processorIn, juce::Colour panelAccent)
     : processor(processorIn),
@@ -99,16 +100,8 @@ void AmpPanel::setUIConfig(std::shared_ptr<const UIConfig> configIn)
 
 void AmpPanel::resized()
 {
-    if (ampEnvelopeComponent == nullptr)
-    {
-        return;
-    }
-
-    const auto panelPadX = uiConfig != nullptr ? uiConfig->getInt("amp.panel.layout.padX", 12) : 12;
-    const auto panelPadY = uiConfig != nullptr ? uiConfig->getInt("amp.panel.layout.padY", 10) : 10;
-    auto panelArea = getLocalBounds().reduced(panelPadX, panelPadY);
-
-    ampEnvelopeComponent->setBounds(panelArea);
+    // The envelope card is placed by the instrument scene (amp.envelope).
+    px3::ui::requestSceneLayout(*this);
 }
 
 int AmpPanel::getPreferredContentWidth() const
