@@ -437,6 +437,11 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
                                                     "Vibe Type",
                                                     kVibeTypeChoices,
                                                     0);
+    // The Uni-Vibe stage at VIBE's place in the FX chain. INTENSITY 0 is off,
+    // so it changes no existing patch.
+    vibeSpeedParam = parameterCatalog.createFloat("fx.vibe.speed", "Vibe Speed", juce::NormalisableRange<float>(0.0f, 1.0f), 0.35f);
+    vibeIntensityParam = parameterCatalog.createFloat("fx.vibe.intensity", "Vibe Intensity", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
+    vibeModeParam = parameterCatalog.createChoice("fx.vibe.mode", "Vibe Mode", juce::StringArray { "CHORUS", "VIBRATO" }, 0);
     delayAmountParam = parameterCatalog.createFloat("fx.delay.amount", "Delay Amount", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
     granularSyncDivisionParam = parameterCatalog.createChoice("fx.delay.granular.sync.division",
                                                                 "Granular Sync",
@@ -851,6 +856,9 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     }
     addParameter(masterGainParam);
     addParameter(vibeAmountParam);
+    addParameter(vibeSpeedParam);
+    addParameter(vibeIntensityParam);
+    addParameter(vibeModeParam);
     addParameter(vibeEnabledParam);
     addParameter(vibeTypeParam);
     addParameter(delayAmountParam);
@@ -1357,6 +1365,7 @@ void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
     chorusComponent.prepare(sampleRate);
     stereoSpreadComponent.prepare(sampleRate);
     distortionComponent.prepare(sampleRate);
+    uniVibeComponent.prepare(sampleRate);
     // Four mono source channels plus three stereo bus contexts.
     analogEngine.prepare(sampleRate, kMixerSourceCount);
     for (auto& insert : busInserts)
@@ -2368,6 +2377,14 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     chorusComponent.updateForBlock(currentChorusSettings());
     stereoSpreadComponent.updateForBlock(currentStereoSpreadSettings());
     distortionComponent.updateForBlock(currentDistortionSettings());
+    {
+        px3::UniVibeSettings uniVibe;
+        const auto vibeOn = vibeEnabledParam == nullptr || vibeEnabledParam->get();
+        uniVibe.speed = modulatedParameterValue(vibeSpeedParam);
+        uniVibe.intensity = vibeOn ? modulatedParameterValue(vibeIntensityParam) : 0.0f;
+        uniVibe.mode = vibeModeParam != nullptr ? vibeModeParam->getIndex() : 0;
+        uniVibeComponent.updateForBlock(uniVibe);
+    }
 
     // The engine's amount is a tuning constant; the parameter only gates it.
     // Smoothed inside the engine, so toggling it does not click.
@@ -2675,7 +2692,8 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         {
             switch (stage)
             {
-                case 0: // VIBE (distributed in voice stage)
+                case 0: // VIBE: the per-voice drift runs in the voices; the Uni-Vibe here
+                    uniVibeComponent.processSampleFrame(stageL, stageR, stageL, stageR);
                     break;
 
                 case 1: // Delay

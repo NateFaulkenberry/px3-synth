@@ -18,6 +18,7 @@
 #include "LucyControlModel.h"
 #include "StereoSpread.h"
 #include "Distortion.h"
+#include "UniVibe.h"
 #include "VoiceModulation.h"
 #include "Mood.h"
 #include "MoodControlModel.h"
@@ -1394,6 +1395,10 @@ private:
     px3::Chorus chorusComponent;
     px3::StereoSpread stereoSpreadComponent;
     px3::Distortion distortionComponent;
+    px3::UniVibe uniVibeComponent;
+    juce::AudioParameterFloat* vibeSpeedParam { nullptr };
+    juce::AudioParameterFloat* vibeIntensityParam { nullptr };
+    juce::AudioParameterChoice* vibeModeParam { nullptr };
     juce::AudioParameterBool* distortionEnabledParam { nullptr };
     juce::AudioParameterFloat* distortionDriveParam { nullptr };
     juce::AudioParameterChoice* distortionTypeParam { nullptr };

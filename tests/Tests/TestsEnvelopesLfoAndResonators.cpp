@@ -1,4 +1,5 @@
 #include "TestSupport.h"
+#include "UniVibe.h"
 
 // testAmpEnvelope, testModEnvelopes, testLfo, testVibe, testReverb, testComb
 
@@ -851,6 +852,76 @@ void testLfo()
 void testVibe()
 {
     suite("VIBE");
+
+    {
+        // UNI-VIBE: off at INTENSITY 0; VIBRATO wobbles pitch; CHORUS moves
+        // notches through the spectrum over the cycle.
+        auto render = [](float intensity, int mode, bool noiseIn, std::vector<float>& outL, bool& identical, bool& finite)
+        {
+            px3::UniVibe vibe;
+            vibe.prepare(48000.0);
+            px3::UniVibeSettings settings;
+            settings.intensity = intensity; settings.mode = mode; settings.speed = 0.35f;
+            juce::Random random(3);
+            identical = true; finite = true; outL.clear();
+            for (int n = 0; n < 48000 * 3; ++n)
+            {
+                if (n % 512 == 0) vibe.updateForBlock(settings);
+                const auto x = noiseIn ? random.nextFloat() * 0.4f - 0.2f
+                                       : 0.3f * static_cast<float>(std::sin(juce::MathConstants<double>::twoPi * 1000.0 * n / 48000.0));
+                float l = 0, r = 0;
+                vibe.processSampleFrame(x, x, l, r);
+                identical = identical && l == x && r == x;
+                finite = finite && std::isfinite(l) && std::isfinite(r);
+                if (n >= 48000) outL.push_back(l);
+            }
+        };
+        std::vector<float> out;
+        bool same = false, finite = false;
+        render(0.0f, 0, false, out, same, finite);
+        check("UniVibe_OffAtZeroIntensity", same, "INTENSITY 0 returns the input sample for sample");
+
+        // Vibrato: energy around (not at) 1 kHz, relative to 1 kHz itself.
+        auto sidebands = [](const std::vector<float>& x)
+        {
+            auto power = [&](double hz)
+            {
+                double c = 0, sn = 0;
+                for (std::size_t n = 0; n < x.size(); ++n)
+                {
+                    const auto hann = 0.5 - 0.5 * std::cos(juce::MathConstants<double>::twoPi * n / (x.size() - 1.0));
+                    const auto w = juce::MathConstants<double>::twoPi * hz * n / 48000.0;
+                    c += hann * x[n] * std::cos(w); sn += hann * x[n] * std::sin(w);
+                }
+                return c * c + sn * sn;
+            };
+            double side = 0.0;
+            for (const auto off : { -6.0, -4.0, -3.0, 3.0, 4.0, 6.0 }) side += power(1000.0 + off);
+            return 10.0 * std::log10((side + 1e-30) / (power(1000.0) + 1e-30));
+        };
+        bool f2 = false, s2 = false;
+        render(1.0f, 1, false, out, s2, f2);
+        const auto vibrato = sidebands(out);
+        check("UniVibe_VibratoWobblesPitch", f2 && vibrato > -20.0, "sidebands around 1 kHz " + juce::String(vibrato, 1) + " dB");
+
+        // Chorus on noise: the 2 kHz band level swings over the LFO cycle.
+        bool f3 = false, s3 = false;
+        render(1.0f, 0, true, out, s3, f3);
+        double lowest = 1e9, highest = -1e9;
+        for (std::size_t from = 0; from + 2400 <= out.size(); from += 2400)
+        {
+            double c = 0, sn = 0;
+            for (std::size_t k = 0; k < 2400; ++k)
+            {
+                const auto w = juce::MathConstants<double>::twoPi * 2000.0 * (from + k) / 48000.0;
+                c += out[from + k] * std::cos(w); sn += out[from + k] * std::sin(w);
+            }
+            const auto db = 10.0 * std::log10(c * c + sn * sn + 1e-30);
+            lowest = juce::jmin(lowest, db); highest = juce::jmax(highest, db);
+        }
+        check("UniVibe_ChorusSweepsNotches", f3 && highest - lowest > 12.0,
+              "2 kHz band swing over the cycle " + juce::String(highest - lowest, 1) + " dB");
+    }
 
     auto renderVibe = [](bool enabled, float amount, int typeIndex = 0)
     {

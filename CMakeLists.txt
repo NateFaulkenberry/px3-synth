@@ -104,6 +104,7 @@ set(PX3_SHARED_SOURCES
         shared/DSP/Reverb/Reverb.cpp
         shared/DSP/Vibe/Vibe.cpp
         shared/DSP/Vibe/VibeEngine.cpp
+        shared/DSP/Vibe/UniVibe.cpp
         shared/DSP/Filter/VoiceFilter.cpp
         shared/Infrastructure/Update/SemanticVersion.cpp
         shared/Infrastructure/Update/UpdateModel.cpp
