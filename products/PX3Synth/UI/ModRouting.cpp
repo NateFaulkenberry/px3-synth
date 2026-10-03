@@ -672,7 +672,7 @@ public:
         auto area = getLocalBounds().withTrimmedTop(static_cast<int>(kBand) + 2).reduced(6, 2);
         constexpr int headings = 3;
         const auto headingH = 14;
-        const auto rowH = juce::jlimit(18, 30, (area.getHeight() - headings * headingH) / kSourceCount);
+        const auto rowH = juce::jlimit(18, 38, (area.getHeight() - headings * headingH) / kSourceCount);
         headingRows.clear();
         for (int source = 0; source < kSourceCount; ++source)
         {

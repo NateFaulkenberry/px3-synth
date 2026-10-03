@@ -455,7 +455,7 @@
     },
     "channel": {
       "width": 84,
-      "spacing": 8,
+      "spacing": 1,
       "titleSize": 11.5,
       "labelSize": 9.5
     },
