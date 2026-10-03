@@ -207,6 +207,8 @@ public:
     bool updateNode(const InstrumentSceneNode& node, juce::String& error);
     bool setVisible(const juce::String& id, bool visible, juce::String& error);
     bool setOrder(const juce::String& id, int order, juce::String& error);
+    // Load/reset as an undoable edit (loadJson itself is not undoable).
+    bool replaceFromJson(const juce::String& text, juce::String& error);
 
     // Edits inside a transaction become ONE undo step (a drag). Edits outside
     // one each become their own step.

@@ -1426,6 +1426,14 @@ bool InstrumentSceneDocument::setOrder(const juce::String& id, int order, juce::
     return updateNode(copy, error);
 }
 
+bool InstrumentSceneDocument::replaceFromJson(const juce::String& text, juce::String& error)
+{
+    auto before = snapshot();
+    if (! loadJson(text, error)) { return false; }
+    recordStep(std::move(before));
+    return true;
+}
+
 void InstrumentSceneDocument::beginTransaction()
 {
     if (transactionOpen) { return; }

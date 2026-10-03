@@ -125,6 +125,8 @@ set(PX3_SYNTH_SOURCES
         products/PX3Synth/UI/PluginEditorBuild.cpp
         products/PX3Synth/UI/UILayout.cpp
         products/PX3Synth/UI/SceneBinding.cpp
+        # Empty unless PX3_UI_DESIGNER or the unit tests: the drag/resize model.
+        products/PX3Synth/UI/UILayoutEditing.cpp
         products/PX3Synth/UI/MacroStrip.cpp
         products/PX3Synth/UI/MacroDepthPanel.cpp
         products/PX3Synth/UI/SettingsPanel.cpp

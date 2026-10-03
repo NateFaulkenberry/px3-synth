@@ -1,5 +1,6 @@
 #include "TestSupport.h"
 #include "UILayout.h"
+#include "UILayoutEditing.h"
 
 #include <cmath>
 
@@ -357,6 +358,169 @@ void testUILayout()
               ! osc.isEmpty() && flt.getX() >= osc.getRight() && amp.getX() >= flt.getRight()
                   && near(osc.getY(), flt.getY()) && near(flt.getHeight(), amp.getHeight()),
               describe(shipped, { "primary.osc", "primary.filter", "primary.amp" }));
+    }
+
+    // ---- the designer's direct manipulation ------------------------------------------
+    suite("INSTRUMENT SCENE / DESIGNER EDITS");
+    namespace le = px3::ui::layoutedit;
+    {
+        InstrumentSceneDocument doc;
+        load(doc,
+             "{ \"id\": \"r\", \"layout\": \"flex\", \"gap\": 10 },"
+             "{ \"id\": \"a\", \"parent\": \"r\", \"basis\": 100, \"grow\": 1 },"
+             "{ \"id\": \"b\", \"parent\": \"r\", \"basis\": 100, \"grow\": 1 },"
+             "{ \"id\": \"c\", \"parent\": \"r\", \"basis\": \"10%\" },"
+             "{ \"id\": \"abs\", \"parent\": \"r\", \"position\": \"absolute\", \"x\": \"10%\", \"y\": 20, \"width\": 50, \"height\": 30 }",
+             error);
+        doc.resolve(kRoot);
+        const auto aBefore = doc.rectOf("a");
+
+        // Flex child, right handle, +40 px: the RESOLVED width follows the
+        // handle and the change is carried by the basis (grow kept).
+        le::Drag drag;
+        const auto began = le::beginDrag(doc, drag, "a", le::Handle::right, { aBefore.getRight(), 100 }, kRoot);
+        le::dragTo(doc, drag, { aBefore.getRight() + 20, 100 }, 0.0f, error);
+        le::dragTo(doc, drag, { aBefore.getRight() + 40, 100 }, 0.0f, error);
+        le::endDrag(doc, drag);
+        doc.resolve(kRoot);
+        const auto aAfter = doc.rectOf("a");
+        const auto* aNode = doc.findNode("a");
+        check("Designer_DragFlexChildChangesBasisAndResolvedRect",
+              began && std::abs(aAfter.getWidth() - (aBefore.getWidth() + 40.0f)) < 0.6f
+                  && aNode->basis.unit == Length::Unit::px && aNode->basis.value > 100.0f && aNode->grow == 1.0f,
+              juce::String(aBefore.getWidth()) + " -> " + juce::String(aAfter.getWidth())
+                  + ", basis " + aNode->basis.toString() + ", grow " + juce::String(aNode->grow));
+
+        // One undo step for the whole drag; redo brings it back.
+        const auto undone = doc.undo();
+        doc.resolve(kRoot);
+        const auto undoRestores = undone && doc.rectOf("a") == aBefore && doc.findNode("a")->basis == Length::px(100);
+        doc.redo();
+        doc.resolve(kRoot);
+        check("Designer_DragIsOneUndoStepAndRedoes",
+              undoRestores && std::abs(doc.rectOf("a").getWidth() - aAfter.getWidth()) < 0.01f && ! doc.canRedo(),
+              describe(doc, { "a" }));
+
+        // Absolute child: move keeps the units (x was a percentage).
+        const auto absBefore = doc.rectOf("abs");
+        le::beginDrag(doc, drag, "abs", le::Handle::move, absBefore.getCentre(), kRoot);
+        le::dragTo(doc, drag, absBefore.getCentre() + juce::Point<float>(40, 25), 0.0f, error);
+        le::endDrag(doc, drag);
+        doc.resolve(kRoot);
+        const auto* absNode = doc.findNode("abs");
+        check("Designer_DragAbsoluteChildMovesItAndKeepsUnits",
+              doc.rectOf("abs") == absBefore.translated(40, 25) && absNode->x.unit == Length::Unit::percent
+                  && near(absNode->x.value, 20.0f) && absNode->y == Length::px(45),
+              describe(doc, { "abs" }) + " x=" + absNode->x.toString());
+
+        // Corner handle resizes width and height; snap rounds the edges.
+        const auto absMoved = doc.rectOf("abs");
+        le::beginDrag(doc, drag, "abs", le::Handle::bottomRight, absMoved.getBottomRight(), kRoot);
+        le::dragTo(doc, drag, absMoved.getBottomRight() + juce::Point<float>(13, 9), 8.0f, error);
+        le::endDrag(doc, drag);
+        doc.resolve(kRoot);
+        const auto resizedRect = doc.rectOf("abs");
+        check("Designer_ResizeHandleSetsSizeWithSnap",
+              near(resizedRect.getX(), absMoved.getX()) && near(std::fmod(resizedRect.getRight(), 8.0f), 0.0f)
+                  && near(std::fmod(resizedRect.getBottom(), 8.0f), 0.0f)
+                  && resizedRect.getWidth() > absMoved.getWidth(),
+              describe(doc, { "abs" }));
+
+        // Moving a flex child past its neighbours' centres reorders it.
+        const auto cRect = doc.rectOf("c");
+        le::beginDrag(doc, drag, "c", le::Handle::move, cRect.getCentre(), kRoot);
+        le::dragTo(doc, drag, { 5.0f, cRect.getCentreY() }, 0.0f, error);
+        le::endDrag(doc, drag);
+        doc.resolve(kRoot);
+        check("Designer_DragFlexChildAlongTheRowReorders",
+              near(doc.rectOf("c").getX(), 0.0f) && doc.rectOf("a").getX() > doc.rectOf("c").getX(),
+              describe(doc, { "a", "b", "c" }));
+
+        // Locked nodes refuse a drag; hit testing finds the deepest box.
+        auto locked = *doc.findNode("b");
+        locked.locked = true;
+        doc.updateNode(locked, error);
+        doc.resolve(kRoot);
+        const auto refused = ! le::beginDrag(doc, drag, "b", le::Handle::move, doc.rectOf("b").getCentre(), kRoot);
+        const auto hit = le::hitTest(doc, doc.rectOf("abs").getCentre());
+        const auto hitRoot = le::hitTest(doc, { 399, 199 });
+        check("Designer_LockedRefusesAndHitTestIsDeepestFirst",
+              refused && hit == doc.indexOf("abs") && hitRoot >= 0,
+              "hit " + juce::String(hit) + " root-corner " + juce::String(hitRoot));
+
+        // Save -> load reproduces every resolved rect.
+        InstrumentSceneDocument reloaded;
+        const auto parsed = reloaded.loadJson(doc.toJson(), error);
+        reloaded.resolve(kRoot);
+        doc.resolve(kRoot);
+        auto same = parsed;
+        for (int i = 0; i < static_cast<int>(doc.getNodes().size()); ++i)
+        {
+            same = same && reloaded.rectOf(doc.getNodes()[static_cast<std::size_t>(i)].id) == doc.rectOf(i);
+        }
+        check("Designer_SaveLoadRoundTripReproducesResolvedRects", same, error);
+    }
+
+    // Sole grower: its basis cannot move it, so the drag stops it growing.
+    {
+        InstrumentSceneDocument doc;
+        load(doc,
+             "{ \"id\": \"r\", \"layout\": \"flex\" },"
+             "{ \"id\": \"a\", \"parent\": \"r\", \"grow\": 1 },"
+             "{ \"id\": \"b\", \"parent\": \"r\", \"width\": 100 }", error);
+        doc.resolve(kRoot);
+        le::Drag drag;
+        le::beginDrag(doc, drag, "a", le::Handle::right, { 300, 50 }, kRoot);
+        le::dragTo(doc, drag, { 200, 50 }, 0.0f, error);
+        le::endDrag(doc, drag);
+        doc.resolve(kRoot);
+        check("Designer_ResizingTheSoleGrowerFreezesItAtTheHandle",
+              near(doc.rectOf("a").getWidth(), 200.0f) && doc.findNode("a")->grow == 0.0f,
+              describe(doc, { "a", "b" }));
+    }
+
+    // The live editor: a drag on a real scene node moves the real component,
+    // undo puts it back, and no layout edit touches a parameter.
+    {
+        PX3SynthAudioProcessor processor;
+        processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        processor.prepareToPlay(kSampleRate, kBlockSize);
+        std::unique_ptr<juce::AudioProcessorEditor> base(processor.createEditor());
+        auto* editor = dynamic_cast<PX3SynthAudioProcessorEditor*>(base.get());
+        if (editor != nullptr)
+        {
+            std::vector<float> before;
+            for (auto* p : processor.getParameters()) { before.push_back(p->getValue()); }
+
+            auto& doc = editor->getSceneDocument();
+            auto* macros = editor->getSceneBinding().componentFor("macros");
+            const auto macroBefore = macros != nullptr ? macros->getBounds() : juce::Rectangle<int>();
+            const auto root = editor->getLocalBounds().toFloat();
+            doc.resolve(root);
+            const auto r = doc.rectOf("macros");
+            le::Drag drag;
+            le::beginDrag(doc, drag, "macros", le::Handle::right, { r.getRight(), r.getCentreY() }, root);
+            le::dragTo(doc, drag, { r.getRight() + 30, r.getCentreY() }, 0.0f, error);
+            editor->relayoutScene();
+            const auto macroDuring = macros != nullptr ? macros->getBounds() : juce::Rectangle<int>();
+            le::endDrag(doc, drag);
+            doc.undo();
+            editor->relayoutScene();
+            const auto macroAfterUndo = macros != nullptr ? macros->getBounds() : juce::Rectangle<int>();
+
+            auto unchanged = true;
+            const auto& params = processor.getParameters();
+            for (int i = 0; i < params.size(); ++i)
+            {
+                unchanged = unchanged && params[i]->getValue() == before[static_cast<std::size_t>(i)];
+            }
+            check("Designer_LiveDragMovesTheRealComponent",
+                  macros != nullptr && macroDuring.getWidth() == macroBefore.getWidth() + 30
+                      && macroAfterUndo == macroBefore,
+                  macroBefore.toString() + " -> " + macroDuring.toString() + " -> " + macroAfterUndo.toString());
+            check("Designer_LayoutEditsNeverChangeAParameter", unchanged,
+                  juce::String(params.size()) + " parameters compared");
+        }
     }
 }
 }
