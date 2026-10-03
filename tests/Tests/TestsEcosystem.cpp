@@ -126,6 +126,22 @@ void testEcosystem()
         }
         const auto allRegistered = catalog.entries().size()
                                 == static_cast<std::size_t>(processor.getParameters().size());
+        auto definitionsMatch = allRegistered;
+        for (const auto& entry : catalog.entries())
+        {
+            auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(entry.parameter);
+            definitionsMatch = definitionsMatch && entry.definition != nullptr && ranged != nullptr;
+            if (entry.definition == nullptr || ranged == nullptr) { continue; }
+            const auto& definition = *entry.definition;
+            definitionsMatch = definitionsMatch && definition.id.getParamID() == entry.id
+                && definition.name == entry.name
+                && definition.range.start == ranged->getNormalisableRange().start
+                && definition.range.end == ranged->getNormalisableRange().end
+                && std::abs(definition.range.convertTo0to1(definition.defaultValue)
+                            - ranged->getDefaultValue()) < 1.0e-5f;
+        }
+        check("ParameterCatalog_AllHostParametersComeFromTypedDefinitions", definitionsMatch);
+
         check("ParameterCatalog_IndexesEveryHostParameterAndBuildsModuleGroups",
               allRegistered && coarse != nullptr && coarse->parameter != nullptr
                   && coarse->groupPath == "VOICE / OSC 1"

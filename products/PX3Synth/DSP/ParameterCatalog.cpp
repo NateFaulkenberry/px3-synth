@@ -114,6 +114,68 @@ std::vector<ParameterCatalog::GroupSegment> ParameterCatalog::groupPathForId(con
     return path("global", "GLOBAL", "system", "SYSTEM");
 }
 
+juce::AudioParameterFloat* ParameterCatalog::createFloat(const juce::ParameterID& id,
+                                                        const juce::String& name,
+                                                        juce::NormalisableRange<float> range,
+                                                        float defaultValue,
+                                                        const juce::AudioParameterFloatAttributes& attributes)
+{
+    auto definition = std::make_unique<ParameterDefinition>(ParameterDefinition {
+        id, name, ParameterKind::continuous, range, defaultValue, {}, attributes });
+    auto* parameter = new juce::AudioParameterFloat(definition->id, definition->name,
+                                                   definition->range, definition->defaultValue,
+                                                   std::get<juce::AudioParameterFloatAttributes>(definition->attributes));
+    definitions.push_back(std::move(definition));
+    return parameter;
+}
+
+juce::AudioParameterBool* ParameterCatalog::createBool(const juce::ParameterID& id,
+                                                      const juce::String& name, bool defaultValue,
+                                                      const juce::AudioParameterBoolAttributes& attributes)
+{
+    auto definition = std::make_unique<ParameterDefinition>(ParameterDefinition {
+        id, name, ParameterKind::boolean, { 0.0f, 1.0f, 1.0f }, defaultValue ? 1.0f : 0.0f, {}, attributes });
+    auto* parameter = new juce::AudioParameterBool(definition->id, definition->name,
+                                                  definition->defaultValue != 0.0f,
+                                                  std::get<juce::AudioParameterBoolAttributes>(definition->attributes));
+    definitions.push_back(std::move(definition));
+    return parameter;
+}
+
+juce::AudioParameterChoice* ParameterCatalog::createChoice(const juce::ParameterID& id,
+                                                          const juce::String& name,
+                                                          const juce::StringArray& choices, int defaultIndex,
+                                                          const juce::AudioParameterChoiceAttributes& attributes)
+{
+    auto definition = std::make_unique<ParameterDefinition>(ParameterDefinition {
+        id, name, ParameterKind::choice, { 0.0f, static_cast<float>(choices.size() - 1), 1.0f },
+        static_cast<float>(defaultIndex), choices, attributes });
+    auto* parameter = new juce::AudioParameterChoice(definition->id, definition->name,
+                                                    definition->choices,
+                                                    static_cast<int>(definition->defaultValue),
+                                                    std::get<juce::AudioParameterChoiceAttributes>(definition->attributes));
+    definitions.push_back(std::move(definition));
+    return parameter;
+}
+
+juce::AudioParameterInt* ParameterCatalog::createInt(const juce::ParameterID& id,
+                                                    const juce::String& name,
+                                                    int minimum, int maximum, int defaultValue,
+                                                    const juce::AudioParameterIntAttributes& attributes)
+{
+    auto definition = std::make_unique<ParameterDefinition>(ParameterDefinition {
+        id, name, ParameterKind::integer,
+        { static_cast<float>(minimum), static_cast<float>(maximum), 1.0f },
+        static_cast<float>(defaultValue), {}, attributes });
+    auto* parameter = new juce::AudioParameterInt(definition->id, definition->name,
+                                                 static_cast<int>(definition->range.start),
+                                                 static_cast<int>(definition->range.end),
+                                                 static_cast<int>(definition->defaultValue),
+                                                 std::get<juce::AudioParameterIntAttributes>(definition->attributes));
+    definitions.push_back(std::move(definition));
+    return parameter;
+}
+
 void ParameterCatalog::add(juce::AudioProcessorParameter* parameter)
 {
     if (parameter == nullptr || attached)
@@ -175,6 +237,14 @@ void ParameterCatalog::add(juce::AudioProcessorParameter* parameter)
     entry.automatable = parameter->isAutomatable();
     entry.meta = parameter->isMetaParameter();
     entry.parameter = parameter;
+    for (const auto& definition : definitions)
+    {
+        if (definition->id.getParamID() == id)
+        {
+            entry.definition = definition.get();
+            break;
+        }
+    }
     if (ranged != nullptr)
     {
         const auto& range = ranged->getNormalisableRange();
@@ -184,6 +254,21 @@ void ParameterCatalog::add(juce::AudioProcessorParameter* parameter)
         entry.interval = range.interval;
         entry.defaultValue = range.convertFrom0to1(ranged->getDefaultValue());
         entry.formattedDefault = parameter->getText(ranged->getDefaultValue(), 128);
+    }
+    if (entry.definition != nullptr)
+    {
+        entry.name = entry.definition->name;
+        std::visit([&entry](const auto& attributes)
+        {
+            const auto& host = attributes.getAudioProcessorParameterWithIDAttributes();
+            entry.unit = host.getLabel();
+            entry.automatable = host.getAutomatable();
+            entry.meta = host.getMeta();
+        }, entry.definition->attributes);
+        entry.minimum = entry.definition->range.start;
+        entry.maximum = entry.definition->range.end;
+        entry.interval = entry.definition->range.interval;
+        entry.defaultValue = entry.definition->defaultValue;
     }
     catalogEntries.push_back(std::move(entry));
 }
