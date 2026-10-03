@@ -10,11 +10,26 @@
 namespace px3::ui
 {
 
-static float titleBandHeightFor(const CardStyle& style, juce::Rectangle<float> cardBounds)
+// The band the card's style asks for, before the power-button minimum.
+static float styledTitleBand(const CardStyle& style, juce::Rectangle<float> cardBounds)
 {
     const auto contentBox = style.contentBounds(cardBounds);
+    return contentBox.getY() + style.title.y + style.title.height - cardBounds.getY();
+}
+
+// How much the band grows so the power button fits with its padding. The same
+// amount is taken off the content below the title, so controls move down with
+// the header instead of being overlapped by it.
+static float titleBandGrowth(const CardStyle& style, juce::Rectangle<float> cardBounds)
+{
+    const auto ceiling = juce::jmax(theme::space::minTitleBand, cardBounds.getHeight() * 0.5f);
+    return juce::jmax(0.0f, juce::jmin(theme::space::minTitleBand, ceiling) - styledTitleBand(style, cardBounds));
+}
+
+static float titleBandHeightFor(const CardStyle& style, juce::Rectangle<float> cardBounds)
+{
     return juce::jlimit(16.0f, juce::jmax(16.0f, cardBounds.getHeight() * 0.5f),
-                        contentBox.getY() + style.title.y + style.title.height - cardBounds.getY());
+                        styledTitleBand(style, cardBounds) + titleBandGrowth(style, cardBounds));
 }
 namespace
 {
@@ -544,7 +559,7 @@ juce::Rectangle<int> CardHost::contentBelowTitle() const
 {
     const auto& s = cache.style();
     auto area = content().toNearestInt();
-    area.removeFromTop(static_cast<int>(std::ceil(s.title.height + s.title.y)));
+    area.removeFromTop(static_cast<int>(std::ceil(s.title.height + s.title.y + titleBandGrowth(s, cardBounds))));
     return area;
 }
 
@@ -638,7 +653,7 @@ juce::Rectangle<int> CardHost::powerBounds() const
     const auto side = theme::space::powerButton;
     const auto band = titleBandHeight();
     return juce::Rectangle<float>(cardBounds.getX() + theme::space::powerInset,
-                                  cardBounds.getY() + juce::jmax(0.0f, (band - side) * 0.5f) + 1.0f,
+                                  cardBounds.getY() + juce::jmax(0.0f, (band - side) * 0.5f),
                                   side, side).toNearestInt();
 }
 

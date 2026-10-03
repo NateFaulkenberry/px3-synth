@@ -492,13 +492,21 @@ void ModPanel::resized()
         envelopes[static_cast<std::size_t>(i)].component->setBounds(envCells[static_cast<std::size_t>(i)].reduced(2, 2));
     }
 
-    // Each card's jack in its top-right corner, across from the power button.
+    // Each card's jack in its top-right corner, across from the power button:
+    // the power button's own rectangle mirrored to the right edge, so the two
+    // are the same size and sit level in the title band on every card.
     for (int i = 0; i < static_cast<int>(cardSockets.size()); ++i)
     {
         auto* socket = cardSockets[static_cast<std::size_t>(i)].get();
         if (socket == nullptr) { continue; }
-        const auto cell = (i < 3 ? lfoCells : envCells)[static_cast<std::size_t>(i % 3)].reduced(2, 2);
-        socket->setBounds(cell.getRight() - 34, cell.getY() + 22, 22, 22);
+        const juce::Component* card = i == 0 ? static_cast<juce::Component*>(lfoComponent.get())
+                                    : i < 3 ? static_cast<juce::Component*>(extraLfos[static_cast<std::size_t>(i - 1)].component.get())
+                                            : static_cast<juce::Component*>(envelopes[static_cast<std::size_t>(i - 3)].component.get());
+        if (card == nullptr) { continue; }
+        const auto power = i < 3 ? static_cast<const LfoComponent*>(card)->powerBoundsInParent()
+                                 : static_cast<const EnvelopeComponent*>(card)->powerBoundsInParent();
+        const auto inset = power.getX() - card->getX();
+        socket->setBounds(card->getRight() - inset - power.getWidth(), power.getY(), power.getWidth(), power.getHeight());
         socket->toFront(false);
     }
 }
