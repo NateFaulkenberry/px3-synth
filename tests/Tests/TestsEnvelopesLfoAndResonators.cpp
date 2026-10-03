@@ -529,6 +529,45 @@ void testLfo()
 {
     suite("LFO");
 
+    {
+        // S&H holds one value per cycle; SMOOTH RND is continuous and lands on
+        // the same per-cycle values. Both are bounded and deterministic.
+        auto run = [](int waveform, std::vector<float>& out)
+        {
+            LfoGenerator lfo;
+            lfo.prepare(1000.0);
+            LfoSettings settings;
+            settings.frequencyHz = 10.0f;   // 100 samples per cycle
+            settings.waveformIndex = waveform;
+            lfo.setSettings(settings);
+            lfo.retrigger();
+            out.clear();
+            for (int n = 0; n < 1000; ++n) out.push_back(lfo.getNextSample());
+        };
+        std::vector<float> hold, smooth, again;
+        run(static_cast<int>(px3::LfoWaveform::sampleHold), hold);
+        run(static_cast<int>(px3::LfoWaveform::smoothRandom), smooth);
+        run(static_cast<int>(px3::LfoWaveform::sampleHold), again);
+        auto flatWithinCycles = true;
+        auto bounded = true;
+        int distinct = 0;
+        for (int c = 0; c < 10; ++c)
+        {
+            for (int n = 1; n < 95; ++n) flatWithinCycles = flatWithinCycles && hold[c * 100 + n] == hold[c * 100 + 1];
+            if (c > 0 && std::abs(hold[c * 100 + 5] - hold[(c - 1) * 100 + 5]) > 0.05f) ++distinct;
+        }
+        auto largestStep = 0.0f;
+        for (std::size_t n = 0; n < smooth.size(); ++n)
+        {
+            bounded = bounded && std::abs(smooth[n]) <= 1.0f && std::abs(hold[n]) <= 1.0f;
+            if (n > 0) largestStep = juce::jmax(largestStep, std::abs(smooth[n] - smooth[n - 1]));
+        }
+        check("Lfo_SampleAndHoldStepsOncePerCycle", flatWithinCycles && distinct >= 7 && hold == again,
+              juce::String(distinct) + " of 9 cycle changes moved; flat inside each cycle; repeatable");
+        check("Lfo_SmoothRandomIsContinuousAndBounded", bounded && largestStep < 0.05f,
+              "largest per-sample step " + juce::String(largestStep, 4));
+    }
+
     // Waveform range and shape, straight from the generator.
     struct WaveformCase { int index; const char* label; };
     const WaveformCase waveforms[] = {

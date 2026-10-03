@@ -13,11 +13,14 @@ enum class LfoWaveform : int
     // One-shot ramps. APPENDED rather than inserted, so every existing index
     // keeps its meaning - a stored index is what presets remember.
     rampUp,
-    rampDown
+    rampDown,
+    // Random shapes, one new value per cycle: held (S&H) or eased (SMOOTH).
+    sampleHold,
+    smoothRandom
 };
 
 inline constexpr int lfoWaveformMinIndex = static_cast<int>(LfoWaveform::sine);
-inline constexpr int lfoWaveformMaxIndex = static_cast<int>(LfoWaveform::rampDown);
+inline constexpr int lfoWaveformMaxIndex = static_cast<int>(LfoWaveform::smoothRandom);
 inline constexpr int lfoWaveformCount = lfoWaveformMaxIndex - lfoWaveformMinIndex + 1;
 
 // A ramp's travel time. Long enough for an evolving pad; short enough at the
@@ -53,7 +56,9 @@ inline juce::StringArray lfoWaveformChoices()
         "SAW",
         "SQUARE",
         "RAMP UP",
-        "RAMP DOWN"
+        "RAMP DOWN",
+        "S&H",
+        "SMOOTH RND"
     };
 }
 }

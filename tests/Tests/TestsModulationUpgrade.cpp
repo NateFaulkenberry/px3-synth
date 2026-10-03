@@ -276,9 +276,10 @@ void testRampsAndKeySyncUpgrade()
     // Appended, so every stored index keeps meaning what it meant.
     {
         const auto choices = px3::lfoWaveformChoices();
-        const auto ok = choices.size() == 6 && choices[0] == "SINE" && choices[1] == "TRIANGLE"
+        const auto ok = choices.size() == 8 && choices[0] == "SINE" && choices[1] == "TRIANGLE"
                      && choices[2] == "SAW" && choices[3] == "SQUARE"
-                     && choices[rampUp] == "RAMP UP" && choices[rampDown] == "RAMP DOWN";
+                     && choices[rampUp] == "RAMP UP" && choices[rampDown] == "RAMP DOWN"
+                     && choices[6] == "S&H" && choices[7] == "SMOOTH RND";
         check("RampUpgrade_ExistingWaveformsKeepTheirIndices", ok, choices.joinIntoString(", "));
     }
 

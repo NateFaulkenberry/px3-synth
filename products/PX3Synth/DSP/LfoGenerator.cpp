@@ -44,6 +44,7 @@ void LfoGenerator::setSettings(const LfoSettings& newSettings)
 void LfoGenerator::retrigger()
 {
     phaseRadians = 0.0f;
+    cycleIndex = 0;
     rampElapsedSeconds = 0.0;
 }
 
@@ -61,13 +62,14 @@ float LfoGenerator::getNextSample()
     if (settings.clockMode != LfoClockMode::free) { return getMidpointSignalAndAdvance(1); }
     const auto output = px3::isRampLfoWaveformIndex(settings.waveformIndex)
                             ? rampSampleAt(rampElapsedSeconds, settings.rampSeconds, settings.waveformIndex)
-                            : waveformSampleAtPhase(phaseRadians, settings.waveformIndex);
+                            : sampleAtPhase(phaseRadians, settings.waveformIndex);
     const auto phaseDelta = juce::MathConstants<float>::twoPi * settings.frequencyHz
                             / static_cast<float>(juce::jmax(1.0, sampleRateHz));
     phaseRadians += phaseDelta;
     if (phaseRadians >= juce::MathConstants<float>::twoPi)
     {
         phaseRadians -= juce::MathConstants<float>::twoPi;
+        ++cycleIndex;
     }
 
     rampElapsedSeconds = std::min(kRampElapsedCeilingSeconds,
@@ -85,13 +87,15 @@ float LfoGenerator::getMidpointSignalAndAdvance(int numSamples)
         beats /= settings.clockRateScale;
         const auto cycles = settings.transportPpq / beats;
         const auto phase = cycles - std::floor(cycles);
+        // The transport owns the cycle too, so a random shape repeats with the song.
+        cycleIndex = static_cast<std::int64_t>(std::floor(cycles));
         resetPhase(static_cast<float>(phase * juce::MathConstants<double>::twoPi));
         rampElapsedSeconds = phase / settings.frequencyHz;
         if (! settings.transportPlaying)
         {
             return px3::isRampLfoWaveformIndex(settings.waveformIndex)
                        ? rampSampleAt(rampElapsedSeconds, settings.rampSeconds, settings.waveformIndex)
-                       : waveformSampleAtPhase(phaseRadians, settings.waveformIndex);
+                       : sampleAtPhase(phaseRadians, settings.waveformIndex);
         }
     }
     const auto clampedSamples = juce::jmax(1, numSamples);
@@ -112,13 +116,14 @@ float LfoGenerator::getMidpointSignalAndAdvance(int numSamples)
     else
     {
         const auto midpointPhase = phaseRadians + phaseDeltaPerSample * static_cast<float>(clampedSamples) * 0.5f;
-        output = waveformSampleAtPhase(midpointPhase, settings.waveformIndex);
+        output = sampleAtPhase(midpointPhase, settings.waveformIndex);
     }
 
     phaseRadians += phaseDeltaPerSample * static_cast<float>(clampedSamples);
     while (phaseRadians >= juce::MathConstants<float>::twoPi)
     {
         phaseRadians -= juce::MathConstants<float>::twoPi;
+        ++cycleIndex;
     }
 
     rampElapsedSeconds = std::min(kRampElapsedCeilingSeconds, rampElapsedSeconds + blockSeconds);
@@ -148,6 +153,36 @@ float LfoGenerator::rampSampleAt(double elapsedSeconds, float rampSeconds, int w
     const auto progress = static_cast<float>(juce::jlimit(0.0, 1.0, elapsedSeconds / duration));
     const auto rising = -1.0f + 2.0f * progress;
     return waveformIndex == px3::lfoWaveformToIndex(px3::LfoWaveform::rampDown) ? -rising : rising;
+}
+
+float LfoGenerator::randomForCycle(std::int64_t cycle) noexcept
+{
+    // A hash, not a generator: the value for a cycle is the same however the
+    // LFO got there, so transport sync and key sync stay deterministic.
+    auto x = static_cast<std::uint64_t>(cycle) * 0x9E3779B97F4A7C15ull + 0x632BE59BD9B4E019ull;
+    x ^= x >> 31; x *= 0xBF58476D1CE4E5B9ull; x ^= x >> 27; x *= 0x94D049BB133111EBull; x ^= x >> 33;
+    return static_cast<float>(static_cast<double>(x >> 11) / static_cast<double>(1ull << 53) * 2.0 - 1.0);
+}
+
+float LfoGenerator::sampleAtPhase(float inPhaseRadians, int waveformIndex) const
+{
+    const auto index = px3::clampLfoWaveformIndex(waveformIndex);
+    if (index == px3::lfoWaveformToIndex(px3::LfoWaveform::sampleHold))
+    {
+        return randomForCycle(cycleIndex);
+    }
+    if (index == px3::lfoWaveformToIndex(px3::LfoWaveform::smoothRandom))
+    {
+        // Cosine-eased from this cycle's value to the next: continuous, with
+        // zero slope at every cycle boundary.
+        auto t = std::fmod(inPhaseRadians, juce::MathConstants<float>::twoPi) / juce::MathConstants<float>::twoPi;
+        if (t < 0.0f) t += 1.0f;
+        const auto ease = 0.5f - 0.5f * std::cos(juce::MathConstants<float>::pi * t);
+        const auto a = randomForCycle(cycleIndex);
+        const auto b = randomForCycle(cycleIndex + 1);
+        return a + (b - a) * ease;
+    }
+    return waveformSampleAtPhase(inPhaseRadians, index);
 }
 
 float LfoGenerator::waveformSampleAtPhase(float inPhaseRadians, int waveformIndex)

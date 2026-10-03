@@ -3,9 +3,13 @@
 #include "LfoMode.h"
 #include "LfoTypes.h"
 
+#include <cstdint>
+
 class LfoGenerator
 {
 public:
+    // The value a random shape (S&H, SMOOTH RND) takes in a given cycle.
+    static float randomForCycle(std::int64_t cycle) noexcept;
     void prepare(double newSampleRateHz);
     void setSettings(const LfoSettings& newSettings);
 
@@ -23,6 +27,10 @@ public:
 
 private:
     static float waveformSampleAtPhase(float phaseRadians, int waveformIndex);
+    // Random shapes need to know which cycle they are in; everything else is
+    // a function of phase alone.
+    float sampleAtPhase(float phaseRadians, int waveformIndex) const;
+    std::int64_t cycleIndex { 0 };
     static float rampSampleAt(double elapsedSeconds, float rampSeconds, int waveformIndex);
 
     double sampleRateHz { 44100.0 };

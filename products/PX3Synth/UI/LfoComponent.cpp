@@ -1,4 +1,5 @@
 #include "LfoComponent.h"
+#include "LfoGenerator.h"
 
 #include "BypassButton.h"
 #include "CardInner.h"
@@ -534,9 +535,18 @@ float LfoComponent::rampPreviewSample(float t, int waveformIndex)
 float LfoComponent::waveformSample(float phaseNorm, int waveformIndex)
 {
     const auto p = phaseNorm - std::floor(phaseNorm);
+    const auto cycle = static_cast<std::int64_t>(std::floor(phaseNorm));
 
     switch (px3::clampLfoWaveformIndex(waveformIndex))
     {
+        case static_cast<int>(px3::LfoWaveform::sampleHold):
+            return LfoGenerator::randomForCycle(cycle);
+        case static_cast<int>(px3::LfoWaveform::smoothRandom):
+        {
+            const auto a = LfoGenerator::randomForCycle(cycle);
+            const auto b = LfoGenerator::randomForCycle(cycle + 1);
+            return a + (b - a) * (0.5f - 0.5f * std::cos(juce::MathConstants<float>::pi * p));
+        }
         case 0:
             return std::sin(p * juce::MathConstants<float>::twoPi);
         case 1:
