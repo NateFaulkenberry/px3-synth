@@ -283,11 +283,11 @@ void PX3SynthAudioProcessorEditor::updatePanelVisibility()
     {
         oscPanel->setVisible(true);
     }
-    modPanelViewport.setVisible(isPanelVisible(kSectionMod));
     if (modRoutingPanel != nullptr) { modRoutingPanel->setVisible(isPanelVisible(kSectionMod)); }
     if (modPanel != nullptr)
     {
-        modPanel->setVisible(true);
+        // LFO 1-3 / ENV 1-3 live on the VOICE surface, under the oscillators.
+        modPanel->setVisible(isPanelVisible(kSectionOsc) && uiLayout.isNodeVisible("voice.mods"));
     }
     ampPanel->setVisible(isPanelVisible(kSectionAmp));
     fltPanel->setVisible(isPanelVisible(kSectionFilter));
@@ -344,7 +344,10 @@ void PX3SynthAudioProcessorEditor::layoutAmpPanel()
 
 void PX3SynthAudioProcessorEditor::layoutModPanel()
 {
-    if (modPanel != nullptr && modPanelViewport.getWidth() > 0 && modPanelViewport.getHeight() > 0)
+    // Scene-managed: the cards are placed by applySceneLayout(). Only a
+    // standalone (unmanaged) panel sizes itself here.
+    if (modPanel != nullptr && ! modPanel->isSceneManaged() && modPanelViewport.getWidth() > 0
+        && modPanelViewport.getHeight() > 0)
     {
         const auto preferredWidth = modPanel->getPreferredContentWidth();
         const auto preferredHeight = modPanel->getPreferredContentHeight();

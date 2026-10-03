@@ -38,6 +38,15 @@ public:
 
     void paint(juce::Graphics& g) override;
     void resized() override;
+    void childBoundsChanged(juce::Component* child) override;
+
+    // When the editor's scene places the six cards (VOICE's "voice.mods" row),
+    // this panel only keeps each card's source jack in its title band.
+    void setSceneManaged(bool managed) { sceneManaged = managed; }
+    bool isSceneManaged() const noexcept { return sceneManaged; }
+    // 0..2 = LFO 1-3, 3..5 = ENV 1-3 (graph source order).
+    juce::Component* getCard(int index);
+    void layoutSockets();
 
     void refreshFromParameters();
     // No arguments: it reads the parameters itself. It used to take three that
@@ -124,4 +133,6 @@ private:
     juce::LookAndFeel* lfoKnobLookAndFeel { nullptr };
     std::shared_ptr<const UIConfig> uiConfig;
     std::array<std::unique_ptr<px3::ui::modrouting::ModSourceSocket>, 6> cardSockets;
+    bool sceneManaged { false };
+    bool placingSockets { false };
 };

@@ -663,7 +663,8 @@ void PX3SynthAudioProcessorEditor::timerCallback()
         refreshLfoAssignmentUI();
         refreshSubOscUI();
     }
-    if (isPanelVisible(kSectionMod))
+    // The modulator cards sit on the VOICE surface (the MOD page is the matrix).
+    if (modPanel != nullptr && modPanel->isVisible())
     {
         refreshLfoAssignmentUI();
         refreshEnvelopeAssignmentUI();
@@ -698,7 +699,7 @@ void PX3SynthAudioProcessorEditor::timerCallback()
         oscPanel->advanceAnimation(0.09f);
     }
 
-    if (isPanelVisible(kSectionMod) && modPanel != nullptr)
+    if (modPanel != nullptr && modPanel->isVisible())
     {
         modPanel->advanceAnimation(deltaSeconds);
     }
