@@ -10,6 +10,9 @@
 
 #include <JuceHeader.h>
 
+#include <unordered_map>
+#include <unordered_set>
+
 #include "BypassButton.h"
 #include "MixerControls.h"
 #include "ToggleChipButton.h"
@@ -231,6 +234,13 @@ private:
 
     juce::StringArray midiSelection;
     std::vector<juce::Component::SafePointer<juce::Slider>> midiKnobs;
+    // Per-tick lookups the knob walk makes: which sliders are registered, and
+    // each parameter id's parameter (the processor's lookup is a linear scan
+    // over ~400 parameters, which the dense VOICE page would run ~100 times a
+    // tick). Parameters live as long as the processor, so pointers are stable.
+    std::unordered_map<const juce::Slider*, juce::Component::SafePointer<juce::Slider>> midiKnobSet;
+    std::unordered_map<juce::String, juce::RangedAudioParameter*> parameterLookup;
+    juce::RangedAudioParameter* cachedParameter(const juce::String& id);
 
     void handleParameterKnobClick(const juce::MouseEvent& event);
     void handleParameterKnobDoubleClick(const juce::MouseEvent& event);

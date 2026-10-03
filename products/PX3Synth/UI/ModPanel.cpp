@@ -384,6 +384,9 @@ void ModPanel::setSceneManaged(bool managed)
 {
     sceneManaged = managed;
     // Placed by the scene as compact modules: their interiors go dense too.
+    // Six modules on the always-visible VOICE page: each is cached, so the
+    // 30 Hz tick redraws only what moved (the LFO wave, an envelope playhead).
+    for (int i = 0; i < 6; ++i) { if (auto* card = getCard(i)) { card->setBufferedToImage(managed); } }
     if (lfoComponent != nullptr) { lfoComponent->setCompactLayout(managed); }
     for (auto& bundle : extraLfos) { if (bundle.component != nullptr) { bundle.component->setCompactLayout(managed); } }
     for (auto& bundle : envelopes) { if (bundle.component != nullptr) { bundle.component->setCompactLayout(managed); } }

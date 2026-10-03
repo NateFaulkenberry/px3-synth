@@ -69,6 +69,24 @@ void BreakpointEnvelopeEditor::setConfigPrefix(juce::String prefix)
 
 void BreakpointEnvelopeEditor::setEnvelope(const px3::BreakpointEnvelope& newEnvelope)
 {
+    // Called from the 30 Hz refresh: an unchanged shape must not repaint, or
+    // the (cached) card behind it is redrawn every frame.
+    const auto same = [&]
+    {
+        if (newEnvelope.getMode() != envelope.getMode() || newEnvelope.getPointCount() != envelope.getPointCount()
+            || newEnvelope.getSustainPoint() != envelope.getSustainPoint())
+        {
+            return false;
+        }
+        for (int i = 0; i < envelope.getPointCount(); ++i)
+        {
+            const auto& a = envelope.getPoint(i);
+            const auto& b = newEnvelope.getPoint(i);
+            if (a.timeSeconds != b.timeSeconds || a.value != b.value || a.curveToNext != b.curveToNext) { return false; }
+        }
+        return true;
+    }();
+    if (same) { return; }
     envelope = newEnvelope;
     selectedPoint = juce::jlimit(-1, envelope.getPointCount() - 1, selectedPoint);
     repaint();

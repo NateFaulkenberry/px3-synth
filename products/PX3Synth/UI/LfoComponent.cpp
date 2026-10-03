@@ -277,7 +277,9 @@ void LfoComponent::advanceAnimation(float deltaSeconds)
     const auto phaseAdvance = juce::MathConstants<float>::twoPi * currentRateHz * clampedDeltaSeconds;
     visualPhase = std::fmod(visualPhase + phaseAdvance, juce::MathConstants<float>::twoPi);
 
-    repaint();
+    // Only the wave display moves; the rest of the card (knobs, boxes, title)
+    // stays cached.
+    repaint(graphArea().expanded(2));
 }
 
 void LfoComponent::resized()

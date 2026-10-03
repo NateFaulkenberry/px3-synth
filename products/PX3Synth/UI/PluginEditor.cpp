@@ -216,6 +216,7 @@ PX3SynthAudioProcessorEditor::~PX3SynthAudioProcessorEditor()
         }
     }
     midiKnobs.clear();
+    midiKnobSet.clear();
 
     // Attachments FIRST, before anything that owns a control they point at.
     //
