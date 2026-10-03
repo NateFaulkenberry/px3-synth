@@ -820,6 +820,29 @@ void testModulationUpgrade()
               "following " + juce::String(following ? "yes" : "no") + " at " + juce::String(bpm, 2)
                   + " BPM (sent 140); LFO clock available " + juce::String(lfoClocked ? "yes" : "no")
                   + "; released after ticks stop " + juce::String(processor.isFollowingMidiClock() ? "no" : "yes"));
+
+        // ENV SYNC: at 120 BPM (a beat is 0.5 s) a 0.3 s attack - 0.6 of a beat -
+        // snaps to the nearest division, an eighth note: 0.25 s. Free again
+        // once the clock has gone.
+        setParam(processor, "mod.env1.attack", 0.3f);
+        setParam(processor, "mod.env1.sync", 1.0f);
+        const auto unsynced = processor.currentModEnvelopeSettings(0).attackSeconds;
+        nextTick = 0.0;
+        for (int block = 0; block < 120; ++block)
+        {
+            juce::MidiBuffer midi;
+            const auto blockStart = static_cast<double>(block) * 512.0;
+            while (nextTick < blockStart + 512.0)
+            {
+                midi.addEvent(juce::MidiMessage::midiClock(), static_cast<int>(nextTick - blockStart));
+                nextTick += 60.0 * 48000.0 / (120.0 * 24.0);
+            }
+            buffer.clear();
+            processor.processBlock(buffer, midi);
+        }
+        const auto synced = processor.currentModEnvelopeSettings(0).attackSeconds;
+        check("ModEnv_SyncSnapsTimesToTheTempo", std::abs(synced - 0.25f) < 0.01f && std::abs(unsynced - 0.3f) < 0.01f,
+              "0.3 s attack with no clock " + juce::String(unsynced, 3) + " s, at 120 BPM " + juce::String(synced, 3) + " s");
     }
 
     {

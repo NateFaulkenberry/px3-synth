@@ -1102,6 +1102,7 @@ private:
     void initialiseVoiceModulationTargets();
     void buildVoiceModulationPlan(px3::synth::VoiceModulationPlan& plan) const;
     std::array<juce::AudioParameterFloat*, kEnvelopeSourceCount> envelopeKeyTrackParams { { nullptr, nullptr, nullptr } };
+    std::array<juce::AudioParameterBool*, kEnvelopeSourceCount> envelopeSyncParams { { nullptr, nullptr, nullptr } };
 
     struct LfoAssignableTarget
     {

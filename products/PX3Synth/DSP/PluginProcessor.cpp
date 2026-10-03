@@ -790,6 +790,8 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
             idPrefix + "loop", labelPrefix + "Loop", false);
         envelopeKeyTrackParams[static_cast<std::size_t>(envIndex)] = parameterCatalog.createFloat(
             idPrefix + "keytrack", labelPrefix + "Key Track", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
+        envelopeSyncParams[static_cast<std::size_t>(envIndex)] = parameterCatalog.createBool(
+            idPrefix + "sync", labelPrefix + "Tempo Sync", false);
     }
 
     lfoEnabledParam = lfoEnabledParams[0];
@@ -1024,6 +1026,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
         addParameter(envelopeAmountParams[static_cast<std::size_t>(envIndex)]);
         addParameter(envelopeLoopParams[static_cast<std::size_t>(envIndex)]);
         addParameter(envelopeKeyTrackParams[static_cast<std::size_t>(envIndex)]);
+        addParameter(envelopeSyncParams[static_cast<std::size_t>(envIndex)]);
     }
 
     // Supplemental modulation and output controls join their owning modules in
