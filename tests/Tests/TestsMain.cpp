@@ -2991,6 +2991,7 @@ int main(int argc, char* argv[])
     if (wants("editor")) testEditorLifecycle();
     if (wants("editorlayout")) testEditorLayout();
     if (wants("visual")) testVisualRedesign();
+    if (wants("dense")) testDenseLayout();
     if (wants("integration")) testIntegration();
 
     std::printf("\n------------------------------------------------------------\n");

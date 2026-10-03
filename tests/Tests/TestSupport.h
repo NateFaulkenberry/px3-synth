@@ -1553,6 +1553,18 @@ void testFilters();
 void testOscillatorModeRichness();
 void testAnalogEngine();
 void testEditorLayout();
+// The keyboard + wheels section is hidden in the release scene (0.8.0 dense
+// layout). Tests of its implementation show it the way the scene flag would.
+inline void showPerformanceSection(juce::AudioProcessorEditor& base, bool shown = true)
+{
+    if (auto* editor = dynamic_cast<PX3SynthAudioProcessorEditor*>(&base))
+    {
+        juce::String error;
+        editor->getSceneDocument().setVisible("keys", shown, error);
+        editor->relayoutScene();
+    }
+}
 void testVisualRedesign();
+void testDenseLayout();
 
 } // namespace px3tests

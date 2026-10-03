@@ -652,7 +652,11 @@ void testEnvelopeModes()
                     const auto group = card->debugAdsrGroupBounds();
                     const auto box = card->debugModeBox().getBounds();
                     if (group.isEmpty() || box.isEmpty()) { continue; }
-                    worst = juce::jmin(worst, group.getX() - box.getRight());
+                    // 0.8.0 dense layout: in the compact module the TYPE selector
+                    // has a row of its own under the knobs. Then it clears the
+                    // group if the two do not touch at all.
+                    const auto ownRow = box.getY() >= group.getBottom() || box.getBottom() <= group.getY();
+                    worst = juce::jmin(worst, ownRow ? configured : group.getX() - box.getRight());
                     ++measuredOn;
                 }
 
@@ -699,10 +703,26 @@ void testEnvelopeModes()
 
                 // And the mod cards are NOT changed by this: theirs still stop
                 // short, because the TYPE selector is still there.
-                check("EnvKnobs_ModEnvKnobsStillShareTheirRow",
-                      modCard != nullptr && modSpan > 0.2 && modSpan < 0.9,
-                      "ENV 1's four knobs span " + fmt(modSpan * 100.0, 1)
-                          + "% of their row, the rest being the TYPE selector");
+                // 0.8.0 dense layout: in the compact module the TYPE selector
+                // moved under the knobs, so a mod envelope's four knobs span
+                // their row too, and the selector shares none of it.
+                auto typeApart = false;
+                if (modCard != nullptr)
+                {
+                    const auto group = modCard->debugAdsrGroupBounds();
+                    const auto box = modCard->debugModeBox().getBounds();
+                    typeApart = ! box.isEmpty() && ! group.isEmpty() && box.getY() >= group.getBottom();
+                    const auto content = modCard->getLocalBounds().reduced(8, 0).getWidth();
+                    juce::ignoreUnused(modSpan);
+                    check("EnvKnobs_ModEnvKnobsTakeTheirOwnRowInTheCompactModule",
+                          typeApart && group.getWidth() > content * 0.85,
+                          "ENV 1's knobs span " + juce::String(group.getWidth()) + " of " + juce::String(content)
+                              + " px, TYPE " + (typeApart ? "below them" : "beside them"));
+                }
+                else
+                {
+                    check("EnvKnobs_ModEnvKnobsTakeTheirOwnRowInTheCompactModule", false, "no mod envelope card");
+                }
             }
 
             check("EnvMode_TheModeSelectorAppearsOnlyWhereBothModesExist",
@@ -1699,8 +1719,11 @@ void testMacroSystem()
                 const auto keys = editor->debugKeyboardBounds();
 
                 check("MacroUi_TheOverlayLeavesTheTopMenuAndKeyboardClickable",
-                      ! overlay.isEmpty() && ! menu.isEmpty() && ! keys.isEmpty()
-                          && ! overlay.intersects(menu) && ! overlay.intersects(keys)
+                      // 0.8.0: the keyboard is hidden in the release scene; when
+                      // the scene shows it, the overlay must still leave it alone.
+                      ! overlay.isEmpty() && ! menu.isEmpty()
+                          && (! editor->debugPerformanceSectionShown() || (! keys.isEmpty() && ! overlay.intersects(keys)))
+                          && ! overlay.intersects(menu)
                           && overlay.contains(editor->debugMacroStripArea())
                           && overlay.contains(editor->debugPanelArea()),
                       "the overlay covers " + overlay.toString()

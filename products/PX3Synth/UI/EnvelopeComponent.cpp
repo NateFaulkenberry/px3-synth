@@ -666,7 +666,8 @@ void EnvelopeComponent::layoutCompact()
             entry.label.setText(names[i], juce::dontSendNotification);
             c::knobCell(cell[static_cast<std::size_t>(i)], &entry.label, entry.knob, &entry.readout, knob);
         }
-        area.removeFromBottom(c::gap);
+        // Clear of the display, so the captions do not read as part of it.
+        area.removeFromBottom(6);
     }
 
     compactGraph = area;

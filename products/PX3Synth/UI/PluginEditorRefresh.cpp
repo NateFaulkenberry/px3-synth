@@ -589,6 +589,7 @@ void PX3SynthAudioProcessorEditor::refreshOscillatorEngagedState()
     // "engaged" - nothing would ever put it right. setSilenced is a no-op when
     // the state already matches, so this is self-correcting and costs nothing.
     pianoKeyboard.setSilenced(! engaged);
+    updateNoticeBanner();
 
     const auto changed = engaged != anyOscillatorEngaged;
     anyOscillatorEngaged = engaged;

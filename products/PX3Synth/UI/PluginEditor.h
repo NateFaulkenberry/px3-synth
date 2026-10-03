@@ -25,6 +25,7 @@
 #include "KnobLookAndFeel.h"
 #include "ParameterKnob.h"
 #include "PianoKeyboard.h"
+#include "NoticeBanner.h"
 #include "PresetManager.h"
 #include "PluginProcessor.h"
 #include "ModPanel.h"
@@ -245,8 +246,20 @@ public:
     juce::StringArray debugMidiSelection() const { return midiSelection; }
     void debugRefreshMidiMappingUI() { refreshMidiMappingUI(); }
     juce::String debugKeyboardNotice() const { return pianoKeyboard.getNotice(); }
+    // Where the message is shown in the release UI: the keyboard's banner when
+    // the performance section is visible, otherwise the notice banner.
     PianoKeyboard::BannerFit debugKeyboardBannerFit(const juce::String& text)
-    { return pianoKeyboard.debugBannerFit(text); }
+    {
+        if (isPerformanceSectionShown()) { return pianoKeyboard.debugBannerFit(text); }
+        PianoKeyboard::BannerFit fit;
+        fit.boxWidth = static_cast<float>(juce::jmin(panelViewportArea.getWidth(),
+                                                     juce::roundToInt(px3::ui::NoticeBanner::textWidth(text))
+                                                         + 2 * px3::ui::NoticeBanner::kPadding));
+        fit.textWidth = px3::ui::NoticeBanner::textWidth(text);
+        fit.paddingWidth = 2.0f * (px3::ui::NoticeBanner::kPadding - 4);
+        return fit;
+    }
+    juce::String debugNoticeBannerText() const { return noticeBanner.isVisible() ? noticeBanner.getMessage() : juce::String(); }
 
     // For the tests: the macro strip and the assignment state.
     MacroStrip* debugMacroStrip() const { return macroStrip.get(); }
@@ -298,7 +311,6 @@ public:
     px3::ui::modrouting::ModRoutingPanel* debugModRoutingPanel() { return modRoutingPanel.get(); }
     ModPanel* debugModPanel() { return modPanel.get(); }
     bool debugPerformanceSectionShown() const { return isPerformanceSectionShown(); }
-    void debugApplySceneLayout() { applySceneLayout(); }
     FltPanel* debugFltPanel() { return fltPanel.get(); }
     // The routing pass the timer runs, without the timer's section re-sync.
     void debugRefreshModRouting() { refreshModRouting(); refreshMidiMappingUI(); }
@@ -728,6 +740,9 @@ private:
     juce::TooltipWindow tooltipWindow;
     PerformanceControls performanceControls;
     PianoKeyboard pianoKeyboard;
+    // Carries the keyboard's messages while the performance section is hidden.
+    px3::ui::NoticeBanner noticeBanner;
+    void updateNoticeBanner();
     PX3SynthAudioProcessor::MidiStatus midiStatus;
     // Every oscillator source bypassed: the instrument cannot make a sound, so
     // the keyboard and the logo stop pretending it can.

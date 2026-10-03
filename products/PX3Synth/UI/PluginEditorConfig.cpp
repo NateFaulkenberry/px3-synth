@@ -442,6 +442,21 @@ void PX3SynthAudioProcessorEditor::bindSceneComponents()
     }
 }
 
+void PX3SynthAudioProcessorEditor::updateNoticeBanner()
+{
+    if (isPerformanceSectionShown())
+    {
+        noticeBanner.show({}, {});
+        return;
+    }
+    // The same priority the keyboard's banner uses: the notice (what the user
+    // is doing now) wins over the standing "engage an oscillator" warning.
+    const auto notice = pianoKeyboard.getNotice();
+    const auto text = notice.isNotEmpty() ? notice
+                      : pianoKeyboard.isSilenced() ? PianoKeyboard::WarningStyle {}.text : juce::String();
+    noticeBanner.show(text, panelViewportArea);
+}
+
 void PX3SynthAudioProcessorEditor::sceneLayoutRequested()
 {
     // A scene-managed component changed what it shows (a mode hid a knob).
@@ -525,6 +540,7 @@ void PX3SynthAudioProcessorEditor::applySceneLayout()
     fltPanel->layoutCardControls();
 
     if (modPanel != nullptr) { modPanel->layoutSockets(); }
+    updateNoticeBanner();
 
     if (! performanceShown)
     {

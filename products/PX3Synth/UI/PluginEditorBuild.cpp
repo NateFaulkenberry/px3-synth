@@ -110,6 +110,7 @@ void PX3SynthAudioProcessorEditor::buildImagesAndMasks()
     addAndMakeVisible(performanceControls);
     addAndMakeVisible(pianoKeyboard);
     addAndMakeVisible(sparkOverlay);
+    addChildComponent(noticeBanner);
 
 }
 

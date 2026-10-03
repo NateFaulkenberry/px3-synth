@@ -4429,7 +4429,9 @@ void testBreakpointEnvelope()
                                                  juce::jmin(card->debugAdsrKnob(k).getBounds().getY(),
                                                             card->debugAdsrKnobLabel(k).getBounds().getY()));
                     }
-                    if (highestKnob - graphBottom < 20)
+                    // 0.8.0 dense layout: the mod envelopes are compact modules on
+                    // VOICE with a 6 px clearance; AMP ENV keeps its wide gap.
+                    if (highestKnob - graphBottom < (card->isAdsrOnly() ? 20 : 6))
                     {
                         cramped.add("card " + juce::String(static_cast<int>(i)) + ": graph ends at "
                                     + juce::String(graphBottom) + ", knobs start at "

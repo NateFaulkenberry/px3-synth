@@ -1313,10 +1313,12 @@ void testWavetable()
                 // beneath it and the two panels filled differently. Only the
                 // pixels settle that.
                 {
-                    const auto panel = graph->getBounds();
-
-                    const auto borderPixel = [&card, &panel]
+                    // Read per mode: with the dense layout an empty MACROS row
+                    // collapses, so the graph panel sits higher in SAW than in
+                    // WAVETABLE. The border is sampled where each mode draws it.
+                    const auto borderPixel = [&card, &graph]
                     {
+                        const auto panel = graph->getBounds();
                         juce::Image shot(juce::Image::ARGB, card->getWidth(),
                                          card->getHeight(), true);
                         {

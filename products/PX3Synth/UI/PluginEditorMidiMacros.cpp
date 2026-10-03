@@ -281,6 +281,7 @@ void PX3SynthAudioProcessorEditor::refreshMidiMappingUI()
     {
         pianoKeyboard.setNotice({});
     }
+    updateNoticeBanner();
 }
 
 //==============================================================================
