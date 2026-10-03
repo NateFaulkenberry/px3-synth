@@ -230,6 +230,9 @@ void SynthVoice::startNote(int midiNoteNumber, float velocity, juce::Synthesiser
         }
         if (modEnvelopeEnabled[envIndex])
         {
+            modEnvelopeGenerators[envIndex].setTimeScale(std::exp2(
+                (static_cast<double>(currentMidiNote) - 60.0) / 12.0
+                * static_cast<double>(modEnvelopeSettings[envIndex].keyTrack)));
             modEnvelopeGenerators[envIndex].noteOn();
         }
         else

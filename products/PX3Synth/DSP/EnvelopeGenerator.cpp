@@ -82,7 +82,7 @@ bool EnvelopeGenerator::isActive() const
 
 float EnvelopeGenerator::getNextSample()
 {
-    const auto step = 1.0 / sampleRateHz;
+    const auto step = timeScale / sampleRateHz;
 
     float raw = 0.0f;
 
@@ -119,6 +119,14 @@ float EnvelopeGenerator::getNextSample()
         if (noteHeld)
         {
             heldSeconds += step;
+            // LOOP: back to the start of the contour on reaching sustain,
+            // attacking from the current level so the restart has no jump.
+            if (envelopeSettings.loop && heldSeconds >= snapshot.sustainTimeSeconds()
+                && snapshot.sustainTimeSeconds() > 0.002)
+            {
+                heldSeconds = 0.0;
+                attackLevelAnchor = raw;
+            }
         }
     }
 

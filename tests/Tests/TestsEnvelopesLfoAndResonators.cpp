@@ -266,6 +266,48 @@ void testModEnvelopes()
 {
     suite("ENV1 / ENV2 / ENV3");
 
+    {
+        // LOOP repeats attack/decay while the key is held; KEY TRACK runs the
+        // contour faster for higher notes.
+        auto peaks = [](bool loop, double timeScale, int& firstPeakSample)
+        {
+            EnvelopeGenerator env;
+            env.prepare(1000.0);
+            EnvelopeSettings settings;
+            settings.attackSeconds = 0.05f;
+            settings.decaySeconds = 0.05f;
+            settings.sustainLevel = 0.3f;
+            settings.releaseSeconds = 0.1f;
+            settings.loop = loop;
+            env.setSettings(settings);
+            env.setTimeScale(timeScale);
+            env.noteOn();
+            int count = 0;
+            firstPeakSample = -1;
+            float previous = 0.0f, beforePrevious = 0.0f;
+            for (int n = 0; n < 1000; ++n)
+            {
+                const auto v = env.getNextSample();
+                if (n > 1 && previous > beforePrevious && previous >= v && previous > 0.8f)
+                {
+                    ++count;
+                    if (firstPeakSample < 0) firstPeakSample = n - 1;
+                }
+                beforePrevious = previous;
+                previous = v;
+            }
+            return count;
+        };
+        int firstNormal = 0, firstFast = 0, unused = 0;
+        const auto once = peaks(false, 1.0, firstNormal);
+        const auto looping = peaks(true, 1.0, unused);
+        peaks(false, 2.0, firstFast);
+        check("ModEnv_LoopRepeatsTheContourWhileHeld", once == 1 && looping >= 5,
+              juce::String(once) + " peak without LOOP, " + juce::String(looping) + " in one second with it");
+        check("ModEnv_KeyTrackRunsHigherNotesFaster", firstFast > 0 && std::abs(firstFast * 2 - firstNormal) <= 4,
+              "peak at sample " + juce::String(firstNormal) + " at x1, " + juce::String(firstFast) + " at x2");
+    }
+
     // Unit level: the modulation envelope generator's own contour.
     for (int envIndex = 0; envIndex < 3; ++envIndex)
     {

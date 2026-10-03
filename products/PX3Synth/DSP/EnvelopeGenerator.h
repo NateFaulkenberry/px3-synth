@@ -21,6 +21,8 @@ public:
     void reset();
     bool isActive() const;
     float getNextSample();
+    // How fast this note runs the contour; set per note by keyboard tracking.
+    void setTimeScale(double scale) noexcept { timeScale = juce::jlimit(0.05, 20.0, scale); }
 
     // Where the envelope currently is, for drawing it. See EnvelopePosition.
     EnvelopePosition currentPosition() const noexcept
@@ -42,6 +44,7 @@ public:
 
 private:
     double sampleRateHz { 44100.0 };
+    double timeScale { 1.0 };
     EnvelopeSettings envelopeSettings;
 
     px3::BreakpointEnvelope envelope;

@@ -9,6 +9,12 @@ struct EnvelopeSettings
     float decaySeconds { 0.050f };
     float sustainLevel { 0.8f };
     float releaseSeconds { 0.100f };
+    // LOOP: while the key is held the contour restarts from where it is each
+    // time it reaches sustain - a repeating attack/decay. Off: a normal ADSR.
+    bool loop { false };
+    // KEY TRACK: 0..1. Higher notes run the whole contour faster, by
+    // 2^((note - 60) / 12 * keyTrack) - at 1 an octave up is twice as fast.
+    float keyTrack { 0.0f };
 };
 
 // Where an envelope currently is, for drawing it. Read-only: the visualisation

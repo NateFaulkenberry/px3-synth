@@ -420,7 +420,10 @@ EnvelopeSettings PX3SynthAudioProcessor::currentModEnvelopeSettings(int envIndex
         return bypassed;
     }
 
-    return envelopeParameterSettings(idx);
+    auto settings = envelopeParameterSettings(idx);
+    if (auto* loop = envelopeLoopParams[static_cast<std::size_t>(idx)]) { settings.loop = loop->get(); }
+    if (auto* keyTrack = envelopeKeyTrackParams[static_cast<std::size_t>(idx)]) { settings.keyTrack = keyTrack->get(); }
+    return settings;
 }
 
 LfoSettings PX3SynthAudioProcessor::currentLfoSettings() const

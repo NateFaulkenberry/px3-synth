@@ -1071,6 +1071,8 @@ private:
     juce::AudioParameterFloat* lfoAmountParam { nullptr };
     juce::AudioParameterChoice* lfoWaveformParam { nullptr };
     std::array<juce::AudioParameterFloat*, kEnvelopeSourceCount> envelopeAmountParams { { nullptr, nullptr, nullptr } };
+    std::array<juce::AudioParameterBool*, kEnvelopeSourceCount> envelopeLoopParams { { nullptr, nullptr, nullptr } };
+    std::array<juce::AudioParameterFloat*, kEnvelopeSourceCount> envelopeKeyTrackParams { { nullptr, nullptr, nullptr } };
 
     struct LfoAssignableTarget
     {
