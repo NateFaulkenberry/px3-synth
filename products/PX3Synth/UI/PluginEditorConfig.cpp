@@ -368,7 +368,6 @@ void PX3SynthAudioProcessorEditor::bindSceneComponents()
         if (auto* sub = oscPanel->getSubCard())
         {
             sub->setSceneManaged(true);
-            b.bind("osc.sub.power", subOscEnabledButton);
             stretch("osc.sub.wave", subOscWaveformLabel, subOscWaveformBox);
             tuning("osc.sub", subTuning);
             b.bind("osc.sub.graph", sub->getGraphSlot());
@@ -404,7 +403,6 @@ void PX3SynthAudioProcessorEditor::bindSceneComponents()
             const auto& o = oscs[static_cast<std::size_t>(i)];
             const auto id = "osc." + juce::String(i + 1);
             card->setSceneManaged(true);
-            b.bind(id + ".power", o.power);
             stretch(id + ".mode", o.modeLabel, o.mode);
             stretch(id + ".vowel", o.vowelLabel, o.vowel);
             tuning(id, oscTuning[static_cast<std::size_t>(i)]);

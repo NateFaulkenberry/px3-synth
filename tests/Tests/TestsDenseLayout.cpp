@@ -208,8 +208,10 @@ void testDenseLayout()
                 const auto band = px3::ui::theme::space::minTitleBand;
                 const auto top = static_cast<float>(c.getY());
                 const auto bottomClear = band - static_cast<float>(c.getBottom());
-                if (c.getWidth() != side || c.getHeight() != side || top < 4.0f || bottomClear < 4.0f
-                    || std::abs(top - bottomClear) > 1.0f)
+                // Centred in the band below the accent stripe, >= 4 px clear.
+                const auto stripe = px3::ui::theme::space::accentBar;
+                if (c.getWidth() != side || c.getHeight() != side || top - stripe < 4.0f || bottomClear < 4.0f
+                    || std::abs((top - stripe) - bottomClear) > 1.0f)
                 {
                     faults.add(card->getName() + juce::String(" ") + c.getBounds().toString());
                 }

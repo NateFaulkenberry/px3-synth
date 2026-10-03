@@ -83,13 +83,13 @@ inline constexpr float unit = 4.0f;          // the grid everything sits on
 inline constexpr float panelRadius = 0.0f;   // module faceplate corners: square (dense modular surface)
 inline constexpr float insetRadius = 0.0f;   // displays, wells, chips: square
 inline constexpr float headerHeight = 22.0f; // module title band
+inline constexpr float accentBar = 2.0f;     // identity stripe on a module
 inline constexpr float powerButton = 20.0f;  // every card's power toggle, one size
 inline constexpr float powerInset = 6.0f;    // from the card's left edge
 inline constexpr float powerPadding = 4.0f;  // clear above and below it inside the title band
 // The title band is at least this tall, so the power button never touches its
 // edges; the header grows to fit the button, the button never shrinks.
-inline constexpr float minTitleBand = powerButton + 2.0f * powerPadding;
-inline constexpr float accentBar = 2.0f;     // identity stripe on a module
+inline constexpr float minTitleBand = accentBar + powerButton + 2.0f * powerPadding;
 } // namespace space
 
 // ---- shared painters --------------------------------------------------------
