@@ -779,9 +779,16 @@ bool PresetManager::ensureFactoryPresetLibrary(juce::String& error)
     // reaches anyone who already ran the plugin once: the writer below skips
     // files that exist, which is right for not clobbering the same preset twice
     // and wrong for shipping new ones.
+    //
+    // The stamp also carries the parameter schema fingerprint. Preset state is
+    // rejected unless its fingerprint matches, and the fingerprint covers every
+    // range and default - so a schema change with no library bump used to leave
+    // every installed factory preset unloadable, with only INIT in the browser.
     const auto stampFile = getFactoryPresetRootDir().getChildFile(".factory-version");
-    const auto installedVersion = stampFile.existsAsFile() ? stampFile.loadFileAsString().trim().getIntValue() : 0;
-    const auto rewriteAll = installedVersion != px3::presets::kFactoryLibraryVersion;
+    const auto expectedStamp = juce::String(px3::presets::kFactoryLibraryVersion) + ":"
+                               + processor.getParameterCatalog().getSchemaFingerprint();
+    const auto installedStamp = stampFile.existsAsFile() ? stampFile.loadFileAsString().trim() : juce::String();
+    const auto rewriteAll = installedStamp != expectedStamp;
 
     if (rewriteAll && getFactoryPresetRootDir().isDirectory())
     {
@@ -874,7 +881,7 @@ bool PresetManager::ensureFactoryPresetLibrary(juce::String& error)
             }
         }
 
-        stampFile.replaceWithText(juce::String(px3::presets::kFactoryLibraryVersion));
+        stampFile.replaceWithText(expectedStamp);
     }
 
     return true;

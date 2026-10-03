@@ -76,6 +76,8 @@ public:
                          std::vector<StateValue>& values,
                          juce::String& error) const;
 
+    const juce::String& getSchemaFingerprint() const noexcept { return schemaFingerprint; }
+
 private:
     struct GroupSegment
     {
