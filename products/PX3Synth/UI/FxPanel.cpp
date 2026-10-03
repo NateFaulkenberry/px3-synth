@@ -2,6 +2,8 @@
 
 #include "FxChainLayout.h"
 
+#include <algorithm>
+
 FxPanel::FxPanel(juce::ToggleButton& vibeBypass,
                  juce::Slider& vibeAmountKnob,
                  juce::Label& vibeAmountLabel,
@@ -61,13 +63,26 @@ FxPanel::FxPanel(juce::ToggleButton& vibeBypass,
     // one and displays it.
     signalFlow.onOrderChanged = [this](const std::vector<int>& order)
     {
-        if (order.size() != chainOrder.size() || onChainOrderChanged == nullptr)
+        if (onChainOrderChanged == nullptr)
+        {
+            return;
+        }
+
+        // The strip shows only the reorderable send chain. Spread runs on the
+        // master bus and is not in it, so it is put back at the end - the
+        // processor's order is always a permutation of every stage.
+        std::vector<int> full(order.begin(), order.end());
+        for (const auto stage : chainOrder)
+        {
+            if (std::find(full.begin(), full.end(), stage) == full.end()) { full.push_back(stage); }
+        }
+        if (full.size() != chainOrder.size())
         {
             return;
         }
 
         px3::FxOrder next {};
-        std::copy(order.begin(), order.end(), next.begin());
+        std::copy(full.begin(), full.end(), next.begin());
         onChainOrderChanged(next);
     };
 
@@ -163,6 +178,14 @@ void FxPanel::addCard(int sectionId, std::unique_ptr<px3::ui::FxCardComponent> c
         return;
     }
 
+    // A card replaces the stage's older hand-laid component, if it had one
+    // (VIBE): one face per stage, so no hidden duplicate controls linger.
+    if (sectionId == px3::fxStageVibe && vibeUiComponent != nullptr)
+    {
+        gridContent.removeChildComponent(vibeUiComponent.get());
+        vibeUiComponent.reset();
+    }
+
     gridContent.addAndMakeVisible(*card);
     ownedCards[sectionId] = std::move(card);
     refreshSignalFlowNodes();
@@ -173,6 +196,16 @@ px3::ui::FxCardComponent* FxPanel::cardForSection(int sectionId) const
 {
     const auto it = ownedCards.find(sectionId);
     return it != ownedCards.end() ? it->second.get() : nullptr;
+}
+
+void FxPanel::setDelayAlgorithmControls(const DelayComponent::AlgorithmControls& controls)
+{
+    if (delayPanelComponent != nullptr) { delayPanelComponent->setAlgorithmControls(controls); }
+}
+
+void FxPanel::setDelayAlgorithm(int algorithmIndex)
+{
+    if (delayPanelComponent != nullptr) { delayPanelComponent->setAlgorithm(algorithmIndex); }
 }
 
 void FxPanel::setSectionActive(int sectionId, bool active)
@@ -201,7 +234,7 @@ void FxPanel::refreshSignalFlowNodes()
         // A stage with no card yet is not in the chain the user can see, so it
         // does not get a node. Reordering still carries it - the processor owns
         // the order, and it is a permutation of every stage either way.
-        if (componentForSection(sectionId) == nullptr)
+        if (componentForSection(sectionId) == nullptr || ! isReorderable(sectionId))
         {
             continue;
         }
@@ -229,6 +262,7 @@ juce::String FxPanel::sectionName(int sectionId)
         case px3::fxStageLucy:         return "LUCY";
         case px3::fxStageChorus:       return "CHORUS";
         case px3::fxStageStereoSpread: return "SPREAD";
+        case px3::fxStageDistortion:   return "DRIVE";
         default: break;
     }
     return "FX";
@@ -253,6 +287,7 @@ juce::Colour FxPanel::sectionAccent(int sectionId) const
         case px3::fxStageLucy:         return uiConfig->getColour("cards.lucy.border.color", accent);
         case px3::fxStageChorus:       return uiConfig->getColour("cards.chorus.border.color", accent);
         case px3::fxStageStereoSpread: return uiConfig->getColour("cards.stereoSpread.border.color", accent);
+        case px3::fxStageDistortion:   return uiConfig->getColour("cards.drive.border.color", accent);
         default: break;
     }
     return accent;
@@ -301,13 +336,19 @@ void FxPanel::resized()
 
     // Only the stages that have a card take a cell. A stage without one is
     // still in the chain and still processes; it simply has nothing to show.
+    // The send chain in its order, then the master-bus stages (Spread), which
+    // always sit last because that is where they are in the signal.
     std::vector<juce::Component*> cards;
     cards.reserve(chainOrder.size());
-    for (const auto sectionId : chainOrder)
+    for (const auto pass : { true, false })
     {
-        if (auto* component = componentForSection(sectionId))
+        for (const auto sectionId : chainOrder)
         {
-            cards.push_back(component);
+            if (isReorderable(sectionId) != pass) { continue; }
+            if (auto* component = componentForSection(sectionId))
+            {
+                cards.push_back(component);
+            }
         }
     }
 

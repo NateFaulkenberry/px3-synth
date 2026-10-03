@@ -3,6 +3,7 @@
 #include <JuceHeader.h>
 
 #include "UIConfig.h"
+#include "Theme.h"
 
 #include <initializer_list>
 
@@ -71,34 +72,28 @@ public:
             return;
         }
 
-        const auto compactLabel = static_cast<bool>(getProperties().getWithDefault("compactLabel", false));
-        const auto horizontalPadding = compactLabel ? 4.0f : 8.0f;
-        auto area = getLocalBounds().toFloat().reduced(2.0f, 1.0f);
-
-        g.setColour(shade(style.background.withMultipliedAlpha(juce::jlimit(0.0f, 1.0f, style.backgroundOpacity))));
-        g.fillRoundedRectangle(area, style.cornerRadius);
-
-        if (style.outlineWidth > 0.0f)
-        {
-            g.setColour(shade(style.outline.withMultipliedAlpha(juce::jlimit(0.0f, 1.0f, style.outlineOpacity))));
-            g.drawRoundedRectangle(area, style.cornerRadius, style.outlineWidth);
-        }
-
-        g.setColour(shade(findColour(juce::Label::textColourId)));
-        g.setFont(getFont());
-        // Fitted, not ellipsised. drawText's last argument is
-        // useEllipsesIfTooBig, and a caption that does not quite fit its chip
-        // is far more useful shrunk by a few percent than cut short: RESONANCE
-        // overflowed its 84px chip by ONE pixel and read "Resonan...". Thirteen
-        // labels were over, from that one pixel up to AUTO GAIN by twelve.
+        // A printed caption, not a pill: the VCV-style panel prints its legends
+        // straight onto the faceplate, and a row of filled chips was most of
+        // what made the old panels read as a web form. The chip style (its
+        // colours) still exists for the config and the tests, but only the
+        // text colour reaches the screen.
         //
-        // drawFittedText shrinks only as much as it needs to, so a label that
-        // already fits is drawn at its full size and is untouched by this.
-        g.drawFittedText(getText(),
-                         area.reduced(horizontalPadding, 0.0f).toNearestInt(),
-                         juce::Justification::centred,
-                         1,
-                         kMinimumTextScale);
+        // Fitted, never ellipsised (drawFittedText shrinks only as much as it
+        // must), in the label role of the type scale.
+        auto area = getLocalBounds().toFloat();
+        auto text = getText();
+        // A readout (anything carrying a number, or explicitly marked) is set in
+        // the value role; a caption in the label role.
+        const auto isValue = static_cast<bool>(getProperties().getWithDefault("px3ValueReadout", false))
+                          || text.containsAnyOf("0123456789") || text != text.toUpperCase();
+        auto font = isValue ? px3::ui::theme::font(px3::ui::theme::Type::value)
+                            : px3::ui::theme::font(px3::ui::theme::Type::label);
+        font = font.withHeight(juce::jmin(font.getHeight(), juce::jmax(7.0f, area.getHeight() - 1.0f)));
+        g.setColour(shade(findColour(juce::Label::textColourId)));
+        g.setFont(font);
+        g.drawFittedText(text, area.toNearestInt(),
+                         getJustificationType().getOnlyHorizontalFlags() | juce::Justification::verticallyCentred,
+                         1, kMinimumTextScale);
     }
 
     static constexpr float kCornerRadius = 7.0f;

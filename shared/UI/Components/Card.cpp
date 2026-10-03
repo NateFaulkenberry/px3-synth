@@ -1,4 +1,5 @@
 #include "Card.h"
+#include "Theme.h"
 
 #include "UIConfigManager.h"
 
@@ -41,7 +42,7 @@ ArtworkAlign parseArtworkAlign(const juce::String& name, ArtworkAlign fallback)
 
 // The x and y halves of JUCE's placement flags. Split into two so an alignment
 // names one of each rather than nine separate constants.
-int alignmentFlags(ArtworkAlign align)
+[[maybe_unused]] int alignmentFlags(ArtworkAlign align)
 {
     switch (align)
     {
@@ -348,7 +349,7 @@ namespace
 // The image is premultiplied, and scaling all three channels by the same factor
 // leaves it premultiplied - which is why the blend is done on the stored values
 // directly and alpha is not touched.
-void applyTint(juce::Image& image, float saturation, float brightness)
+[[maybe_unused]] void applyTint(juce::Image& image, float saturation, float brightness)
 {
     const auto sat = juce::jlimit(0.0f, 1.0f, saturation);
     const auto bri = juce::jlimit(0.0f, 1.0f, brightness);
@@ -419,6 +420,7 @@ CardStyle CardStyle::disabledVariant() const
     result.gloss.bottomFill.opacity *= dim;
     // The title carries its alpha in the colour, so it is dimmed there.
     result.title.colour = grey(result.title.colour).withMultipliedAlpha(dim);
+    result.inactive = true;
 
     return result;
 }
@@ -549,7 +551,6 @@ CardStyle CardHost::paintStyle() const
 
     style.border.enabled = true;
     style.border.width = 1.0f;
-    style.border.colour = juce::Colour::fromRGB(214, 218, 216);
     style.border.opacity = 0.42f;
     style.border.radius = 0.0f;
     style.background.opacity = 0.0f;
@@ -606,161 +607,20 @@ void drawCard(juce::Graphics& g,
         shadow.drawForPath(g, shape);
     }
 
-    // 1. Background, behind everything.
-    if (style.background.opacity > 0.0f)
-    {
-        g.setColour(style.background.effective());
-        g.fillRoundedRectangle(cardBounds, radius);
-    }
-
-    // 1b. Artwork, over the background and UNDER the gloss, so the two gloss
-    //     fills tint it the way they tint the background rather than covering
-    //     it. Clipped to the card's rounded rectangle so it cannot square off
-    //     the corners the border is about to draw.
-    if (style.artwork.image.isNotEmpty() && style.artwork.opacity > 0.0f)
-    {
-        // Cached, but keyed on the file's CONTENT IDENTITY rather than its path.
-        //
-        // ImageCache::getFromFile hashes the path alone, so a PNG replaced on
-        // disk is never noticed: the old picture is served for as long as the
-        // process lives, which for a plug-in means until the host unloads it.
-        // Replacing artwork and seeing no change is the whole point of having
-        // it in a directory, so the modification time and size go into the key
-        // and a changed file misses the cache exactly once.
-        const auto file = UIConfigManager::findArtworkFile(style.artwork.image);
-        juce::Image image;
-
-        if (file.existsAsFile())
-        {
-            // The grey version is a different picture as far as the cache is
-            // concerned, so both live in it and neither is recomputed per
-            // frame - which matters, because desaturating two million pixels
-            // is not something to do while painting.
-            const auto tint = juce::roundToInt(juce::jlimit(0.0f, 1.0f, style.artwork.saturation) * 1000.0f)
-                            + juce::roundToInt(juce::jlimit(0.0f, 1.0f, style.artwork.brightness) * 1000.0f) * 1009;
-
-            const auto key = file.getFullPathName().hashCode64()
-                           ^ (file.getLastModificationTime().toMilliseconds() * 31)
-                           ^ (file.getSize() * 131)
-                           ^ (static_cast<juce::int64>(tint) * 1000003);
-
-            image = juce::ImageCache::getFromHashCode(key);
-
-            if (image.isNull())
-            {
-                image = juce::ImageFileFormat::loadFrom(file);
-
-                if (image.isValid()
-                        && (style.artwork.saturation < 0.999f || style.artwork.brightness < 0.999f))
-                {
-                    image = image.createCopy();
-                    applyTint(image, style.artwork.saturation, style.artwork.brightness);
-                }
-
-                if (image.isValid()) { juce::ImageCache::addImageToCache(image, key); }
-            }
-        }
-
-        if (image.isValid())
-        {
-            juce::Graphics::ScopedSaveState clip(g);
-
-            juce::Path shape;
-            shape.addRoundedRectangle(cardBounds, radius);
-            g.reduceClipRegion(shape);
-
-            // The rectangle overload rather than the nine-argument one: that
-            // takes ints for the destination, so every float here was converted
-            // implicitly - four warnings, and a policy that fails the build on
-            // them.
-            //
-            // The alignment flags on their own are JUCE's "contain": they
-            // scale by whichever axis needs LESS, so the whole picture is
-            // inside the card and the background shows through wherever the
-            // aspect ratios differ. Adding fillDestination flips it to scaling
-            // by whichever axis needs more, cropping the rest - which the clip
-            // above contains. stretchToFit scales the two axes independently,
-            // filling the card with the whole picture at the cost of distorting
-            // it, and leaves the alignment with nothing to decide.
-            auto flags = alignmentFlags(style.artwork.align);
-            if (style.artwork.fit == ArtworkFit::cover)
-            {
-                flags |= juce::RectanglePlacement::fillDestination;
-            }
-            else if (style.artwork.fit == ArtworkFit::stretch)
-            {
-                flags |= juce::RectanglePlacement::stretchToFit;
-            }
-
-            g.setOpacity(style.artwork.opacity);
-            g.drawImage(image, cardBounds, juce::RectanglePlacement(flags));
-            g.setOpacity(1.0f);
-        }
-    }
-
-    // 2. Gloss, inset by its own margin so a gap shows between it and the
-    //    border. Two fills split at gloss.split.
-    const auto glossBox = cardBounds.reduced(style.gloss.margin);
-    if (glossBox.getWidth() > 0.0f && glossBox.getHeight() > 0.0f)
-    {
-        // "auto" keeps the gloss concentric with the border: the card's radius
-        // less the gloss margin. Either fill can override it.
-        const auto autoRadius = juce::jmax(0.0f, radius - style.gloss.margin);
-        const auto splitY = glossBox.getY() + glossBox.getHeight() * style.gloss.split;
-
-        // A radius larger than half the shorter side would fold the corner
-        // back on itself, so each is capped at what the fill can actually take.
-        const auto resolveRadius = [autoRadius](const Dimension& dim, juce::Rectangle<float> fill)
-        {
-            const auto shorter = juce::jmin(fill.getWidth(), fill.getHeight());
-            const auto value = dim.isAuto() ? autoRadius : dim.resolve(shorter, autoRadius);
-            return juce::jlimit(0.0f, juce::jmax(0.0f, shorter * 0.5f), value);
-        };
-
-        if (style.gloss.topFill.opacity > 0.0f && splitY > glossBox.getY())
-        {
-            const auto top = glossBox.withBottom(splitY);
-            const auto r = resolveRadius(style.gloss.topRadius, top);
-            juce::Path path;
-            path.addRoundedRectangle(top.getX(), top.getY(), top.getWidth(), top.getHeight(),
-                                     r, r, true, true, false, false);
-            g.setColour(style.gloss.topFill.effective());
-            g.fillPath(path);
-        }
-
-        if (style.gloss.bottomFill.opacity > 0.0f && splitY < glossBox.getBottom())
-        {
-            const auto bottom = glossBox.withTop(splitY);
-            const auto r = resolveRadius(style.gloss.bottomRadius, bottom);
-            juce::Path path;
-            path.addRoundedRectangle(bottom.getX(), bottom.getY(), bottom.getWidth(), bottom.getHeight(),
-                                     r, r, false, false, true, true);
-            g.setColour(style.gloss.bottomFill.effective());
-            g.fillPath(path);
-        }
-    }
-
-    // 3. Border, on top of both layers so it stays crisp.
-    if (style.border.enabled && style.border.width > 0.0f && style.border.opacity > 0.0f)
-    {
-        g.setColour(style.border.colour.withAlpha(style.border.opacity));
-        g.drawRoundedRectangle(cardBounds, radius, style.border.width);
-    }
-
-    // 4. Title, positioned inside the padding box and offset by title.y.
-    //    Drawing it here - rather than in the parent panel, which is where it
-    //    used to happen - means it belongs to the card and cannot outlive it.
-    if (title.isNotEmpty())
-    {
-        const auto contentBox = style.contentBounds(cardBounds);
-        const auto titleBox = juce::Rectangle<float>(contentBox.getX(),
-                                                     contentBox.getY() + style.title.y,
-                                                     contentBox.getWidth(),
-                                                     style.title.height);
-        g.setColour(style.title.colour);
-        g.setFont(juce::FontOptions(style.title.fontSize, juce::Font::bold));
-        g.drawText(title, titleBox, style.title.align, true);
-    }
+    // 1. The module faceplate (theme::drawModulePanel): the same surface, edge,
+    //    bevel and title band for every card in the ecosystem. The card's
+    //    border colour is its IDENTITY colour and becomes the stripe across
+    //    the top; bypass greys it (disabledVariant desaturates it).
+    //
+    //    The old per-card layers - translucent tinted backgrounds, two-tone
+    //    gloss and full-bleed artwork pictures - are no longer drawn: they were
+    //    what made every card a different style. Their config keys still parse.
+    const auto contentBox = style.contentBounds(cardBounds);
+    const auto band = juce::jlimit(16.0f, juce::jmax(16.0f, cardBounds.getHeight() * 0.5f),
+                                   contentBox.getY() + style.title.y + style.title.height - cardBounds.getY());
+    const auto accent = style.border.colour;
+    theme::drawModulePanel(g, cardBounds, title, accent, ! style.inactive,
+                           title.isNotEmpty() ? band : 0.0f);
 }
 
 } // namespace px3::ui

@@ -479,6 +479,12 @@ private:
     void buildReverbCard();
     void buildChorusCard();
     void buildStereoSpreadCard();
+    void buildDriveCard();
+    void buildVibeCard();
+    void attachCardControls(px3::ui::FxCardComponent& card,
+                            std::initializer_list<std::pair<const char*, const char*>> knobs,
+                            std::initializer_list<std::pair<const char*, const char*>> choices,
+                            const char* enabledParameterId);
     void refreshLfoAssignmentUI();
     void refreshEnvelopeAssignmentUI();
     void refreshLfoFrequencyLabel();
@@ -705,6 +711,11 @@ private:
     juce::String buildInstanceInfoText() const;
 
     PX3SynthAudioProcessor& audioProcessor;
+    // The instrument's look for everything that is not a knob (labels,
+    // dropdowns, menus, tooltips). Set on the editor, so every child without a
+    // look of its own inherits it. Declared before every child so it outlives
+    // them.
+    px3::ui::InstrumentLookAndFeel instrumentLookAndFeel;
     KnobLookAndFeel knobLookAndFeel;
     juce::TooltipWindow tooltipWindow;
     PerformanceControls performanceControls;
@@ -929,6 +940,8 @@ private:
     px3::ui::FxCardComponent* reverbCard { nullptr };
     px3::ui::FxCardComponent* chorusCard { nullptr };
     px3::ui::FxCardComponent* spreadCard { nullptr };
+    px3::ui::FxCardComponent* driveCard { nullptr };
+    px3::ui::FxCardComponent* vibeCard { nullptr };
     std::unique_ptr<MixPanel> mixPanel;
     std::unique_ptr<SettingsPanel> settingsPanel;
     std::unique_ptr<TopMenuBar> topMenuBar;
@@ -947,6 +960,16 @@ private:
     KnobLabel delayTimeLabel;
     juce::Slider delayFeedbackKnob;
     KnobLabel delayFeedbackLabel;
+    // The algorithm-specific delay controls (TAPE: QUALITY / WOBBLE / SLIP;
+    // MODULATED: MOD DEPTH). DelayComponent shows the ones the algorithm has.
+    juce::Slider delayQualityKnob;
+    KnobLabel delayQualityLabel;
+    juce::Slider delayWobbleKnob;
+    KnobLabel delayWobbleLabel;
+    juce::Slider delaySlipKnob;
+    KnobLabel delaySlipLabel;
+    juce::Slider delayModDepthKnob;
+    KnobLabel delayModDepthLabel;
     juce::ComboBox granularSyncBox;
     KnobLabel granularSyncLabel;
     px3::ui::BypassButton moodBypassButton;

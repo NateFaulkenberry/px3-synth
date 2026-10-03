@@ -1,6 +1,7 @@
 #include "FxCardComponent.h"
 
 #include "UIConfig.h"
+#include "Theme.h"
 
 #include <algorithm>
 
@@ -36,7 +37,13 @@ FxCardComponent::~FxCardComponent()
     // but JUCE requires it be cleared before the LookAndFeel is destroyed.
     for (auto& entry : knobs)
     {
+        entry.knob->removeMouseListener(&valueCaption);
         entry.knob->setLookAndFeel(nullptr);
+        if (entry.altKnob != nullptr)
+        {
+            entry.altKnob->removeMouseListener(&valueCaption);
+            entry.altKnob->setLookAndFeel(nullptr);
+        }
     }
 }
 
@@ -143,9 +150,13 @@ void FxCardComponent::addKnobRow(std::vector<KnobSpec> specs)
             altLabel->setVisible(false);
         }
 
+        knob->addMouseListener(&valueCaption, false);
+        if (altKnob != nullptr) { altKnob->addMouseListener(&valueCaption, false); }
+
         row.ids.push_back(spec.id);
         knobs.push_back({ spec.id, std::move(knob), std::move(label),
-                          spec.altId, std::move(altKnob), std::move(altLabel) });
+                          spec.altId, std::move(altKnob), std::move(altLabel),
+                          spec.label, spec.altLabel });
     }
 
     rows.push_back(std::move(row));
@@ -185,6 +196,8 @@ void FxCardComponent::setAltMode(bool showAlternates)
         if (entry.altLabel != nullptr) { entry.altLabel->setVisible(altMode); }
     }
 
+    // Advanced rows fold in and out, so the card re-lays itself out.
+    resized();
     repaint();
 }
 
@@ -192,6 +205,72 @@ void FxCardComponent::addFeatureKnobRow(KnobSpec spec)
 {
     addKnobRow({ std::move(spec) });
     rows.back().kind = RowKind::featureKnob;
+}
+
+void FxCardComponent::addHeadingRow(const juce::String& text, const juce::String&)
+{
+    Row row { RowKind::heading, {} };
+    row.text = text;
+    rows.push_back(std::move(row));
+}
+
+void FxCardComponent::markLastRowAdvanced()
+{
+    if (! rows.empty()) { rows.back().advanced = true; }
+}
+
+void FxCardComponent::setDescription(const juce::String& text)
+{
+    description = text;
+    bypass.setTooltip(title + ": " + text);
+    repaint();
+}
+
+void FxCardComponent::showValueFor(juce::Component* knobComponent, bool show)
+{
+    for (auto& entry : knobs)
+    {
+        const auto apply = [&](juce::Slider* slider, ChipLabel* label, const juce::String& caption)
+        {
+            if (slider == nullptr || label == nullptr || slider != knobComponent) { return; }
+            const auto text = show || slider->isMouseButtonDown()
+                                  ? slider->getTextFromValue(slider->getValue())
+                                  : caption;
+            label->setText(text, juce::dontSendNotification);
+            // Keep the caption live while the value moves under the mouse.
+            if (show)
+            {
+                slider->onDragEnd = [this, slider] { showValueFor(slider, slider->isMouseOver(false)); };
+            }
+        };
+        apply(entry.knob.get(), entry.label.get(), entry.caption);
+        apply(entry.altKnob.get(), entry.altLabel.get(), entry.altCaption);
+    }
+}
+
+juce::String FxCardComponent::debugKnobCaption(const juce::String& id) const
+{
+    if (const auto* label = knobLabel(id)) { return label->getText(); }
+    return {};
+}
+
+juce::StringArray FxCardComponent::debugRowIds() const
+{
+    juce::StringArray out;
+    for (const auto& row : rows)
+    {
+        juce::StringArray ids;
+        for (const auto& id : row.ids) { ids.add(id); }
+        out.add((row.kind == RowKind::heading ? "heading:" + row.text : ids.joinIntoString(","))
+                + (row.advanced ? " [advanced]" : ""));
+    }
+    return out;
+}
+
+bool FxCardComponent::debugIsRowLaidOut(int rowIndex) const
+{
+    return juce::isPositiveAndBelow(rowIndex, static_cast<int>(rows.size()))
+        && isRowLaidOut(rows[static_cast<std::size_t>(rowIndex)]);
 }
 
 // ============================================================================
@@ -601,6 +680,7 @@ juce::String FxCardComponent::debugLayoutSignature() const
             case RowKind::choices:     return "choices";
             case RowKind::knobs:       return "knobs";
             case RowKind::featureKnob: return "feature";
+            case RowKind::heading:     return "heading";
         }
         return "?";
     };
@@ -694,22 +774,64 @@ void FxCardComponent::resized()
 
     inner.setStylePath("cards." + styleKey + ".cardInner");
     inner.setConfig(uiConfig);
-    inner.setRowCount(static_cast<int>(rows.size()));
+    // Only the rows on show take space: an advanced row folds away entirely
+    // while the card is in its basic view.
+    std::vector<std::size_t> laidOut;
+    for (std::size_t i = 0; i < rows.size(); ++i)
+    {
+        const auto shown = isRowLaidOut(rows[i]);
+        if (shown) { laidOut.push_back(i); continue; }
+
+        for (const auto& id : rows[i].ids)
+        {
+            if (auto* k = knob(id)) { k->setVisible(false); }
+            if (auto* l = knobLabel(id)) { l->setVisible(false); }
+            if (auto* c = choice(id)) { c->setVisible(false); }
+            if (auto* t = toggle(id)) { t->setVisible(false); }
+            const auto it = std::find_if(choices.begin(), choices.end(),
+                                         [&id](const ChoiceEntry& e) { return e.id == id; });
+            if (it != choices.end()) { it->label->setVisible(false); }
+        }
+    }
+
+    inner.setRowCount(static_cast<int>(laidOut.size()));
     inner.layout(card.contentBelowTitle());
 
     // Pinned to cardInner's corner, outside the flex flow, so it stays put no
     // matter what the first row contains.
     bypass.setBounds(inner.powerBounds());
 
-    for (std::size_t i = 0; i < rows.size(); ++i)
+    for (std::size_t slot = 0; slot < laidOut.size(); ++slot)
     {
-        const auto index = static_cast<int>(i);
-        switch (rows[i].kind)
+        auto& row = rows[laidOut[slot]];
+        const auto index = static_cast<int>(slot);
+
+        // Rows re-shown after a fold get their controls back. Paired knobs keep
+        // their own one-of-two visibility.
+        for (const auto& id : row.ids)
         {
-            case RowKind::toggles:     layoutToggleRow(index, rows[i]); break;
-            case RowKind::choices:     layoutChoiceRow(index, rows[i]); break;
-            case RowKind::featureKnob: layoutKnobRow(index, rows[i], true); break;
-            case RowKind::knobs:       layoutKnobRow(index, rows[i], false); break;
+            const auto entry = std::find_if(knobs.begin(), knobs.end(),
+                                            [&id](const KnobEntry& e) { return e.id == id; });
+            if (entry != knobs.end())
+            {
+                const auto paired = entry->altKnob != nullptr;
+                entry->knob->setVisible(! paired || ! altMode);
+                entry->label->setVisible(! paired || ! altMode);
+            }
+            if (auto* c = choice(id)) { c->setVisible(true); }
+            if (auto* t = toggle(id)) { t->setVisible(true); }
+            const auto it = std::find_if(choices.begin(), choices.end(),
+                                         [&id](const ChoiceEntry& e) { return e.id == id; });
+            if (it != choices.end()) { it->label->setVisible(true); }
+        }
+
+        switch (row.kind)
+        {
+            case RowKind::toggles:     layoutToggleRow(index, row); break;
+            case RowKind::choices:     layoutChoiceRow(index, row); break;
+            case RowKind::featureKnob: layoutKnobRow(index, row, true); break;
+            case RowKind::knobs:       layoutKnobRow(index, row, false); break;
+            case RowKind::heading:     row.headingBounds = inner.rowContent(index); break;
         }
     }
 }
@@ -727,6 +849,20 @@ void FxCardComponent::paint(juce::Graphics& g)
     else
     {
         card.drawInactive(g, title);
+    }
+
+    namespace th = px3::ui::theme;
+    for (const auto& row : rows)
+    {
+        if (row.kind != RowKind::heading || ! isRowLaidOut(row) || row.headingBounds.isEmpty()) { continue; }
+        const auto area = row.headingBounds.toFloat();
+        const auto textW = th::textWidth(row.text, th::Type::secondary) + 12.0f;
+        const auto midY = area.getCentreY();
+        g.setColour(th::colour::railEdge);
+        g.drawHorizontalLine(juce::roundToInt(midY), area.getX() + 8.0f, area.getCentreX() - textW * 0.5f);
+        g.drawHorizontalLine(juce::roundToInt(midY), area.getCentreX() + textW * 0.5f, area.getRight() - 8.0f);
+        th::drawLabel(g, row.text, area, th::Type::secondary,
+                      isActive ? th::colour::textSecondary : th::colour::textDim);
     }
 }
 

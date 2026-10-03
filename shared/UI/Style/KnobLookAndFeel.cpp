@@ -14,6 +14,7 @@
 #include "ChipLabel.h"
 #include "RoundedRect.h"
 #include "UIConfig.h"
+#include "Theme.h"
 
 #include <algorithm>
 #include <cmath>
@@ -54,67 +55,48 @@ void KnobLookAndFeel::drawRotarySlider(juce::Graphics& g,
                                         ? juce::Colour::fromFloatRGBA(accentGrayValue, accentGrayValue, accentGrayValue, 1.0f)
                                         : accent;
 
-    // Drop shadow for more tactile depth.
-    g.setColour(juce::Colour::fromRGBA(0, 0, 0, 110));
-    g.fillEllipse(bounds.translated(0.0f, 3.0f));
+    // ---- the PX3 knob family ------------------------------------------------
+    // A recessed track ring carrying the value arc, and a turned cap with a
+    // pointer line. One drawing at every size; size is the only thing that
+    // varies by importance. No per-paint noise or gloss: the depth comes from
+    // a quiet gradient, an edge and a lit rim.
+    namespace tc = px3::ui::theme::colour;
+    const auto hot = slider.isEnabled() && slider.isMouseOverOrDragging();
+    const auto trackRadius = radius * 0.90f;
+    const auto trackWidth = juce::jlimit(2.0f, 3.6f, radius * 0.13f);
+    const auto capRadius = radius * 0.70f;
 
-    juce::ColourGradient knobGradient(juce::Colour::fromRGB(72, 72, 72),
-                                      bounds.getX(),
-                                      bounds.getY(),
-                                      juce::Colour::fromRGB(34, 34, 34),
-                                      bounds.getRight(),
-                                      bounds.getBottom(),
-                                      false);
-    g.setGradientFill(knobGradient);
-    g.fillEllipse(bounds);
-
-    // Deterministic micro-grain adds realism without per-frame flicker.
-    g.saveState();
-    juce::Path grainMask;
-    grainMask.addEllipse(bounds.reduced(2.6f));
-    g.reduceClipRegion(grainMask);
-
-    for (int i = 0; i < 48; ++i)
     {
-        const auto seedA = static_cast<float>(i) * 12.9898f + center.x * 0.37f + center.y * 0.21f;
-        const auto seedB = static_cast<float>(i) * 7.913f + center.x * 0.19f + center.y * 0.42f;
-        const auto noiseA = std::sin(seedA) * 43758.5453f;
-        const auto noiseB = std::sin(seedB) * 24141.1829f;
-        const auto fracA = noiseA - std::floor(noiseA);
-        const auto fracB = noiseB - std::floor(noiseB);
-
-        const auto theta = fracA * juce::MathConstants<float>::twoPi;
-        const auto radial = (0.22f + 0.70f * fracB) * radius;
-        const auto dotX = center.x + std::cos(theta) * radial;
-        const auto dotY = center.y + std::sin(theta) * radial;
-        const auto dotSize = 0.55f + fracB * 0.9f;
-
-        const auto isBright = fracA > 0.5f;
-        const auto alpha = static_cast<juce::uint8>(isBright ? (20 + static_cast<int>(fracB * 22.0f))
-                                                              : (16 + static_cast<int>(fracB * 18.0f)));
-        g.setColour(isBright ? juce::Colour::fromRGBA(255, 255, 255, alpha)
-                             : juce::Colour::fromRGBA(0, 0, 0, alpha));
-        g.fillEllipse(dotX, dotY, dotSize, dotSize);
+        juce::Path track;
+        track.addCentredArc(center.x, center.y, trackRadius, trackRadius, 0.0f,
+                            rotaryStartAngle, rotaryEndAngle, true);
+        g.setColour(tc::knobTrack);
+        g.strokePath(track, juce::PathStrokeType(trackWidth + 1.4f, juce::PathStrokeType::curved,
+                                                 juce::PathStrokeType::rounded));
     }
 
-    g.restoreState();
-
-    // Top highlight to reinforce 3D curvature.
-    juce::ColourGradient highlight(accentForHighlight.withAlpha(0.42f),
-                                   center.x,
-                                   bounds.getY(),
-                                   accentForHighlight.withAlpha(0.0f),
-                                   center.x,
-                                   center.y,
-                                   false);
-    g.setGradientFill(highlight);
-    g.fillEllipse(bounds.reduced(3.5f));
-
-    g.setColour(juce::Colour::fromRGB(110, 110, 110));
-    g.drawEllipse(bounds, 1.6f);
-
-    g.setColour(juce::Colour::fromRGB(14, 14, 14));
-    g.drawEllipse(bounds.expanded(0.6f), 0.9f);
+    // Cap: soft contact shadow, body, edge, lit upper rim.
+    const auto cap = juce::Rectangle<float>(capRadius * 2.0f, capRadius * 2.0f).withCentre(center);
+    g.setColour(juce::Colours::black.withAlpha(0.45f));
+    g.fillEllipse(cap.translated(0.0f, 1.6f).expanded(0.6f));
+    g.setGradientFill(juce::ColourGradient(renderGrayscale ? tc::knobCapTop.withSaturation(0.0f) : tc::knobCapTop,
+                                           center.x, cap.getY(),
+                                           tc::knobCapBottom, center.x, cap.getBottom(), false));
+    g.fillEllipse(cap);
+    g.setColour(tc::knobEdge);
+    g.drawEllipse(cap, 1.0f);
+    {
+        juce::Path rim;
+        rim.addCentredArc(center.x, center.y, capRadius - 1.2f, capRadius - 1.2f, 0.0f,
+                          -1.9f, 1.9f, true);
+        g.setColour(juce::Colours::white.withAlpha(hot ? 0.20f : 0.11f));
+        g.strokePath(rim, juce::PathStrokeType(1.0f));
+    }
+    if (hot)
+    {
+        g.setColour(accentForHighlight.withAlpha(0.35f));
+        g.drawEllipse(cap.expanded(1.2f), 1.0f);
+    }
 
     if (isMixerPanKnob)
     {
@@ -158,7 +140,7 @@ void KnobLookAndFeel::drawRotarySlider(juce::Graphics& g,
         if (std::abs(panValue) > 0.001f)
         {
             juce::Path panRing;
-            const auto arcRadius = radius * 0.88f;
+            const auto arcRadius = trackRadius;
             constexpr int steps = 24;
             for (int i = 0; i <= steps; ++i)
             {
@@ -188,17 +170,29 @@ void KnobLookAndFeel::drawRotarySlider(juce::Graphics& g,
     }
     else
     {
-        juce::Path ring;
-        ring.addCentredArc(center.x,
-                           center.y,
-                           radius * 0.88f,
-                           radius * 0.88f,
-                           0.0f,
-                           rotaryStartAngle,
-                           angle,
-                           true);
-        g.setColour(accentForHighlight);
-        g.strokePath(ring, juce::PathStrokeType(3.2f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        // Bipolar ranges fill from their centre, so a detune or a pan-like
+        // control at zero shows nothing lit - the value reads at a glance.
+        const auto bipolar = slider.getMinimum() < 0.0 && slider.getMaximum() > 0.0;
+        const auto fromAngle = bipolar
+                                   ? rotaryStartAngle + static_cast<float>(slider.valueToProportionOfLength(0.0))
+                                                            * (rotaryEndAngle - rotaryStartAngle)
+                                   : rotaryStartAngle;
+        if (std::abs(angle - fromAngle) > 0.01f)
+        {
+            juce::Path ring;
+            ring.addCentredArc(center.x, center.y, trackRadius, trackRadius, 0.0f,
+                               juce::jmin(fromAngle, angle), juce::jmax(fromAngle, angle), true);
+            g.setColour(accentForHighlight.withAlpha(slider.isEnabled() ? 1.0f : 0.5f));
+            g.strokePath(ring, juce::PathStrokeType(trackWidth, juce::PathStrokeType::curved,
+                                                    juce::PathStrokeType::rounded));
+        }
+        else
+        {
+            const auto dot = juce::Point<float>(center.x + std::sin(angle) * trackRadius,
+                                                center.y - std::cos(angle) * trackRadius);
+            g.setColour(accentForHighlight.withAlpha(0.8f));
+            g.fillEllipse(juce::Rectangle<float>(trackWidth, trackWidth).withCentre(dot));
+        }
     }
 
     // Where the value actually is once modulation is applied, when something is
@@ -244,15 +238,16 @@ void KnobLookAndFeel::drawRotarySlider(juce::Graphics& g,
                       3.4f, 3.4f);
     }
 
-    juce::Path pointer;
-    pointer.addRoundedRectangle(-2.1f, -radius * 0.56f, 4.2f, radius * 0.36f, 1.7f);
-    g.setColour(renderGrayscale ? juce::Colour::fromRGB(200, 200, 200)
-                                : juce::Colour::fromRGB(246, 246, 246));
-    g.fillPath(pointer, juce::AffineTransform::rotation(indicatorAngle).translated(center.x, center.y));
-
-    g.setColour(renderGrayscale ? juce::Colour::fromRGB(170, 170, 170)
-                                : juce::Colour::fromRGB(210, 210, 210));
-    g.fillEllipse(center.x - 3.1f, center.y - 3.1f, 6.2f, 6.2f);
+    {
+        // Pointer: a line from near the centre to the cap's edge.
+        const auto sn = std::sin(indicatorAngle);
+        const auto cs = std::cos(indicatorAngle);
+        g.setColour(renderGrayscale ? juce::Colour::fromRGB(170, 170, 170)
+                                    : (slider.isEnabled() ? tc::knobPointer : tc::textSecondary));
+        g.drawLine(center.x + sn * capRadius * 0.22f, center.y - cs * capRadius * 0.22f,
+                   center.x + sn * (capRadius - 2.2f), center.y - cs * (capRadius - 2.2f),
+                   juce::jlimit(1.6f, 2.6f, radius * 0.09f));
+    }
 
     px3::ui::drawKnobOverlays(g, bounds, slider, renderGrayscale,
                               { macroAccent, macroLabelBackground, macroLabelText });

@@ -81,6 +81,24 @@ public:
     { return componentForSection(sectionId); }
     void setSectionActive(int sectionId, bool active);
 
+    // The delay's algorithm-specific controls and the algorithm that picks
+    // which of them show.
+    void setDelayAlgorithmControls(const DelayComponent::AlgorithmControls& controls);
+    void setDelayAlgorithm(int algorithmIndex);
+
+    // Whether a stage is part of the reorderable FX send chain. Spread runs on
+    // the master bus after everything, so it is shown after the chain and is
+    // not in the strip.
+    static bool isReorderable(int sectionId) noexcept { return sectionId != px3::fxStageStereoSpread; }
+    // The stage ids the signal-flow strip shows, in order.
+    std::vector<int> debugStripStages() const
+    {
+        std::vector<int> ids;
+        for (const auto& node : signalFlow.nodeList()) { ids.push_back(node.id); }
+        return ids;
+    }
+    static juce::String debugSectionName(int sectionId) { return sectionName(sectionId); }
+
     // Raised when the user drags the strip into a new order. The panel does not
     // apply it: the editor writes it to the processor, which feeds it back
     // through setChainOrder.

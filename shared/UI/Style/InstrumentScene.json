@@ -1,13 +1,13 @@
 {
   "schemaVersion": 2,
   "styles": [
-    {"id": "surface", "background": "#101214", "foreground": "#F2F3F1", "accent": "#E5E8E6", "texture": "painted-metal-fine", "knobDiameter": 58, "labelSize": 11, "borderRadius": 0, "borderWidth": 0},
-    {"id": "oscillator.panel", "background": "#111315", "foreground": "#F2F3F1", "accent": "#E5E8E6", "texture": "painted-metal-fine", "knobDiameter": 58, "labelSize": 11, "borderRadius": 0, "borderWidth": 0},
-    {"id": "filter.panel", "background": "#111315", "foreground": "#F2F3F1", "accent": "#E5E8E6", "texture": "painted-metal-fine", "knobDiameter": 54, "labelSize": 11, "borderRadius": 0, "borderWidth": 0},
-    {"id": "amp.panel", "background": "#111315", "foreground": "#F2F3F1", "accent": "#E5E8E6", "texture": "painted-metal-fine", "knobDiameter": 54, "labelSize": 11, "borderRadius": 0, "borderWidth": 0},
-    {"id": "mod.panel", "background": "#111315", "foreground": "#F2F3F1", "accent": "#E5E8E6", "texture": "painted-metal-fine", "knobDiameter": 54, "labelSize": 11, "borderRadius": 0, "borderWidth": 0},
-    {"id": "fx.panel", "background": "#111315", "foreground": "#F2F3F1", "accent": "#E5E8E6", "texture": "painted-metal-fine", "knobDiameter": 54, "labelSize": 11, "borderRadius": 0, "borderWidth": 0},
-    {"id": "mix.panel", "background": "#111315", "foreground": "#F2F3F1", "accent": "#E5E8E6", "texture": "painted-metal-fine", "knobDiameter": 54, "labelSize": 11, "borderRadius": 0, "borderWidth": 0},
+    {"id": "surface", "background": "#0C0E10", "foreground": "#F2F3F1", "accent": "#E5E8E6", "texture": "painted-metal-fine", "knobDiameter": 58, "labelSize": 11, "borderRadius": 0, "borderWidth": 0},
+    {"id": "oscillator.panel", "background": "#0C0E10", "foreground": "#F2F3F1", "accent": "#E5E8E6", "texture": "painted-metal-fine", "knobDiameter": 58, "labelSize": 11, "borderRadius": 0, "borderWidth": 0},
+    {"id": "filter.panel", "background": "#0C0E10", "foreground": "#F2F3F1", "accent": "#E5E8E6", "texture": "painted-metal-fine", "knobDiameter": 54, "labelSize": 11, "borderRadius": 0, "borderWidth": 0},
+    {"id": "amp.panel", "background": "#0C0E10", "foreground": "#F2F3F1", "accent": "#E5E8E6", "texture": "painted-metal-fine", "knobDiameter": 54, "labelSize": 11, "borderRadius": 0, "borderWidth": 0},
+    {"id": "mod.panel", "background": "#0C0E10", "foreground": "#F2F3F1", "accent": "#E5E8E6", "texture": "painted-metal-fine", "knobDiameter": 54, "labelSize": 11, "borderRadius": 0, "borderWidth": 0},
+    {"id": "fx.panel", "background": "#0C0E10", "foreground": "#F2F3F1", "accent": "#E5E8E6", "texture": "painted-metal-fine", "knobDiameter": 54, "labelSize": 11, "borderRadius": 0, "borderWidth": 0},
+    {"id": "mix.panel", "background": "#0C0E10", "foreground": "#F2F3F1", "accent": "#E5E8E6", "texture": "painted-metal-fine", "knobDiameter": 54, "labelSize": 11, "borderRadius": 0, "borderWidth": 0},
     {"id": "control.knob", "background": "#25292B", "foreground": "#F2F3F1", "accent": "#E5E8E6", "texture": "knob.anodized", "knobDiameter": 58, "labelSize": 11, "borderRadius": 0, "borderWidth": 0}
   ],
   "nodes": [

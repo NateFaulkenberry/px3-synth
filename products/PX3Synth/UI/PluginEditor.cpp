@@ -165,6 +165,8 @@ PX3SynthAudioProcessorEditor::PX3SynthAudioProcessorEditor(PX3SynthAudioProcesso
     // handed out, and finishConstruction() needs every panel to exist.
     // EditorOrder_* in TestsEditorLayout.cpp is what holds them.
 
+    setLookAndFeel(&instrumentLookAndFeel);
+
     buildImagesAndMasks();
     buildKeyboardCallbacks();
     buildParameterKnobs();
@@ -184,6 +186,7 @@ PX3SynthAudioProcessorEditor::~PX3SynthAudioProcessorEditor()
 #if PX3_UI_DESIGNER
     layoutDesigner.reset();
 #endif
+    setLookAndFeel(nullptr);
 
     // A key held while the window closes gets no mouse-up. Release it now,
     // while the processor it reports to is still ours to call.
@@ -257,6 +260,10 @@ PX3SynthAudioProcessorEditor::~PX3SynthAudioProcessorEditor()
     isaacTextureKnob.setLookAndFeel(nullptr);
     delayTimeKnob.setLookAndFeel(nullptr);
     delayFeedbackKnob.setLookAndFeel(nullptr);
+    for (auto* knob : { &delayQualityKnob, &delayWobbleKnob, &delaySlipKnob, &delayModDepthKnob })
+    {
+        knob->setLookAndFeel(nullptr);
+    }
     moodMixKnob.setLookAndFeel(nullptr);
     moodClockKnob.setLookAndFeel(nullptr);
     moodWetTimeKnob.setLookAndFeel(nullptr);
