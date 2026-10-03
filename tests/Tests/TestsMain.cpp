@@ -279,6 +279,107 @@ void measureSupersawPolyphony()
     }
 }
 
+// Every automatable parameter driven to its minimum and maximum, one at a time,
+// with every FX stage and the analog engine on and a chord playing; then all of
+// them automated at random every block. The output must stay finite and below
+// the ceiling's reach. Reports the worst cases.
+int runParameterExtremes()
+{
+    auto prepareLoud = [](PX3SynthAudioProcessor& processor)
+    {
+        processor.setPlayConfigDetails(0, 2, 48000.0, 256);
+        processor.prepareToPlay(48000.0, 256);
+        for (auto* p : processor.getParameters())
+        {
+            if (auto* r = dynamic_cast<juce::RangedAudioParameter*>(p))
+            {
+                const auto id = r->paramID;
+                if (id.endsWith(".enabled") && id.startsWith("fx.")) r->setValueNotifyingHost(1.0f);
+                if (id == "fx.delay.amount" || id == "fx.reverb.amount" || id == "fx.chorus.amount" || id == "fx.spread.amount"
+                    || id == "fx.doom.mix" || id == "fx.lucy.global" || id == "fx.distortion.mix" || id == "fx.vibe.intensity"
+                    || id == "fx.mood.mix" || id == "global.character.enabled")
+                    r->setValueNotifyingHost(0.6f);
+            }
+        }
+    };
+    auto renderPeak = [](PX3SynthAudioProcessor& processor, const std::function<void(int)>& perBlock, bool& finite)
+    {
+        juce::AudioBuffer<float> buffer(2, 256);
+        double peak = 0.0;
+        finite = true;
+        for (int block = 0; block < 90; ++block)
+        {
+            juce::MidiBuffer midi;
+            if (block == 1) for (const auto n : { 36, 48, 55, 60, 64, 67, 72, 79 }) midi.addEvent(juce::MidiMessage::noteOn(1, n, 1.0f), 0);
+            if (block == 70) for (const auto n : { 36, 48, 55, 60, 64, 67, 72, 79 }) midi.addEvent(juce::MidiMessage::noteOff(1, n), 0);
+            if (perBlock) perBlock(block);
+            buffer.clear();
+            processor.processBlock(buffer, midi);
+            for (int ch = 0; ch < 2; ++ch)
+                for (int n = 0; n < 256; ++n)
+                {
+                    const auto v = buffer.getSample(ch, n);
+                    if (! std::isfinite(v)) finite = false;
+                    else peak = juce::jmax(peak, static_cast<double>(std::abs(v)));
+                }
+        }
+        return peak;
+    };
+
+    std::printf("\nPARAMETER EXTREMES  (8-note chord, every FX on, analog on)\n");
+    int failures = 0;
+    double worstPeak = 0.0;
+    juce::String worstId;
+    PX3SynthAudioProcessor probe;
+    juce::StringArray ids;
+    for (auto* p : probe.getParameters())
+        if (auto* r = dynamic_cast<juce::RangedAudioParameter*>(p); r != nullptr && r->isAutomatable()) ids.add(r->paramID);
+    for (const auto& id : ids)
+    {
+        for (const auto value : { 0.0f, 1.0f })
+        {
+            PX3SynthAudioProcessor processor;
+            prepareLoud(processor);
+            juce::RangedAudioParameter* target = nullptr;
+            for (auto* p : processor.getParameters())
+                if (auto* r = dynamic_cast<juce::RangedAudioParameter*>(p); r != nullptr && r->paramID == id) target = r;
+            if (target == nullptr) continue;
+            target->setValueNotifyingHost(value);
+            bool finite = true;
+            const auto peak = renderPeak(processor, {}, finite);
+            if (peak > worstPeak) { worstPeak = peak; worstId = id + (value > 0.5f ? " = max" : " = min"); }
+            if (! finite || peak > 1.5)
+            {
+                ++failures;
+                std::printf("  FAIL %-40s %s  peak %.3f%s\n", id.toRawUTF8(), value > 0.5f ? "max" : "min", peak, finite ? "" : "  NON-FINITE");
+            }
+        }
+    }
+    std::printf("  %d parameters x min/max: %d failure(s); loudest %.3f at %s\n", ids.size(), failures, worstPeak, worstId.toRawUTF8());
+
+    // Rapid automation: forty random parameters jumped every block.
+    {
+        PX3SynthAudioProcessor processor;
+        prepareLoud(processor);
+        std::vector<juce::RangedAudioParameter*> params;
+        for (auto* p : processor.getParameters())
+            if (auto* r = dynamic_cast<juce::RangedAudioParameter*>(p); r != nullptr && r->isAutomatable()
+                && ! r->paramID.contains("enabled") && ! r->paramID.contains("level") && ! r->paramID.startsWith("mix."))
+                params.push_back(r);
+        juce::Random random(123);
+        bool finite = true;
+        const auto peak = renderPeak(processor, [&](int)
+        {
+            for (int k = 0; k < 40; ++k) params[static_cast<std::size_t>(random.nextInt(static_cast<int>(params.size())))]->setValueNotifyingHost(random.nextFloat());
+        }, finite);
+        const auto ok = finite && peak <= 1.5;
+        failures += ok ? 0 : 1;
+        std::printf("  rapid random automation of %zu parameters: peak %.3f %s %s\n", params.size(), peak, finite ? "finite" : "NON-FINITE", ok ? "ok" : "FAIL");
+    }
+    std::printf("\n  %d failure(s)\n", failures);
+    return failures;
+}
+
 void scanDoomLucyArtifacts()
 {
     using namespace artifactscan;
@@ -2106,6 +2207,11 @@ int main(int argc, char* argv[])
         }
         std::printf("\n  %d preset files\n\n", files.size());
         return 0;
+    }
+
+    if (filter == "extremes")
+    {
+        return runParameterExtremes();
     }
 
     if (filter == "supersawpoly")
