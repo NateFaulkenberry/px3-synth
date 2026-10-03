@@ -1,6 +1,7 @@
 #pragma once
 
 #include "MidiMapping.h"
+#include "ParameterCatalog.h"
 #include <JuceHeader.h>
 
 #include "Delay.h"
@@ -754,6 +755,7 @@ public:
 
     juce::ValueTree createParameterStateTree() const;
     juce::ValueTree createPresetStateTree() const;
+    const px3::synth::ParameterCatalog& getParameterCatalog() const noexcept { return parameterCatalog; }
     bool applyParameterStateTree(const juce::ValueTree& state,
                                  juce::String* error = nullptr,
                                  bool restoreUiSessionState = true);
@@ -832,6 +834,7 @@ private:
     void collectModulationEnvelopeValuesFromVoices();
 
     juce::Synthesiser synth;
+    px3::synth::ParameterCatalog parameterCatalog;
 
     std::array<juce::AudioParameterBool*, kOscillatorSourceCount> oscEnabledParams { { nullptr, nullptr, nullptr } };
     std::array<juce::AudioParameterFloat*, kOscillatorSourceCount> oscCoarseParams { { nullptr, nullptr, nullptr } };

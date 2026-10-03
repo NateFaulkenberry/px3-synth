@@ -154,6 +154,7 @@ set(PX3_SYNTH_SOURCES
         products/PX3Synth/DSP/LfoGenerator.cpp
         products/PX3Synth/DSP/SubOscillator.cpp
         products/PX3Synth/DSP/PluginProcessor.cpp
+        products/PX3Synth/DSP/ParameterCatalog.cpp
         products/PX3Synth/DSP/PluginProcessorParameters.cpp
         products/PX3Synth/DSP/PluginProcessorMidi.cpp
         products/PX3Synth/DSP/PluginProcessorDebug.cpp

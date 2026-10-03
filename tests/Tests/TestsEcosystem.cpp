@@ -3,6 +3,7 @@
 #include "PX3Version.h"
 #include "ProductRegistry.h"
 #include "UpdateService.h"
+#include "PluginProcessor.h"
 
 // testEcosystem
 //
@@ -99,6 +100,33 @@ void testEcosystem()
                   + "PluginEditor "
                   + ((hasProcessor && hasEditor) ? "both live under products/PX3Synth"
                                                  : "NOT under products/PX3Synth"));
+    }
+
+    {
+        PX3SynthAudioProcessor processor;
+        const auto& catalog = processor.getParameterCatalog();
+        const auto* coarse = catalog.find("osc1Coarse");
+        const auto groups = processor.getParameterTree().getSubgroups(false);
+        auto hasVoiceGroup = false;
+        auto hasModulationGroup = false;
+        auto hasEffectsGroup = false;
+        auto hasMixerGroup = false;
+        for (const auto* group : groups)
+        {
+            if (group == nullptr) { continue; }
+            hasVoiceGroup = hasVoiceGroup || group->getID() == "voice";
+            hasModulationGroup = hasModulationGroup || group->getID() == "modulation";
+            hasEffectsGroup = hasEffectsGroup || group->getID() == "effects";
+            hasMixerGroup = hasMixerGroup || group->getID() == "mixer";
+        }
+        const auto allRegistered = catalog.entries().size()
+                                == static_cast<std::size_t>(processor.getParameters().size());
+        check("ParameterCatalog_IndexesEveryHostParameterAndBuildsModuleGroups",
+              allRegistered && coarse != nullptr && coarse->parameter != nullptr
+                  && coarse->groupPath == "VOICE / OSC 1"
+                  && hasVoiceGroup && hasModulationGroup && hasEffectsGroup && hasMixerGroup,
+              juce::String(static_cast<int>(catalog.entries().size())) + " catalog entries / "
+                  + juce::String(processor.getParameters().size()) + " host parameters");
     }
 
     // ---- one source of truth for the version --------------------------------

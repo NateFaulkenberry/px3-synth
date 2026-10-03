@@ -370,6 +370,10 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     // parameters makes them automatable, serialized into session and preset
     // state, and MIDI-mappable through the existing system without a line of
     // new code in any of those places.
+    auto addParameter = [this](juce::AudioProcessorParameter* parameter)
+    {
+        parameterCatalog.add(parameter);
+    };
     for (int macro = 0; macro < kMacroCount; ++macro)
     {
         macroParams[static_cast<std::size_t>(macro)] = new juce::AudioParameterFloat(
@@ -924,9 +928,8 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
         addParameter(envelopeAmountParams[static_cast<std::size_t>(envIndex)]);
     }
 
-    // Added in 0.7.5, at the END of the list. Some hosts address parameters by
-    // index, so inserting these beside their relatives would move every
-    // parameter after them and break existing automation.
+    // Supplemental modulation and output controls join their owning modules in
+    // ParameterCatalog; registration order is not a 0.7 host-index contract.
     for (int lfoIndex = 0; lfoIndex < kLfoSourceCount; ++lfoIndex)
     {
         addParameter(lfoRampTimeParams[static_cast<std::size_t>(lfoIndex)]);
@@ -940,6 +943,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     addParameter(filterRoutingParam);
     addParameter(filterParallelBalanceParam);
     addParameter(fxSeparateOutputParam);
+    parameterCatalog.attachTo(*this);
 
     buildLfoAssignableTargets();
 
@@ -1059,6 +1063,10 @@ void PX3SynthAudioProcessor::createBusInsertParameters(int bus,
                                                        const juce::String& label)
 {
     auto& p = busInsertParams[static_cast<std::size_t>(bus)];
+    auto addParameter = [this](juce::AudioProcessorParameter* parameter)
+    {
+        parameterCatalog.add(parameter);
+    };
 
     p.eqEnabled = new juce::AudioParameterBool(idPrefix + "EqEnabled", label + " EQ Enabled", false);
 
