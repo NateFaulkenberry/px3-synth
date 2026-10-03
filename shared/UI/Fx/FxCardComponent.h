@@ -90,6 +90,13 @@ public:
     // otherwise. This is the card's "advanced fold".
     void markLastRowAdvanced();
 
+    // A strip along the bottom of the card, outside the declared rows, for a
+    // product-specific extra (the Synth's Reverb IR loader). Not owned. Takes
+    // space only while shown (setFooterShown).
+    void setFooter(juce::Component* footerComponent, int heightPx);
+    void setFooterShown(bool shouldShow);
+    bool isFooterShown() const noexcept { return footer != nullptr && footerShown; }
+
     // One line saying what the effect does: the card's tooltip (hover anywhere
     // on its faceplate) and the power button's.
     void setDescription(const juce::String& text);
@@ -174,6 +181,9 @@ private:
     void showValueFor(juce::Component* knobComponent, bool show);
     bool isRowLaidOut(const Row& row) const noexcept { return ! row.advanced || altMode; }
     juce::String description;
+    juce::Component* footer { nullptr };
+    int footerHeight { 0 };
+    bool footerShown { false };
 
     struct KnobEntry
     {

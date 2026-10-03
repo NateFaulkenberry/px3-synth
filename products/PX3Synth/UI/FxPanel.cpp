@@ -332,7 +332,7 @@ void FxPanel::resized()
     // second reading of the strip rather than a second list to keep in step.
     const auto columns = uiConfig != nullptr ? uiConfig->getInt("fx.grid.columns", 4) : 4;
     const auto gap = uiConfig != nullptr ? uiConfig->getInt("fx.grid.gap", 8) : 8;
-    const auto rowHeight = uiConfig != nullptr ? uiConfig->getInt("fx.grid.rowHeight", 400) : 400;
+    auto rowHeight = uiConfig != nullptr ? uiConfig->getInt("fx.grid.rowHeight", 400) : 400;
 
     // Only the stages that have a card take a cell. A stage without one is
     // still in the chain and still processes; it simply has nothing to show.
@@ -353,6 +353,16 @@ void FxPanel::resized()
     }
 
     const auto count = static_cast<int>(cards.size());
+
+    // The rack fills the page: rows share the visible height, so every module
+    // is on screen without scrolling, down to a minimum row height below which
+    // the grid scrolls instead of crushing the cards.
+    {
+        const auto rows = juce::jmax(1, (count + juce::jmax(1, columns) - 1) / juce::jmax(1, columns));
+        const auto minRow = uiConfig != nullptr ? uiConfig->getInt("fx.grid.minRowHeight", 300) : 300;
+        const auto fit = (gridViewport.getHeight() - gap * (rows - 1)) / rows;
+        rowHeight = juce::jmax(minRow, fit);
+    }
     const auto neededHeight = px3::ui::fxGridContentHeight(count, columns, gap, rowHeight);
 
     // The scrollbar takes width from the cells, so whether it is needed has to

@@ -85,6 +85,11 @@ void PX3SynthAudioProcessorEditor::refreshFxBypassUI()
     {
         reverbCard->bypassButton().setToggleState(reverbEnabled2, juce::dontSendNotification);
         reverbCard->setActive(reverbEnabled2);
+        // IR is the last algorithm choice; its loader shows only in that mode.
+        const auto& algorithm = audioProcessor.getReverbAlgorithmParam();
+        const auto irMode = algorithm.choices[algorithm.getIndex()] == "IR";
+        reverbCard->setFooterShown(irMode);
+        if (irMode) { reverbIrStrip.refresh(); }
     }
 
     const auto chorusEnabled = audioProcessor.getChorusEnabledParam().get();
@@ -341,6 +346,10 @@ void PX3SynthAudioProcessorEditor::buildReverbCard()
                          { "shimmer", "fx.reverb.shimmer" } },
                        { { "algorithm", "fx.reverb.algorithm" } },
                        "fx.reverb.enabled");
+    reverbIrStrip.onLoad = [this](const juce::File& file) { return audioProcessor.loadReverbImpulseResponse(file); };
+    reverbIrStrip.onClear = [this] { audioProcessor.clearReverbImpulseResponse(); };
+    reverbIrStrip.currentName = [this] { return audioProcessor.getReverbImpulseResponseName(); };
+    card->setFooter(&reverbIrStrip, 26);
     reverbCard = card.get();
     fxPanel->addCard(px3::fxStageReverb, std::move(card));
 }

@@ -6,6 +6,7 @@
 #include "SpeechBubbleLabel.h"
 #include "MacroKnobLook.h"
 #include "FxCardComponent.h"
+#include "ReverbIrStrip.h"
 
 #include <JuceHeader.h>
 
@@ -942,6 +943,8 @@ private:
     px3::ui::FxCardComponent* spreadCard { nullptr };
     px3::ui::FxCardComponent* driveCard { nullptr };
     px3::ui::FxCardComponent* vibeCard { nullptr };
+    // The Reverb card's IR loader footer, shown while MODE is IR.
+    ReverbIrStrip reverbIrStrip;
     std::unique_ptr<MixPanel> mixPanel;
     std::unique_ptr<SettingsPanel> settingsPanel;
     std::unique_ptr<TopMenuBar> topMenuBar;

@@ -103,7 +103,9 @@ void PX3SynthAudioProcessorEditor::buildImagesAndMasks()
     }
 
     setResizable(true, true);
-    setResizeLimits(980, 600, 1900, 980);
+    // Minimum: the VOICE strip (sub + 3 oscillators, 2 filters, AMP) with every
+    // knob still readable and no caption clipped. Maximum: large displays.
+    setResizeLimits(1100, 700, 2400, 1400);
 
     addAndMakeVisible(performanceControls);
     addAndMakeVisible(pianoKeyboard);

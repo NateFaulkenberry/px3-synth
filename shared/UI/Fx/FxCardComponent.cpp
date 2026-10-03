@@ -214,6 +214,22 @@ void FxCardComponent::addHeadingRow(const juce::String& text, const juce::String
     rows.push_back(std::move(row));
 }
 
+void FxCardComponent::setFooter(juce::Component* footerComponent, int heightPx)
+{
+    footer = footerComponent;
+    footerHeight = juce::jmax(0, heightPx);
+    if (footer != nullptr) { addChildComponent(*footer); }
+    setFooterShown(footerShown);
+}
+
+void FxCardComponent::setFooterShown(bool shouldShow)
+{
+    const auto changed = footerShown != shouldShow;
+    footerShown = shouldShow;
+    if (footer != nullptr) { footer->setVisible(footerShown); }
+    if (changed) { resized(); }
+}
+
 void FxCardComponent::markLastRowAdvanced()
 {
     if (! rows.empty()) { rows.back().advanced = true; }
@@ -795,7 +811,13 @@ void FxCardComponent::resized()
     }
 
     inner.setRowCount(static_cast<int>(laidOut.size()));
-    inner.layout(card.contentBelowTitle());
+    auto rowsArea = card.contentBelowTitle();
+    if (isFooterShown())
+    {
+        footer->setBounds(rowsArea.removeFromBottom(footerHeight).reduced(4, 0));
+        rowsArea.removeFromBottom(4);
+    }
+    inner.layout(rowsArea);
 
     // Pinned to cardInner's corner, outside the flex flow, so it stays put no
     // matter what the first row contains.

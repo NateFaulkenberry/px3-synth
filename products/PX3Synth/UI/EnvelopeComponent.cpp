@@ -778,7 +778,13 @@ void EnvelopeComponent::layoutCardInner()
     }
 
 
-    inner.setStylePath("cards." + px3::ui::cardTypeKey(cardStyleKey) + ".cardInner");
+    // The full-height graph (AMP ENV) has its own two-row block: graph, then
+    // knobs. Read through the shared "env" block it took that block's 12% and
+    // 24% rows and left two thirds of the card empty.
+    const auto ownInner = "cards." + cardStyleKey + ".cardInner";
+    const auto useOwn = isFullHeightGraph() && uiConfig != nullptr
+                        && ! uiConfig->getValue(ownInner + ".rows").isVoid();
+    inner.setStylePath(useOwn ? ownInner : "cards." + px3::ui::cardTypeKey(cardStyleKey) + ".cardInner");
     inner.setConfig(uiConfig);
     inner.setRowCount((isFullHeightGraph() ? 1 : 3) + (adsrKnobsWanted() ? 1 : 0));
     inner.layout(card.contentBelowTitle());
