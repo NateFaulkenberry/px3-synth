@@ -29,12 +29,14 @@ std::vector<ParameterCatalog::GroupSegment> ParameterCatalog::groupPathForId(con
     {
         return path("voice", "VOICE", "sub", "SUB OSC");
     }
-    if (key.startsWith("filter"))
+    if (key.startsWith("voice.filters."))
     {
-        const auto slot = (key.startsWith("filter2") ? juce::String("2")
-                          : key.startsWith("filter1") ? juce::String("1") : juce::String("routing"));
-        return path("voice", "VOICE", "filter" + slot,
-                    slot == "routing" ? juce::String("FILTER ROUTING") : "FILTER " + slot);
+        return { { "voice", "VOICE" }, { "filters", "FILTERS" }, { "routing", "ROUTING" } };
+    }
+    if (key.startsWith("voice.filter1.") || key.startsWith("voice.filter2."))
+    {
+        const auto slot = key.startsWith("voice.filter2.") ? juce::String("2") : juce::String("1");
+        return path("voice", "VOICE", "filter" + slot, "FILTER " + slot);
     }
     if (key.startsWith("amp"))
     {

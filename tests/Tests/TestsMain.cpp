@@ -2533,8 +2533,8 @@ int main(int argc, char* argv[])
             setParam(processor, "reverbEnabled", 0.0f);
             setParam(processor, "delayEnabled", 0.0f);
             setParam(processor, "moodEnabled", 0.0f);
-            setParam(processor, "filter1Enabled", 0.0f);
-            setParam(processor, "filter2Enabled", 0.0f);
+            setParam(processor, "voice.filter1.enabled", 0.0f);
+            setParam(processor, "voice.filter2.enabled", 0.0f);
             setParam(processor, "ampSustain", 1.0f);
             setChoice(processor, "voice.osc1.mode", 0);
             if (juce::String(label) == "maximum")
@@ -2594,8 +2594,8 @@ int main(int argc, char* argv[])
             PX3SynthAudioProcessor processor;
             makePlainPatch(processor);
             setChoice(processor, "voice.osc1.mode", 1);
-            setParam(processor, "filter1Enabled", 1.0f);
-            setParam(processor, "filter1Cutoff", 2500.0f);
+            setParam(processor, "voice.filter1.enabled", 1.0f);
+            setParam(processor, "voice.filter1.cutoff", 2500.0f);
             setParam(processor, "vibeEnabled", 1.0f);
             setParam(processor, "vibeAmount", amount);
             const auto capture = render(processor, 48000, { { 2000, true, 45, 0.9f } });

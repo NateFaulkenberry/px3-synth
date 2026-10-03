@@ -2516,9 +2516,9 @@ void testMacroSystem()
         {
             PX3SynthAudioProcessor processor;
             prepared(processor);
-            setParam(processor, "filter1Enabled", 1.0f);
-            setChoice(processor, "filter1Type", 0);
-            setParam(processor, "filter1Resonance", 0.2f);
+            setParam(processor, "voice.filter1.enabled", 1.0f);
+            setChoice(processor, "voice.filter1.type", 0);
+            setParam(processor, "voice.filter1.resonance", 0.2f);
             processor.getFilterCutoffParam(0).setValueNotifyingHost(0.05f);
 
             processor.toggleMacroDestination(0, processor.getFilterCutoffParam(0).getParameterID());
@@ -4029,9 +4029,9 @@ void testMidiMapping()
         {
             PX3SynthAudioProcessor processor;
             prepared(processor);
-            setParam(processor, "filter1Enabled", 1.0f);
-            setChoice(processor, "filter1Type", 0);           // low pass
-            setParam(processor, "filter1Resonance", 0.2f);
+            setParam(processor, "voice.filter1.enabled", 1.0f);
+            setChoice(processor, "voice.filter1.type", 0);           // low pass
+            setParam(processor, "voice.filter1.resonance", 0.2f);
 
             juce::AudioBuffer<float> buffer(2, kBlock);
 

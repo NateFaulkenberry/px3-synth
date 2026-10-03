@@ -550,8 +550,8 @@ inline void makePlainPatch(PX3SynthAudioProcessor& processor)
         setParam(processor, "voice.osc" + juce::String(slot) + ".tuning.cents", 0.0f);
     }
 
-    setParam(processor, "filter1Enabled", 0.0f);
-    setParam(processor, "filter2Enabled", 0.0f);
+    setParam(processor, "voice.filter1.enabled", 0.0f);
+    setParam(processor, "voice.filter2.enabled", 0.0f);
 
     setParam(processor, "vibeEnabled", 0.0f);
     setParam(processor, "vibeAmount", 0.0f);

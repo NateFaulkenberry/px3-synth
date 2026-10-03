@@ -200,7 +200,7 @@ void testEditorLayout()
         // Deliberately not the defaults: a first frame built from initial
         // values would look right on a default patch and wrong on every other.
         setParam(processor, "ampAttack", 1.750f);
-        setParam(processor, "filter1Cutoff", 640.0f);
+        setParam(processor, "voice.filter1.cutoff", 640.0f);
         setChoice(processor, "analogProfile", 3);
         processor.setEnvelopeMode(1, px3::BreakpointEnvelope::Mode::breakpoint);
 

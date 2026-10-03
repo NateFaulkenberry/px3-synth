@@ -46,19 +46,20 @@ void applyUnusualConfiguration(PX3SynthAudioProcessor& processor)
 
     for (const auto* slot : { "1", "2" })
     {
-        setParam(processor, juce::String("filter") + slot + "Enabled", 1.0f);
-        setParam(processor, juce::String("filter") + slot + "Cutoff", slot[0] == '1' ? 733.0f : 4211.0f);
-        setParam(processor, juce::String("filter") + slot + "Resonance", slot[0] == '1' ? 1.73f : 0.41f);
+        const auto prefix = juce::String("voice.filter") + slot + ".";
+        setParam(processor, prefix + "enabled", 1.0f);
+        setParam(processor, prefix + "cutoff", slot[0] == '1' ? 733.0f : 4211.0f);
+        setParam(processor, prefix + "resonance", slot[0] == '1' ? 1.73f : 0.41f);
 
         // The comb's controls go through the same round trip as everything
         // else, so the state test above covers them without a second mechanism.
-        setParam(processor, juce::String("filter") + slot + "CombTune", slot[0] == '1' ? 143.5f : 671.25f);
-        setParam(processor, juce::String("filter") + slot + "CombDecay", slot[0] == '1' ? 2.35f : 0.44f);
-        setParam(processor, juce::String("filter") + slot + "CombDamping", slot[0] == '1' ? 0.62f : 0.11f);
-        setParam(processor, juce::String("filter") + slot + "CombDispersion", slot[0] == '1' ? 0.37f : 0.83f);
-        setParam(processor, juce::String("filter") + slot + "CombDrive", slot[0] == '1' ? 0.29f : 0.71f);
-        setParam(processor, juce::String("filter") + slot + "CombMix", slot[0] == '1' ? 0.66f : 0.24f);
-        setParam(processor, juce::String("filter") + slot + "CombInvert", slot[0] == '1' ? 1.0f : 0.0f);
+        setParam(processor, prefix + "comb.tuning", slot[0] == '1' ? 143.5f : 671.25f);
+        setParam(processor, prefix + "comb.decay", slot[0] == '1' ? 2.35f : 0.44f);
+        setParam(processor, prefix + "comb.damping", slot[0] == '1' ? 0.62f : 0.11f);
+        setParam(processor, prefix + "comb.dispersion", slot[0] == '1' ? 0.37f : 0.83f);
+        setParam(processor, prefix + "comb.drive", slot[0] == '1' ? 0.29f : 0.71f);
+        setParam(processor, prefix + "comb.mix", slot[0] == '1' ? 0.66f : 0.24f);
+        setParam(processor, prefix + "comb.invert", slot[0] == '1' ? 1.0f : 0.0f);
     }
     // The dry bus is a channel like any other, so the round trip has to carry
     // it too.
@@ -72,12 +73,12 @@ void applyUnusualConfiguration(PX3SynthAudioProcessor& processor)
     setParam(processor, "lfoRampTime", 17.3f);
     setParam(processor, "lfo3RampTime", 52.0f);
     setParam(processor, "lfo2KeySync", 1.0f);
-    setChoice(processor, "filterRouting", 1);
-    setParam(processor, "filterParallelBalance", 0.27f);
+    setChoice(processor, "voice.filters.routing.mode", 1);
+    setParam(processor, "voice.filters.routing.balance", 0.27f);
 
-    setChoice(processor, "filter1Type", 4);
+    setChoice(processor, "voice.filter1.type", 4);
     // Comb, so the mode itself is part of what the round trip has to restore.
-    setChoice(processor, "filter2Type", static_cast<int>(px3::FilterMode::comb));
+    setChoice(processor, "voice.filter2.type", static_cast<int>(px3::FilterMode::comb));
 
     for (int envIndex = 0; envIndex < 3; ++envIndex)
     {
@@ -90,9 +91,9 @@ void applyUnusualConfiguration(PX3SynthAudioProcessor& processor)
         setParam(processor, envIndex == 0 ? juce::String("envAmount") : "env" + slot + "Amount",
                  -0.63f + 0.44f * static_cast<float>(envIndex));
     }
-    processor.setEnvelopeAssignmentByParameterId(0, "filter1Cutoff", false);
+    processor.setEnvelopeAssignmentByParameterId(0, "voice.filter1.cutoff", false);
     processor.setEnvelopeAssignmentByParameterId(1, "osc1Level", false);
-    processor.setEnvelopeAssignmentByParameterId(2, "filter2Resonance", false);
+    processor.setEnvelopeAssignmentByParameterId(2, "voice.filter2.resonance", false);
 
     for (int lfoIndex = 0; lfoIndex < 3; ++lfoIndex)
     {
@@ -106,7 +107,7 @@ void applyUnusualConfiguration(PX3SynthAudioProcessor& processor)
         setChoice(processor, lfoIndex == 0 ? juce::String("lfoWaveform") : prefix + "Waveform",
                   (lfoIndex + 2) % 4);
     }
-    processor.setLfoAssignmentByParameterId(0, "filter2Cutoff", false);
+    processor.setLfoAssignmentByParameterId(0, "voice.filter2.cutoff", false);
     processor.setLfoAssignmentByParameterId(1, "mix.osc2.pan", false);
     processor.setLfoAssignmentByParameterId(2, "voice.osc1.tuning.cents", false);
 
@@ -190,8 +191,8 @@ void testPresets()
         applyUnusualConfiguration(processor);
 
         const std::array<juce::String, 7> combIds { {
-            "CombTune", "CombDecay", "CombDamping", "CombDispersion",
-            "CombDrive", "CombMix", "CombInvert",
+            "comb.tuning", "comb.decay", "comb.damping", "comb.dispersion",
+            "comb.drive", "comb.mix", "comb.invert",
         } };
 
         std::vector<std::pair<juce::String, float>> before;
@@ -199,7 +200,7 @@ void testPresets()
         {
             for (const auto& id : combIds)
             {
-                const auto full = "filter" + juce::String(filterIndex) + id;
+                const auto full = "voice.filter" + juce::String(filterIndex) + "." + id;
                 if (auto* param = findParameter(processor, full))
                 {
                     before.push_back({ full, param->getValue() });
@@ -889,7 +890,7 @@ void testIntegration()
         setParam(processor, "vibeEnabled", 1.0f);
         setParam(processor, "vibeAmount", 0.7f);
         setParam(processor, "analogEnabled", 1.0f);
-        setParam(processor, "filter1Enabled", 1.0f);
+        setParam(processor, "voice.filter1.enabled", 1.0f);
 
         std::vector<NoteEvent> chord;
         for (int i = 0; i < 64; ++i)
@@ -957,16 +958,16 @@ void testIntegration()
               } },
             { "MaximumResonanceBothFilters", [](PX3SynthAudioProcessor& p)
               {
-                  setParam(p, "filter1Enabled", 1.0f);
-                  setParam(p, "filter2Enabled", 1.0f);
-                  setParam(p, "filter1Resonance", 2.2f);
-                  setParam(p, "filter2Resonance", 2.2f);
-                  setParam(p, "filter1Cutoff", 80.0f);
-                  setParam(p, "filter2Cutoff", 18000.0f);
+                  setParam(p, "voice.filter1.enabled", 1.0f);
+                  setParam(p, "voice.filter2.enabled", 1.0f);
+                  setParam(p, "voice.filter1.resonance", 2.2f);
+                  setParam(p, "voice.filter2.resonance", 2.2f);
+                  setParam(p, "voice.filter1.cutoff", 80.0f);
+                  setParam(p, "voice.filter2.cutoff", 18000.0f);
               } },
             { "MaximumModulationEverywhere", [](PX3SynthAudioProcessor& p)
               {
-                  setParam(p, "filter1Enabled", 1.0f);
+                  setParam(p, "voice.filter1.enabled", 1.0f);
                   for (int i = 0; i < 3; ++i)
                   {
                       const auto slot = juce::String(i + 1);
@@ -977,12 +978,12 @@ void testIntegration()
                       setParam(p, i == 0 ? juce::String("lfoAmount") : prefix + "Amount", 1.0f);
                       setParam(p, i == 0 ? juce::String("lfoFrequency") : prefix + "Frequency", 20.0f);
                   }
-                  p.setLfoAssignmentByParameterId(0, "filter1Cutoff", false);
+                  p.setLfoAssignmentByParameterId(0, "voice.filter1.cutoff", false);
                   p.setLfoAssignmentByParameterId(1, "voice.osc1.tuning.cents", false);
                   p.setLfoAssignmentByParameterId(2, "mix.osc1.pan", false);
-                  p.setEnvelopeAssignmentByParameterId(0, "filter1Resonance", false);
+                  p.setEnvelopeAssignmentByParameterId(0, "voice.filter1.resonance", false);
                   p.setEnvelopeAssignmentByParameterId(1, "osc1Level", false);
-                  p.setEnvelopeAssignmentByParameterId(2, "filter2Cutoff", false);
+                  p.setEnvelopeAssignmentByParameterId(2, "voice.filter2.cutoff", false);
               } },
             { "AllFxAtMaximum", [](PX3SynthAudioProcessor& p)
               {
@@ -1081,7 +1082,7 @@ void testIntegration()
         const SwitchCase switches[] = {
             { "OscillatorEnable", "voice.osc2.enabled" },
             { "SubOscillatorEnable", "voice.sub.enabled" },
-            { "FilterEnable", "filter1Enabled" },
+            { "FilterEnable", "voice.filter1.enabled" },
             { "ReverbEnable", "reverbEnabled" },
         };
 
@@ -1100,15 +1101,15 @@ void testIntegration()
         PX3SynthAudioProcessor processor;
         makePlainPatch(processor);
         setChoice(processor, "voice.osc1.mode", 1);
-        setParam(processor, "filter1Enabled", 1.0f);
+        setParam(processor, "voice.filter1.enabled", 1.0f);
         const auto capture = render(processor, 64000, { { 2000, true, 45, 0.9f } },
                                     [&processor](int blockIndex)
                                     {
                                         // Extremes on alternate blocks, across
                                         // several unrelated controls at once.
                                         const auto high = (blockIndex % 2) == 0;
-                                        setParam(processor, "filter1Cutoff", high ? 18000.0f : 80.0f);
-                                        setParam(processor, "filter1Resonance", high ? 2.2f : 0.25f);
+                                        setParam(processor, "voice.filter1.cutoff", high ? 18000.0f : 80.0f);
+                                        setParam(processor, "voice.filter1.resonance", high ? 2.2f : 0.25f);
                                         setParam(processor, "mix.osc1.level", high ? 1.0f : 0.0f);
                                         setParam(processor, "mix.osc1.pan", high ? 1.0f : -1.0f);
                                         setParam(processor, "masterGain", high ? 1.0f : 0.0f);
@@ -1149,7 +1150,7 @@ void testIntegration()
             PX3SynthAudioProcessor processor;
             makePlainPatch(processor);
             setChoice(processor, "voice.osc1.mode", 1);
-            setParam(processor, "filter1Enabled", 1.0f);
+            setParam(processor, "voice.filter1.enabled", 1.0f);
             setParam(processor, "reverbEnabled", 1.0f);
             setParam(processor, "reverbAmount", 0.6f);
             processor.setPlayConfigDetails(0, 2, config.sampleRate, config.blockSize);

@@ -342,17 +342,17 @@ void testModEnvelopes()
             PX3SynthAudioProcessor processor;
             makePlainPatch(processor);
             setChoice(processor, "voice.osc1.mode", 1);      // SAW: harmonics for the filter to remove
-            setParam(processor, "filter1Enabled", 1.0f);
-            setChoice(processor, "filter1Type", 0);   // LP12
-            setParam(processor, "filter1Cutoff", 900.0f);
-            setParam(processor, "filter1Resonance", 0.7f);
+            setParam(processor, "voice.filter1.enabled", 1.0f);
+            setChoice(processor, "voice.filter1.type", 0);   // LP12
+            setParam(processor, "voice.filter1.cutoff", 900.0f);
+            setParam(processor, "voice.filter1.resonance", 0.7f);
             setParam(processor, "env1Enabled", 1.0f);
             setParam(processor, "env1Attack", 0.005f);
             setParam(processor, "env1Decay", 0.005f);
             setParam(processor, "env1Sustain", 1.0f);
             setParam(processor, "env1Release", 0.100f);
             setParam(processor, "envAmount", amount);
-            processor.setEnvelopeAssignmentByParameterId(0, "filter1Cutoff", false);
+            processor.setEnvelopeAssignmentByParameterId(0, "voice.filter1.cutoff", false);
             return render(processor, 48000, { { 2000, true, 45, 0.9f } });
         };
 
@@ -464,12 +464,12 @@ void testModEnvelopes()
             PX3SynthAudioProcessor processor;
             makePlainPatch(processor);
             setChoice(processor, "voice.osc1.mode", 1);
-            setParam(processor, "filter1Enabled", 1.0f);
-            setParam(processor, "filter1Cutoff", 900.0f);
+            setParam(processor, "voice.filter1.enabled", 1.0f);
+            setParam(processor, "voice.filter1.cutoff", 900.0f);
             setParam(processor, "env1Enabled", 1.0f);
             setParam(processor, "env1Sustain", 1.0f);
             setParam(processor, "envAmount", 0.8f);
-            processor.setEnvelopeAssignmentByParameterId(0, "filter1Cutoff", false);
+            processor.setEnvelopeAssignmentByParameterId(0, "voice.filter1.cutoff", false);
             tweak(processor);
             return render(processor, 40000, { { 2000, true, 45, 0.9f } });
         };
@@ -649,14 +649,14 @@ void testLfo()
             PX3SynthAudioProcessor processor;
             makePlainPatch(processor);
             setChoice(processor, "voice.osc1.mode", 1);
-            setParam(processor, "filter1Enabled", 1.0f);
-            setParam(processor, "filter1Cutoff", 1200.0f);
+            setParam(processor, "voice.filter1.enabled", 1.0f);
+            setParam(processor, "voice.filter1.cutoff", 1200.0f);
             setParam(processor, "lfoEnabled", lfoEnabled ? 1.0f : 0.0f);
             setParam(processor, "lfoFrequency", 6.0f);
             setParam(processor, "lfoAmount", amount);
             if (assigned)
             {
-                processor.setLfoAssignmentByParameterId(0, "filter1Cutoff", false);
+                processor.setLfoAssignmentByParameterId(0, "voice.filter1.cutoff", false);
             }
             return render(processor, 64000, { { 2000, true, 45, 0.9f } });
         };
@@ -705,12 +705,12 @@ void testLfo()
             PX3SynthAudioProcessor processor;
             makePlainPatch(processor);
             setChoice(processor, "voice.osc1.mode", 1);
-            setParam(processor, "filter1Enabled", 1.0f);
-            setParam(processor, "filter1Cutoff", 1200.0f);
+            setParam(processor, "voice.filter1.enabled", 1.0f);
+            setParam(processor, "voice.filter1.cutoff", 1200.0f);
             setParam(processor, "lfoEnabled", 1.0f);
             setParam(processor, "lfoFrequency", 6.0f);
             setParam(processor, "lfoAmount", 1.0f);
-            processor.setLfoAssignmentByParameterId(0, "filter1Cutoff", false);
+            processor.setLfoAssignmentByParameterId(0, "voice.filter1.cutoff", false);
             setParam(processor, "lfo2Enabled", 1.0f);
             setParam(processor, "lfo2Frequency", 3.0f);
             setParam(processor, "lfo2Amount", lfo2Amount);
@@ -776,8 +776,8 @@ void testVibe()
         PX3SynthAudioProcessor processor;
         makePlainPatch(processor);
         setChoice(processor, "voice.osc1.mode", 1);
-        setParam(processor, "filter1Enabled", 1.0f);
-        setParam(processor, "filter1Cutoff", 2500.0f);
+        setParam(processor, "voice.filter1.enabled", 1.0f);
+        setParam(processor, "voice.filter1.cutoff", 2500.0f);
         setParam(processor, "vibeEnabled", enabled ? 1.0f : 0.0f);
         setParam(processor, "vibeAmount", amount);
         setChoice(processor, "vibeType", typeIndex);
@@ -1922,15 +1922,15 @@ void testComb()
             // rather than the oscillator's own harmonics.
             setChoice(processor, "voice.osc1.mode", 4);
 
-            setParam(processor, "filter1Enabled", 1.0f);
-            setParam(processor, "filter2Enabled", 0.0f);
-            setChoice(processor, "filter1Type", modeIndex);
-            setParam(processor, "filter1CombTune", combTune);
-            setParam(processor, "filter1CombDecay", 1.2f);
-            setParam(processor, "filter1CombDamping", 0.15f);
-            setParam(processor, "filter1CombDispersion", 0.0f);
-            setParam(processor, "filter1CombDrive", 0.0f);
-            setParam(processor, "filter1CombMix", 1.0f);
+            setParam(processor, "voice.filter1.enabled", 1.0f);
+            setParam(processor, "voice.filter2.enabled", 0.0f);
+            setChoice(processor, "voice.filter1.type", modeIndex);
+            setParam(processor, "voice.filter1.comb.tuning", combTune);
+            setParam(processor, "voice.filter1.comb.decay", 1.2f);
+            setParam(processor, "voice.filter1.comb.damping", 0.15f);
+            setParam(processor, "voice.filter1.comb.dispersion", 0.0f);
+            setParam(processor, "voice.filter1.comb.drive", 0.0f);
+            setParam(processor, "voice.filter1.comb.mix", 1.0f);
 
             return render(processor, 64000, { { 1000, true, 45, 0.9f } });
         };

@@ -1305,7 +1305,9 @@ void PX3SynthAudioProcessorEditor::finishConstruction()
     // A check when a window opens. Throttled by the service, so opening and
     // closing an editor repeatedly is still one request every ten minutes -
     // and asynchronous, so nothing here waits for a network.
+#if ! defined(PX3_UNIT_TESTS)
     px3::update::UpdateService::getInstance().checkForUpdates();
+#endif
     refreshUpdateAffordances();
 
     startTimerHz(30);

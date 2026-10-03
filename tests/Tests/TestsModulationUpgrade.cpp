@@ -216,8 +216,8 @@ void testStateUpgrade()
         setParam(source, "lfoRampTime", 45.0f);
         setParam(source, "lfoKeySync", 1.0f);
         setParam(source, "voice.osc2.tuning.cents", -7.0f);
-        setChoice(source, "filterRouting", 1);
-        setParam(source, "filterParallelBalance", 0.27f);
+        setChoice(source, "voice.filters.routing.mode", 1);
+        setParam(source, "voice.filters.routing.balance", 0.27f);
 
         juce::MemoryBlock block;
         source.getStateInformation(block);
@@ -230,15 +230,15 @@ void testStateUpgrade()
                      && std::abs(getParamValue(target, "lfoRampTime") - 45.0f) < 0.01f
                      && getParamValue(target, "lfoKeySync") > 0.5f
                      && std::abs(getParamValue(target, "voice.osc2.tuning.cents") + 7.0f) < 0.01f
-                     && upgradeChoiceIndex(target, "filterRouting") == 1
-                     && std::abs(getParamValue(target, "filterParallelBalance") - 0.27f) < 0.002f;
+                     && upgradeChoiceIndex(target, "voice.filters.routing.mode") == 1
+                     && std::abs(getParamValue(target, "voice.filters.routing.balance") - 0.27f) < 0.002f;
 
         check("StateUpgrade_NewValuesSurviveARoundTripUnmigrated", ok,
               "release " + fmt(getParamValue(target, "ampRelease"), 3) + " s, ramp "
                   + fmt(getParamValue(target, "lfoRampTime"), 2) + " s, waveform "
                   + juce::String(upgradeChoiceIndex(target, "lfoWaveform")) + ", routing "
-                  + juce::String(upgradeChoiceIndex(target, "filterRouting")) + ", balance "
-                  + fmt(getParamValue(target, "filterParallelBalance"), 3));
+                  + juce::String(upgradeChoiceIndex(target, "voice.filters.routing.mode")) + ", balance "
+                  + fmt(getParamValue(target, "voice.filters.routing.balance"), 3));
     }
 
 }
@@ -437,14 +437,14 @@ void testRampsAndKeySyncUpgrade()
         setChoice(processor, "lfoWaveform", waveform);
         setParam(processor, "lfoRampTime", 1.0f);
         setParam(processor, "lfoKeySync", keySync ? 1.0f : 0.0f);
-        processor.setLfoAssignmentByParameterId(0, "filter1Cutoff", false);
-        findParameter(processor, "filter1Cutoff")->setValueNotifyingHost(0.5f);
+        processor.setLfoAssignmentByParameterId(0, "voice.filter1.cutoff", false);
+        findParameter(processor, "voice.filter1.cutoff")->setValueNotifyingHost(0.5f);
         prepareUpgrade(processor);
     };
     // How far the LFO has the cutoff from its base, before the fold.
     const auto deviation = [](PX3SynthAudioProcessor& processor)
     {
-        return processor.getUnclampedModulatedNormalisedValue(*findParameter(processor, "filter1Cutoff")) - 0.5f;
+        return processor.getUnclampedModulatedNormalisedValue(*findParameter(processor, "voice.filter1.cutoff")) - 0.5f;
     };
 
     // A cyclic shape. 47 blocks is a quarter-cycle at 0.5 Hz, so a free-running
@@ -589,13 +589,13 @@ void testModulationRuleUpgrade()
     {
         PX3SynthAudioProcessor processor;
         makePlainPatch(processor);
-        auto* cutoff = findParameter(processor, "filter1Cutoff");
+        auto* cutoff = findParameter(processor, "voice.filter1.cutoff");
         cutoff->setValueNotifyingHost(cutoff->getDefaultValue());
         setParam(processor, "lfoEnabled", 1.0f);
         setParam(processor, "lfoFrequency", 2.0f);
         setParam(processor, "lfoAmount", 1.0f);
         setChoice(processor, "lfoWaveform", 0);
-        processor.setLfoAssignmentByParameterId(0, "filter1Cutoff", false);
+        processor.setLfoAssignmentByParameterId(0, "voice.filter1.cutoff", false);
         prepareUpgrade(processor);
 
         auto lowHz = 1.0e9f, highHz = 0.0f;
@@ -661,15 +661,15 @@ Capture renderRouting(int oscMode,
 
     const auto apply = [&processor](const juce::String& prefix, const RoutingStage& stage)
     {
-        setParam(processor, prefix + "Enabled", stage.enabled ? 1.0f : 0.0f);
-        setChoice(processor, prefix + "Type", stage.type);
-        setParam(processor, prefix + "Cutoff", stage.cutoffHz);
-        setParam(processor, prefix + "Resonance", 0.707f);
+        setParam(processor, prefix + "enabled", stage.enabled ? 1.0f : 0.0f);
+        setChoice(processor, prefix + "type", stage.type);
+        setParam(processor, prefix + "cutoff", stage.cutoffHz);
+        setParam(processor, prefix + "resonance", 0.707f);
     };
-    apply("filter1", first);
-    apply("filter2", second);
-    setChoice(processor, "filterRouting", parallel ? 1 : 0);
-    setParam(processor, "filterParallelBalance", balance);
+    apply("voice.filter1.", first);
+    apply("voice.filter2.", second);
+    setChoice(processor, "voice.filters.routing.mode", parallel ? 1 : 0);
+    setParam(processor, "voice.filters.routing.balance", balance);
 
     std::function<void(int)> hook;
     if (perBlock)
@@ -690,8 +690,8 @@ void testFilterRoutingUpgrade()
 
     {
         PX3SynthAudioProcessor processor;
-        const auto routing = upgradeChoiceIndex(processor, "filterRouting");
-        const auto balance = getParamValue(processor, "filterParallelBalance");
+        const auto routing = upgradeChoiceIndex(processor, "voice.filters.routing.mode");
+        const auto balance = getParamValue(processor, "voice.filters.routing.balance");
         check("FilterRouting_DefaultsToSeriesWithACentredBalance", routing == 0 && std::abs(balance - 0.5f) < 1.0e-6f,
               "routing " + juce::String(routing) + ", balance " + fmt(balance, 3));
     }
@@ -735,7 +735,7 @@ void testFilterRoutingUpgrade()
         const auto capture = renderRouting(sine, false, 0.5f, lowPass, highPass,
                                            [](PX3SynthAudioProcessor& processor, int block)
                                            {
-                                               if (block == kRoutingSwitchBlock) { setChoice(processor, "filterRouting", 1); }
+                                               if (block == kRoutingSwitchBlock) { setChoice(processor, "voice.filters.routing.mode", 1); }
                                            });
         const auto before = capture.maxStep(8000, (kRoutingSwitchBlock - 1) * kBlockSize);
         const auto around = capture.maxStep((kRoutingSwitchBlock - 1) * kBlockSize, (kRoutingSwitchBlock + 6) * kBlockSize);
@@ -748,7 +748,7 @@ void testFilterRoutingUpgrade()
         const auto capture = renderRouting(sine, true, 0.0f, lowPass, highPass,
                                            [](PX3SynthAudioProcessor& processor, int block)
                                            {
-                                               if (block == kRoutingSwitchBlock) { setParam(processor, "filterParallelBalance", 1.0f); }
+                                               if (block == kRoutingSwitchBlock) { setParam(processor, "voice.filters.routing.balance", 1.0f); }
                                            });
         const auto before = capture.maxStep(8000, (kRoutingSwitchBlock - 1) * kBlockSize);
         const auto around = capture.maxStep((kRoutingSwitchBlock - 1) * kBlockSize, (kRoutingSwitchBlock + 6) * kBlockSize);
@@ -760,17 +760,17 @@ void testFilterRoutingUpgrade()
 
     {
         PX3SynthAudioProcessor source;
-        setChoice(source, "filterRouting", 1);
-        setParam(source, "filterParallelBalance", 0.27f);
+        setChoice(source, "voice.filters.routing.mode", 1);
+        setParam(source, "voice.filters.routing.balance", 0.27f);
         juce::MemoryBlock block;
         source.getStateInformation(block);
         PX3SynthAudioProcessor target;
         target.setStateInformation(block.getData(), static_cast<int>(block.getSize()));
         check("FilterRouting_SurvivesAStateRoundTrip",
-              upgradeChoiceIndex(target, "filterRouting") == 1
-                  && std::abs(getParamValue(target, "filterParallelBalance") - 0.27f) < 0.002f,
-              "routing " + juce::String(upgradeChoiceIndex(target, "filterRouting")) + ", balance "
-                  + fmt(getParamValue(target, "filterParallelBalance"), 3));
+              upgradeChoiceIndex(target, "voice.filters.routing.mode") == 1
+                  && std::abs(getParamValue(target, "voice.filters.routing.balance") - 0.27f) < 0.002f,
+              "routing " + juce::String(upgradeChoiceIndex(target, "voice.filters.routing.mode")) + ", balance "
+                  + fmt(getParamValue(target, "voice.filters.routing.balance"), 3));
     }
 }
 

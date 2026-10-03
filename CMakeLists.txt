@@ -557,6 +557,7 @@ if (PX3_BUILD_DIAGNOSTIC)
             PX3_DEBUG_PANEL=0
             PX3_UI_DESIGNER=0
             PX3_DIAGNOSTICS=0
+            PX3_UNIT_TESTS=1
             # The GPU check needs to pump the message loop to let a GL context
             # come up. Only the test tool - the plugin must never run a modal
             # loop inside a host.

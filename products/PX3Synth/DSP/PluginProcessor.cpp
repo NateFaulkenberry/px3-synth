@@ -216,27 +216,27 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     for (int filterIndex = 0; filterIndex < kFilterInstanceCount; ++filterIndex)
     {
         const auto slot = juce::String(filterIndex + 1);
-        const auto idPrefix = "filter" + slot;
+        const auto idPrefix = "voice.filter" + slot;
         const auto labelPrefix = "Filter " + slot + " ";
         const auto defaultMode = filterIndex == 0 ? 0 : 6; // LP12 for Filter 1, AllPass for others.
 
         filterEnabledParams[static_cast<std::size_t>(filterIndex)] = new juce::AudioParameterBool(
-            idPrefix + "Enabled",
+            idPrefix + ".enabled",
             labelPrefix + "Enabled",
             true);
 
         filterCutoffParams[static_cast<std::size_t>(filterIndex)] = new juce::AudioParameterFloat(
-            idPrefix + "Cutoff",
+            idPrefix + ".cutoff",
             labelPrefix + "Cutoff",
             juce::NormalisableRange<float>(80.0f, 18000.0f, 1.0f, 0.35f),
             12000.0f);
         filterResonanceParams[static_cast<std::size_t>(filterIndex)] = new juce::AudioParameterFloat(
-            idPrefix + "Resonance",
+            idPrefix + ".resonance",
             labelPrefix + "Resonance",
             juce::NormalisableRange<float>(0.25f, 2.2f),
             0.8f);
         filterTypeParams[static_cast<std::size_t>(filterIndex)] = new juce::AudioParameterChoice(
-            idPrefix + "Type",
+            idPrefix + ".type",
             labelPrefix + "Type",
             px3::filterModeChoices(),
             defaultMode);
@@ -246,7 +246,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
         // matter musically; a linear 50 Hz - 8 kHz sweep would spend most of
         // its travel above the range anyone tunes a resonator to.
         filterCombTuneParams[static_cast<std::size_t>(filterIndex)] = new juce::AudioParameterFloat(
-            idPrefix + "CombTune",
+            idPrefix + ".comb.tuning",
             labelPrefix + "Comb Tune",
             juce::NormalisableRange<float>(px3::CombResonator::kMinTuneHz,
                                            px3::CombResonator::kMaxTuneHz,
@@ -254,7 +254,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
                                            0.3f),
             220.0f);
         filterCombDecayParams[static_cast<std::size_t>(filterIndex)] = new juce::AudioParameterFloat(
-            idPrefix + "CombDecay",
+            idPrefix + ".comb.decay",
             labelPrefix + "Comb Decay",
             juce::NormalisableRange<float>(px3::CombResonator::kMinDecaySeconds,
                                            px3::CombResonator::kMaxDecaySeconds,
@@ -262,38 +262,38 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
                                            0.35f),
             0.6f);
         filterCombDampingParams[static_cast<std::size_t>(filterIndex)] = new juce::AudioParameterFloat(
-            idPrefix + "CombDamping",
+            idPrefix + ".comb.damping",
             labelPrefix + "Comb Damping",
             juce::NormalisableRange<float>(0.0f, 1.0f),
             0.25f);
         filterCombDispersionParams[static_cast<std::size_t>(filterIndex)] = new juce::AudioParameterFloat(
-            idPrefix + "CombDispersion",
+            idPrefix + ".comb.dispersion",
             labelPrefix + "Comb Dispersion",
             juce::NormalisableRange<float>(0.0f, 1.0f),
             0.0f);
         filterCombDriveParams[static_cast<std::size_t>(filterIndex)] = new juce::AudioParameterFloat(
-            idPrefix + "CombDrive",
+            idPrefix + ".comb.drive",
             labelPrefix + "Comb Drive",
             juce::NormalisableRange<float>(0.0f, 1.0f),
             0.0f);
         filterCombMixParams[static_cast<std::size_t>(filterIndex)] = new juce::AudioParameterFloat(
-            idPrefix + "CombMix",
+            idPrefix + ".comb.mix",
             labelPrefix + "Comb Mix",
             juce::NormalisableRange<float>(0.0f, 1.0f),
             1.0f);
         filterCombInvertParams[static_cast<std::size_t>(filterIndex)] = new juce::AudioParameterBool(
-            idPrefix + "CombInvert",
+            idPrefix + ".comb.invert",
             labelPrefix + "Comb Invert",
             false);
     }
     // SERIES is what the two filters always were, so it is the default and
     // what a state saved before the control existed loads as.
-    filterRoutingParam = new juce::AudioParameterChoice(juce::ParameterID("filterRouting", 1),
+    filterRoutingParam = new juce::AudioParameterChoice(juce::ParameterID("voice.filters.routing.mode", 1),
                                                         "Filter Routing",
                                                         juce::StringArray { "SERIES", "PARALLEL" },
                                                         0);
     // 0 is filter 1 alone, 1 is filter 2 alone. Only heard in PARALLEL.
-    filterParallelBalanceParam = new juce::AudioParameterFloat(juce::ParameterID("filterParallelBalance", 1),
+    filterParallelBalanceParam = new juce::AudioParameterFloat(juce::ParameterID("voice.filters.routing.balance", 1),
                                                                "Filter Parallel Balance",
                                                                juce::NormalisableRange<float>(0.0f, 1.0f),
                                                                0.5f);

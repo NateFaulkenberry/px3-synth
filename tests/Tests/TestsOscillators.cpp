@@ -1506,7 +1506,7 @@ void testWavetable()
             { "voice.osc1.wavetable.position", "wavetable scan" },
             { "voice.osc1.macro.a", "osc macro" },
             { "voice.osc1.tuning.cents", "osc fine tune" },
-            { "filter1Cutoff", "filter cutoff" },
+            { "voice.filter1.cutoff", "filter cutoff" },
             { "osc1Level", "osc level" },
         };
 
@@ -1612,9 +1612,9 @@ void testWavetable()
         setParam(processor, "lfoFrequency", 6.0f);
         setParam(processor, "lfoAmount", 1.0f);
         setChoice(processor, "lfoWaveform", 0);
-        processor.setLfoAssignmentByParameterId("filter1Cutoff");
+        processor.setLfoAssignmentByParameterId("voice.filter1.cutoff");
 
-        auto* cutoff = findParameter(processor, "filter1Cutoff");
+        auto* cutoff = findParameter(processor, "voice.filter1.cutoff");
         cutoff->setValueNotifyingHost(0.30f);
 
         processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
@@ -1674,7 +1674,7 @@ void testWavetable()
             { "voice.osc1.wavetable.position", "wavetable scan" },
             { "voice.osc1.macro.a", "osc macro" },
             { "voice.osc1.tuning.cents", "osc fine tune" },
-            { "filter1Cutoff", "filter cutoff" },
+            { "voice.filter1.cutoff", "filter cutoff" },
         };
 
         juce::StringArray stalled;
@@ -1867,7 +1867,7 @@ void testWavetable()
 
         setParam(processor, "lfoEnabled", 1.0f);
         setParam(processor, "lfoAmount", 0.8f);
-        processor.setLfoAssignmentByParameterId("filter1Cutoff");
+        processor.setLfoAssignmentByParameterId("voice.filter1.cutoff");
 
         const auto modulated = processor.getModulatedNormalisedValue(cutoff);
         check("ModulationRing_AssignedParameterReportsItsModulatedValue",
@@ -1875,8 +1875,8 @@ void testWavetable()
               "cutoff with an LFO on it reports " + fmt(modulated, 4));
 
         check("ModulationRing_AssignmentIsDetectedByParameterId",
-              processor.isParameterModulated("filter1Cutoff")
-                  && ! processor.isParameterModulated("filter2Cutoff"),
+              processor.isParameterModulated("voice.filter1.cutoff")
+                  && ! processor.isParameterModulated("voice.filter2.cutoff"),
               "the assigned parameter reports modulated and its neighbour does not");
 
         // A source that is switched off is not modulating anything, whatever it
@@ -2751,8 +2751,8 @@ void testOscillators()
             setParam(processor, "reverbEnabled", 0.0f);
             setParam(processor, "delayEnabled", 0.0f);
             setParam(processor, "moodEnabled", 0.0f);
-            setParam(processor, "filter1Enabled", 0.0f);
-            setParam(processor, "filter2Enabled", 0.0f);
+            setParam(processor, "voice.filter1.enabled", 0.0f);
+            setParam(processor, "voice.filter2.enabled", 0.0f);
             // Same reason as makePlainPatch: these numbers are the MIXER's gain
             // structure, measured with every colour stage out of the way.
             setParam(processor, "analogEnabled", 0.0f);
@@ -2781,8 +2781,8 @@ void testOscillators()
             setParam(processor, "reverbEnabled", 0.0f);
             setParam(processor, "delayEnabled", 0.0f);
             setParam(processor, "moodEnabled", 0.0f);
-            setParam(processor, "filter1Enabled", 0.0f);
-            setParam(processor, "filter2Enabled", 0.0f);
+            setParam(processor, "voice.filter1.enabled", 0.0f);
+            setParam(processor, "voice.filter2.enabled", 0.0f);
             setParam(processor, "ampSustain", 1.0f);
             setChoice(processor, "voice.osc1.mode", 0);
             configure(processor);
@@ -2818,8 +2818,8 @@ void testOscillators()
             setParam(processor, "voice.sub.enabled", 0.0f);
             setParam(processor, "ampSustain", 1.0f);
             setChoice(processor, "voice.osc1.mode", 0);
-            setParam(processor, "filter1Enabled", 0.0f);
-            setParam(processor, "filter2Enabled", 0.0f);
+            setParam(processor, "voice.filter1.enabled", 0.0f);
+            setParam(processor, "voice.filter2.enabled", 0.0f);
             setParam(processor, "vibeEnabled", 0.0f);
             setParam(processor, "delayEnabled", 0.0f);
             setParam(processor, "moodEnabled", 0.0f);
