@@ -2639,8 +2639,7 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
                     chorusComponent.processSampleFrame(stageL, stageR, stageL, stageR);
                     break;
 
-                case 7: // Stereo Spread
-                    stereoSpreadComponent.processSampleFrame(stageL, stageR, stageL, stageR);
+                case 7: // STEREO SPREAD (applied to the master bus below)
                     break;
 
                 default:
@@ -2724,6 +2723,12 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         auto masterL = (dryL + fxL) * outputBoostGain;
         auto masterR = (dryR + fxR) * outputBoostGain;
         analogEngine.processBusSample(px3::AnalogEngine::Context::master, masterL, masterR);
+
+        // STEREO SPREAD. A stereo-field stage on the whole instrument, dry and
+        // FX together. In the send chain it could only widen the wet return -
+        // the return is a (stage - send) difference - so on a dry patch it did
+        // nothing at any setting. Before the ceiling, which stays last.
+        stereoSpreadComponent.processSampleFrame(masterL, masterR, masterL, masterR);
 
         // Onset capture: the final sample, the amp envelope of the first voice
         // that is sounding, and how many are. Recorded per sample so the shape

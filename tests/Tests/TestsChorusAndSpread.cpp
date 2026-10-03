@@ -1384,6 +1384,39 @@ void testStereoSpread()
               "default order rms " + juce::String(a.rms(), 5) + ", reversed "
                   + juce::String(b.rms(), 5));
     }
+
+    {
+        // SPREAD works on the whole instrument: with every FX send at zero it
+        // must still widen a centred dry patch. It used to sit in the send
+        // chain, where it could never touch the dry signal.
+        auto sideRatio = [](float amount)
+        {
+            PX3SynthAudioProcessor processor;
+            makePlainPatch(processor);
+            setChoice(processor, "voice.osc1.mode", 1);
+            setParam(processor, "voice.amp.sustain", 1.0f);
+            for (const auto* id : { "sub", "osc1", "osc2", "osc3" })
+                setParam(processor, juce::String("mix.") + id + ".send.fx", 0.0f);
+            setParam(processor, "fx.spread.enabled", 1.0f);
+            setParam(processor, "fx.spread.amount", amount);
+            setParam(processor, "fx.spread.width", 1.0f);
+            setParam(processor, "fx.spread.mix", 1.0f);
+            const auto capture = render(processor, 96000, { { 2000, true, 57, 0.9f } });
+            double mid = 0.0, side = 0.0;
+            for (std::size_t n = 24000; n < capture.left.size(); ++n)
+            {
+                const auto m = 0.5 * (capture.left[n] + capture.right[n]);
+                const auto d = 0.5 * (capture.left[n] - capture.right[n]);
+                mid += m * m;
+                side += d * d;
+            }
+            return 10.0 * std::log10(juce::jmax(1.0e-30, side) / juce::jmax(1.0e-30, mid));
+        };
+        const auto off = sideRatio(0.0f);
+        const auto on = sideRatio(1.0f);
+        check("Spread_WidensTheDryInstrumentWithNoFxSend", on > off + 20.0 && on > -30.0,
+              "side/mid " + juce::String(off, 1) + " dB at AMOUNT 0, " + juce::String(on, 1) + " dB at AMOUNT 1");
+    }
 }
 
 } // namespace px3tests
