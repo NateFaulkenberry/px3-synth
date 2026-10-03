@@ -142,10 +142,18 @@ float VoiceFilter::processSampleActive(float inputSample)
 
     const auto stateVariable = mode == px3::FilterMode::stateVariable12 || mode == px3::FilterMode::stateVariable24;
     const auto ladderMode = mode == px3::FilterMode::ladder12 || mode == px3::FilterMode::ladder24;
-    auto output = ladderMode ? ladder.process(inputSample)
-                : mode == px3::FilterMode::curtis24 ? curtis.process(inputSample)
-                : mode == px3::FilterMode::arp12 ? arp.process(inputSample)
-                : stateVariable ? stateVariableA.processSample(0, inputSample) : stageA.processSample(inputSample);
+    // Biquads first: they are the common case, and keeping their path a
+    // single predictable branch is measurably cheaper than a chain of mode
+    // tests ahead of it.
+    float output;
+    if (! ladderMode && ! stateVariable && mode != px3::FilterMode::curtis24 && mode != px3::FilterMode::arp12)
+    {
+        output = stageA.processSample(inputSample);
+    }
+    else
+    {
+        output = processAnalogOrStateVariable(mode, inputSample);
+    }
     if (mode == px3::FilterMode::stateVariable24)
     {
         output = stateVariableB.processSample(0, output);
@@ -160,6 +168,18 @@ float VoiceFilter::processSampleActive(float inputSample)
     return inputSample + (output - inputSample) * blend;
 }
 
+float VoiceFilter::processAnalogOrStateVariable(px3::FilterMode mode, float inputSample) noexcept
+{
+    switch (mode)
+    {
+        case px3::FilterMode::ladder12:
+        case px3::FilterMode::ladder24: return ladder.process(inputSample);
+        case px3::FilterMode::curtis24: return curtis.process(inputSample);
+        case px3::FilterMode::arp12: return arp.process(inputSample);
+        default: return stateVariableA.processSample(0, inputSample);
+    }
+}
+
 void VoiceFilter::applyFilter(float cutoffHz, float resonanceQ, int modeIndex)
 {
     if (sampleRate <= 0.0)
@@ -167,20 +187,23 @@ void VoiceFilter::applyFilter(float cutoffHz, float resonanceQ, int modeIndex)
         return;
     }
     const auto mode = static_cast<px3::FilterMode>(px3::clampFilterModeIndex(modeIndex));
-    const auto amount = px3::analogfilter::resonanceAmountFromQ(resonanceQ);
+    // Only the analog models need the resonance mapping (two logs); computed
+    // inside their branches so the biquads, updated thousands of times a
+    // block, never pay for it.
     if (mode == px3::FilterMode::ladder12 || mode == px3::FilterMode::ladder24)
     {
-        ladder.set(cutoffHz, amount, sampleRate, mode == px3::FilterMode::ladder12 ? 2 : 4);
+        ladder.set(cutoffHz, px3::analogfilter::resonanceAmountFromQ(resonanceQ), sampleRate,
+                   mode == px3::FilterMode::ladder12 ? 2 : 4);
         return;
     }
     if (mode == px3::FilterMode::curtis24)
     {
-        curtis.set(cutoffHz, amount, sampleRate);
+        curtis.set(cutoffHz, px3::analogfilter::resonanceAmountFromQ(resonanceQ), sampleRate);
         return;
     }
     if (mode == px3::FilterMode::arp12)
     {
-        arp.set(cutoffHz, amount, sampleRate);
+        arp.set(cutoffHz, px3::analogfilter::resonanceAmountFromQ(resonanceQ), sampleRate);
         return;
     }
     if (mode == px3::FilterMode::stateVariable12 || mode == px3::FilterMode::stateVariable24)

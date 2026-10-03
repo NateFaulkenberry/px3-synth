@@ -58,6 +58,7 @@ private:
     px3::analogfilter::Curtis curtis;
     px3::analogfilter::Arp arp;
     float processSampleActive(float inputSample);
+    float processAnalogOrStateVariable(px3::FilterMode mode, float inputSample) noexcept;
     void applyFilter(float cutoffHz, float resonanceQ, int modeIndex);
 
     juce::dsp::IIR::Filter<float> stageA;
