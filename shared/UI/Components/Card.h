@@ -255,6 +255,9 @@ struct CardStyle
     GlossStyle gloss;
     TitleStyle title;
     DisabledStyle disabled;
+    // Set by disabledVariant: the card is bypassed. Drawn as a grey stripe and
+    // a dimmed title rather than by fading the whole faceplate.
+    bool inactive { false };
 
     // Reads `defaultsPath` then overlays `stylePath`, so a card only declares
     // what differs from the shared default.

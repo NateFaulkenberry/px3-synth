@@ -1,4 +1,5 @@
 #include "ToggleChipButton.h"
+#include "Theme.h"
 
 namespace px3::ui
 {
@@ -127,58 +128,36 @@ void ToggleChipButton::paintButton(juce::Graphics& g,
         return;
     }
 
+    // The theme's switch: a recessed key. Off is the inset well with the
+    // caption in the label colour; on lights a stripe and the caption in the
+    // card's identity colour and lifts the face slightly. The same in every
+    // card - the per-card fill colours in UIConfig are no longer painted (they
+    // made one card's switches a different control from the next card's).
+    namespace tc = px3::ui::theme::colour;
     const auto on = getToggleState();
     const auto enabled = isEnabled();
     const auto lit = enabled ? accent : accent.withSaturation(0.0f);
 
-    // Off is the plain chip every static label uses, so an untoggled Freeze
-    // sits with the rest of the interface rather than shouting.
-    // No border: a solid rounded fill only. State is carried entirely by the
-    // fill colour and the text on top of it.
-    // Off was a neutral white on every card, which read as a stray control on
-    // the strongly coloured ones. Tinted toward the card's accent it belongs to
-    // its card while still being obviously unlit: heavily desaturated, and at
-    // the same low alpha as before.
-    const auto offNeutral = juce::Colour::fromRGBA(255, 255, 255, shouldDrawButtonAsDown ? 86 : 62);
-    const auto offTinted = accent.withSaturation(0.42f)
-                                 .withBrightness(0.92f)
-                                 .withAlpha(shouldDrawButtonAsDown ? 0.34f : 0.24f);
-    const auto offFill = enabled ? offNeutral.interpolatedWith(offTinted, offTint) : offNeutral;
-
-    // On is the card's OWN colour, darkened - not the bright accent it used to
-    // flip to. That bright fill needed near-black text to stay legible, and the
-    // two together read as a different palette from the card around them: a
-    // deep red DOOM card grew pale pink chips with black captions. A darker,
-    // slightly richer shade of the same hue keeps every chip inside its card's
-    // palette, and keeps the same light text in both states.
-    //
-    // The fill no longer has to carry the state on its own, which is what let
-    // this get darker rather than brighter: each chip names the state it is in.
-    const auto onFill = lit.withSaturation(juce::jmin(1.0f, lit.getSaturation() * 1.15f))
-                           .withBrightness(lit.getBrightness() * 0.50f)
-                           .withAlpha(enabled ? 0.95f : 0.45f);
-
-    // A configured colour wins over the derived one, and keeps the pressed and
-    // disabled treatments so a styled chip still behaves like a button.
-    const auto configured = on ? onColour : offColour;
-    auto fill = on ? onFill : offFill;
-
-    if (configured.has_value())
+    px3::ui::theme::drawInset(g, area, px3::ui::theme::space::insetRadius);
+    if (on)
     {
-        fill = configured->withMultipliedAlpha(enabled ? 1.0f : 0.45f);
-        if (shouldDrawButtonAsDown) { fill = fill.brighter(0.10f); }
-        if (! enabled) { fill = fill.withSaturation(0.0f); }
+        g.setColour(lit.withAlpha(enabled ? 0.16f : 0.08f));
+        g.fillRoundedRectangle(area.reduced(1.0f), px3::ui::theme::space::insetRadius);
+        g.setColour(lit.withAlpha(enabled ? 0.9f : 0.4f));
+        g.fillRoundedRectangle(area.reduced(4.0f, 0.0f).removeFromBottom(2.0f).translated(0.0f, -1.0f), 1.0f);
     }
+    if (shouldDrawButtonAsHighlighted || shouldDrawButtonAsDown)
+    {
+        g.setColour(juce::Colours::white.withAlpha(shouldDrawButtonAsDown ? 0.10f : 0.05f));
+        g.fillRoundedRectangle(area.reduced(1.0f), px3::ui::theme::space::insetRadius);
+    }
+    juce::ignoreUnused(offTint);
 
-    g.setColour(shouldDrawButtonAsHighlighted ? fill.brighter(0.18f) : fill);
-    g.fillRoundedRectangle(area, kCornerRadius);
-
-    const auto configuredText = on ? onTextColour : offTextColour;
-    const auto textColour = configuredText.value_or(juce::Colour::fromRGB(232, 232, 232))
-                                .withAlpha(enabled ? 1.0f : 0.6f);
-
+    const auto textColour = (on ? lit.interpolatedWith(tc::textValue, 0.35f) : tc::textLabel)
+                                .withAlpha(enabled ? 1.0f : 0.5f);
     g.setColour(textColour);
-    g.setFont(juce::FontOptions(fontSize));
+    g.setFont(px3::ui::theme::font(px3::ui::theme::Type::label)
+                  .withHeight(juce::jmin(px3::ui::theme::size(px3::ui::theme::Type::label), area.getHeight() - 4.0f)));
     const auto text = currentCaption();
 
     // Fitted rather than plain drawText: these chips are packed six to a row on

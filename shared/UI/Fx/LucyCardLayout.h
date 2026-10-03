@@ -31,10 +31,10 @@ inline void declareRows(FxCardComponent& card,
     // function the six paired knobs are showing, which is a property of the
     // panel rather than of the sound - the alternate parameters are attached
     // and automatable whichever way it is set.
-    card.addToggleRow({ { "alt", "ALT", "MAIN", "Show the knobs' alternate functions" },
+    card.addToggleRow({ { "alt", "SHIFT", "MAIN", "Show each knob's second function" },
                         { "gateOn", "GATE ON", "GATE OFF", "Silence anything below the threshold" },
-                        { "verbPost", "V-POST", "V-PRE",
-                          "Reverb after the chain, or in front of it feeding the loss" },
+                        { "verbPost", "VERB LAST", "VERB FIRST",
+                          "Reverb placement: after the codec, or in front of it so the reverb is degraded too" },
                         { "filterInvert", "REJECT", "PASS",
                           "Keep the band, or keep everything but the band" },
                         { "slow", "SLOW ON", "SLOW OFF",
@@ -45,27 +45,27 @@ inline void declareRows(FxCardComponent& card,
                         { "freeze", "FREEZE", "Capture the spectrum and hold or evolve it",
                           freezeChoices } });
 
-    card.addChoiceRow({ { "slope", "SLOPE", "Filter slope, in dB per octave", slopeChoices },
-                        { "weighting", "WEIGHT", "Which end of the spectrum the coder protects",
+    card.addChoiceRow({ { "slope", "FILTER SLOPE", "Band filter slope, in dB per octave", slopeChoices },
+                        { "weighting", "PROTECT", "Which end of the spectrum the codec keeps intact when it drops bits",
                           weightingChoices } });
 
     // The six primaries, paired with their alternates. The pedal prints the
     // second function under the first; so does the card.
-    card.addKnobRow({ { "filter", "FILTER", "Filter width; fully down is no filtering",
-                        "gate", "GATE", "Gate threshold" },
+    card.addKnobRow({ { "filter", "BAND", "Band filter width; fully down is no filtering",
+                        "gate", "GATE", "Gate threshold (when GATE is on)" },
                       { "verb", "VERB", "Reverb amount",
-                        "decay", "DECAY", "Reverb size and length" },
-                      { "freq", "FREQ", "Filter centre frequency",
-                        "limiterThreshold", "THRESHOLD", "Limiter threshold; lower means more limiting" } });
+                        "decay", "VERB SIZE", "Reverb size and length" },
+                      { "freq", "FREQ", "Band filter centre frequency",
+                        "limiterThreshold", "LIMIT", "Output limiter threshold; lower means more limiting" } });
 
     card.addKnobRow({ { "speed", "SPEED", "How fast the loss, packets and freeze evolve",
                         "autoGain", "AUTO GAIN", "Gain compensation for the loss modes" },
-                      { "loss", "LOSS", "How degraded, and how much of the spectrum it reaches",
+                      { "loss", "LOSS", "How degraded the codec is, and how much of the spectrum it reaches",
                         "lossGain", "LOSS GAIN", "Wet gain, plus or minus 36 dB" },
-                      { "spread", "SPREAD", "Packet alternation and reverb width" } });
+                      { "spread", "WIDTH", "Stereo: packet alternation between sides and reverb width" } });
 
-    card.addFeatureKnobRow({ "global", "GLOBAL", "How strongly the whole effect is expressed",
-                             "freezer", "FREEZER", "Live against frozen" });
+    card.addFeatureKnobRow({ "global", "AMOUNT", "How strongly the whole effect is expressed (0 = bypassed sound)",
+                             "freezer", "FROZEN MIX", "Live signal against the frozen spectrum (when FREEZE is on)" });
 }
 
 // Connects the ALT switch to the card it belongs to.

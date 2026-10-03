@@ -1711,7 +1711,13 @@ void testBusInserts()
                           // Measured: the hole-punched version read 0.185 inside
                           // against 0.095 outside. 0.05 sits well clear of the
                           // 0.018 the fix produces and well under that.
-                          && std::abs(justInside - justOutside) < 0.05,
+                          // 0.8.0: the chassis is darker (outside now reads
+                          // about 0.035), so the sheet's own translucent face
+                          // is a larger share of what is seen inside it (about
+                          // +0.085). The hole-punched bug showed the undimmed UI
+                          // at roughly double the outside reading plus the face;
+                          // 0.10 still separates the two.
+                          && std::abs(justInside - justOutside) < 0.10,
                       "just outside the sheet " + fmt(justOutside, 3)
                           + ", just inside " + fmt(justInside, 3)
                           + " (difference " + fmt(std::abs(justInside - justOutside), 3) + ")");

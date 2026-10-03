@@ -60,6 +60,16 @@ private:
     px3::ui::ChipLabel timeLabel;
     juce::Slider feedbackKnob { juce::Slider::RotaryVerticalDrag, juce::Slider::NoTextBox };
     px3::ui::ChipLabel feedbackLabel;
+    // The algorithm-specific controls, as in the Synth (TAPE: QUALITY / WOBBLE
+    // / SLIP; MODULATED: MOD DEPTH).
+    juce::Slider qualityKnob { juce::Slider::RotaryVerticalDrag, juce::Slider::NoTextBox };
+    px3::ui::ChipLabel qualityLabel;
+    juce::Slider wobbleKnob { juce::Slider::RotaryVerticalDrag, juce::Slider::NoTextBox };
+    px3::ui::ChipLabel wobbleLabel;
+    juce::Slider slipKnob { juce::Slider::RotaryVerticalDrag, juce::Slider::NoTextBox };
+    px3::ui::ChipLabel slipLabel;
+    juce::Slider modDepthKnob { juce::Slider::RotaryVerticalDrag, juce::Slider::NoTextBox };
+    px3::ui::ChipLabel modDepthLabel;
 
     // The ecosystem's knob, not JUCE's default rotary.
     px3::ui::KnobLookAndFeel knobLook;

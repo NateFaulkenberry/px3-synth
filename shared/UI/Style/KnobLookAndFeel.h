@@ -2,6 +2,8 @@
 
 #include <JuceHeader.h>
 
+#include "Theme.h"
+
 namespace px3::ui
 {
 
@@ -14,7 +16,7 @@ namespace px3::ui
 //
 // It reads no config of its own - it is shared by every knob and has no prefix
 // to read under - so the colours that vary are set by whoever owns it.
-class KnobLookAndFeel final : public juce::LookAndFeel_V4
+class KnobLookAndFeel final : public InstrumentLookAndFeel
 {
 public:
     // The macro colours, resolved from UIConfig by the owner and set here.

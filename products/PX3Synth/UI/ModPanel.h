@@ -53,6 +53,7 @@ public:
     void refreshModSources(const std::vector<px3::ui::modrouting::RouteInfo>& routes);
     // For the tests: ENV n's LOOP switch and KEY knob.
     juce::Button* getEnvelopeLoopButton(int env) { return juce::isPositiveAndBelow(env, 3) ? &envelopes[static_cast<std::size_t>(env)].loopButton : nullptr; }
+    juce::Button* getEnvelopeSyncButton(int env) { return juce::isPositiveAndBelow(env, 3) ? &envelopes[static_cast<std::size_t>(env)].syncButton : nullptr; }
     juce::Slider* getEnvelopeKeyKnob(int env) { return juce::isPositiveAndBelow(env, 3) ? &envelopes[static_cast<std::size_t>(env)].keyKnob : nullptr; }
     px3::ui::modrouting::ModSourceSocket* getCardSocket(int source)
     { return juce::isPositiveAndBelow(source, 6) ? cardSockets[static_cast<std::size_t>(source)].get() : nullptr; }
@@ -100,6 +101,8 @@ private:
         std::unique_ptr<juce::SliderParameterAttachment> amountAttachment;
         // LOOP (mod.envN.loop) and KEY (mod.envN.keytrack).
         px3::ui::ToggleChipButton loopButton;
+        px3::ui::ToggleChipButton syncButton;
+        std::unique_ptr<juce::ButtonParameterAttachment> syncAttachment;
         juce::Slider keyKnob;
         px3::ui::ChipLabel keyLabel;
         juce::Label keyValueLabel;

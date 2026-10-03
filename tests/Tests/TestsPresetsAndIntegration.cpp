@@ -1527,7 +1527,7 @@ void testFxChain()
               config != nullptr
                   && config->getInt("fx.signalFlow.height", -1) > 0
                   && config->getInt("fx.signalFlow.nodeGap", -1) > 0
-                  && config->getInt("fx.grid.columns", -1) == 4
+                  && config->getInt("fx.grid.columns", -1) == 5  // the 0.8.0 rack: five modules across
                   && config->getInt("fx.grid.rowHeight", -1) > 0,
               "");
     }

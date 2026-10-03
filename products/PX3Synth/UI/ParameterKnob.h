@@ -27,11 +27,34 @@ namespace px3::ui
 // Use this instead of constructing a SliderParameterAttachment directly. A
 // knob bound the old way still works; it is simply invisible to MIDI mapping,
 // which is the failure mode you want if one is ever missed.
+// The PX3 knob gestures, applied wherever a knob is bound to a parameter so
+// every knob behaves the same:
+//   - drag (vertical or horizontal) for the normal range;
+//   - Cmd- or Alt-drag for fine adjustment (relative, about a fifth of the
+//     normal rate). Shift is left alone: Shift-click is MIDI learn;
+//   - double-click returns to the parameter's default. A macro knob's
+//     double-click is macro assignment, so it does not reset;
+//   - hovering shows the value in the instrument's tooltip bubble.
+inline void applyKnobGestures(juce::RangedAudioParameter& parameter, juce::Slider& slider)
+{
+    if (! slider.isRotary()) { return; }
+    slider.setVelocityModeParameters(0.22, 1, 0.0, true,
+                                     static_cast<juce::ModifierKeys::Flags>(juce::ModifierKeys::commandModifier
+                                                                                   | juce::ModifierKeys::altModifier));
+    const auto id = parameter.getParameterID();
+    const auto isMacro = id.startsWith("mod.macro") && id.endsWith(".value");
+    if (! isMacro)
+    {
+        slider.setDoubleClickReturnValue(true, parameter.convertFrom0to1(parameter.getDefaultValue()));
+    }
+}
+
 inline void attachParameterKnob(juce::RangedAudioParameter& parameter,
                                 juce::Slider& slider,
                                 std::vector<std::unique_ptr<juce::SliderParameterAttachment>>& attachments)
 {
     slider.getProperties().set(px3::knob_properties::parameterId, parameter.getParameterID());
+    applyKnobGestures(parameter, slider);
     attachments.push_back(std::make_unique<juce::SliderParameterAttachment>(parameter, slider, nullptr));
 }
 
@@ -41,6 +64,7 @@ inline std::unique_ptr<juce::SliderParameterAttachment>
 makeParameterKnobAttachment(juce::RangedAudioParameter& parameter, juce::Slider& slider)
 {
     slider.getProperties().set(px3::knob_properties::parameterId, parameter.getParameterID());
+    applyKnobGestures(parameter, slider);
     return std::make_unique<juce::SliderParameterAttachment>(parameter, slider, nullptr);
 }
 

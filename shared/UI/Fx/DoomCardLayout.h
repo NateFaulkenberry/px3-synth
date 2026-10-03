@@ -31,7 +31,7 @@ inline void declareRows(FxCardComponent& card,
                         const juce::StringArray& loopModeChoices,
                         const juce::StringArray& routingChoices)
 {
-    card.addToggleRow({ { "alt", "ALT", "MAIN", "Show the knobs' alternate functions" },
+    card.addToggleRow({ { "alt", "SHIFT", "MAIN", "Show each knob's second function (printed below it on the pedal)" },
                         { "loopActive", "LOOPER", "LISTEN",
                           "Play the captured micro-loop, or keep listening" },
                         { "wetActive", "WET ON", "WET OFF", "Engage the wet channel" },
@@ -47,25 +47,25 @@ inline void declareRows(FxCardComponent& card,
                         { "loopMode", "LOOP", "What the micro-looper does", loopModeChoices } });
 
     // The wet channel's pair.
-    card.addKnobRow({ { "wetTime", "TIME", "Wet channel time: decay, delay or lag",
-                        "cross", "CROSS", "Signal-dependent interference between the channels" },
-                      { "wetModify", "MODIFY", "Wet character: synthetic, repeats or voices",
-                        "eq", "EQ", "Global tilt: left removes highs, right removes lows" } });
+    card.addKnobRow({ { "wetTime", "WET TIME", "Wet channel time: reverb decay, delay time or slip lag, depending on WET mode",
+                        "cross", "INTERFERE", "Cross-modulation: how much one channel (or your input) disturbs the other. Source set by the CROSS switch" },
+                      { "wetModify", "WET CHAR", "Wet character. REVERB: synthetic to natural; DELAY: number of repeats; SLIP: number of voices",
+                        "eq", "TILT", "Output tilt EQ: left darkens (removes highs), right thins (removes lows)" } });
 
     // The micro-looper's pair.
-    card.addKnobRow({ { "loopLength", "LENGTH", "Micro-looper length or pace",
-                        "fade", "FADE", "How much of the loop survives each lap while overdubbing" },
-                      { "loopModify", "MODIFY", "Loop character: fills, station or threshold",
-                        "blend", "BLEND", "Clean micro-loop blended past the wet channel" } });
+    card.addKnobRow({ { "loopLength", "LOOP LEN", "Micro-looper length (or pace, depending on LOOP mode)",
+                        "fade", "DECAY", "Overdub decay: how much of the loop survives each lap" },
+                      { "loopModify", "LOOP CHAR", "Loop character. ENV: trigger threshold; TAPE: fills; STRETCH: station",
+                        "blend", "DRY LOOP", "How much of the clean micro-loop bypasses the wet channel" } });
 
     // The machine's pair, and the two that are not on the pedal's face.
-    card.addKnobRow({ { "clock", "CLOCK", "Engine sample rate: loop length, pitch and wet time at once",
-                        "glue", "GLUE", "End of chain saturator, then destroyer" },
-                      { "overdub", "OVERDUB", "Record onto the micro-loop" },
-                      { "spread", "SPREAD", "Stereo processing depth" } });
+    card.addKnobRow({ { "clock", "CLOCK", "Engine sample rate: loop length, pitch and wet time change together, like a sampler's clock",
+                        "glue", "DRIVE", "Output saturation, level-matched; folds and crushes near the top" },
+                      { "overdub", "OVERDUB", "Record your playing onto the micro-loop" },
+                      { "spread", "WIDTH", "Stereo processing depth: 0 is mono, full is wide" } });
 
-    card.addFeatureKnobRow({ "mix", "MIX", "How much DOOM you hear",
-                             "balance", "BALANCE", "Micro-looper against wet channel" });
+    card.addFeatureKnobRow({ "mix", "MIX", "Dry against DOOM",
+                             "balance", "LOOP/WET", "Balance between the micro-looper and the wet channel" });
 }
 
 inline void wireAltSwitch(FxCardComponent& card)

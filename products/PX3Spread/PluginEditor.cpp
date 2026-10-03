@@ -1,4 +1,5 @@
 #include "PluginEditor.h"
+#include "FxCardDeclarations.h"
 
 PX3SpreadAudioProcessorEditor::PX3SpreadAudioProcessorEditor(PX3SpreadAudioProcessor& processorIn)
     // "stereoSpread", not "spread": the style key indexes cards.<key> in
@@ -8,21 +9,9 @@ PX3SpreadAudioProcessorEditor::PX3SpreadAudioProcessorEditor(PX3SpreadAudioProce
     // own green.
     : px3::fx::FxCardEditor(processorIn, "stereoSpread", "SPREAD")
 {
-    // The same rows, in the same order, as buildStereoSpreadCard in the Synth.
-    rows().addChoiceRow({ { "mode", "MODE", "Widening strategy", processorIn.mode().choices } });
-
-    rows().addKnobRow({ { "width", "WIDTH", "Overall stereo expansion" },
-                        { "depth", "DEPTH", "Decorrelation depth" },
-                        { "center", "CENTER", "How strongly the middle is anchored" },
-                        { "tone", "TONE", "Tilt on the side signal only" } });
-
-    rows().addKnobRow({ { "lowWidth", "LOW W", "Width permitted below the low crossover" },
-                        { "highWidth", "HIGH W", "Width in the top band" },
-                        { "lowFreq", "LOW XO", "Low crossover: below it, mono" },
-                        { "highFreq", "HIGH XO", "High crossover: above it, level rather than phase" },
-                        { "mix", "MIX", "Final dry against wet" } });
-
-    rows().addFeatureKnobRow({ "amount", "AMOUNT", "Overall amount of spatial processing" });
+    // The same rows the Synth builds: one declaration, FxCardDeclarations.h.
+    px3::ui::fxcards::declareSpreadRows(rows(), processorIn.mode().choices);
+    px3::ui::fxcards::wireAdvancedSwitch(rows());
 
     attachKnob("amount", processorIn.amount());
     attachKnob("width", processorIn.width());

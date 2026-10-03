@@ -135,28 +135,33 @@ void PX3SynthAudioProcessorEditor::refreshMidiMappingUI()
     //
     // Registration is idempotent - a listener already added is not added again
     // - so this doubles as the discovery pass.
-    std::vector<juce::Component::SafePointer<juce::Slider>> found;
+    std::vector<std::pair<juce::Component::SafePointer<juce::Slider>, bool>> found;
 
-    std::function<void(juce::Component&)> walk = [&](juce::Component& parent)
+    // Knobs on a hidden page skip the two expensive refreshes - the live
+    // modulated position and the route rings - which the next tick after their
+    // page opens brings up to date. MIDI, macro and selection state stay
+    // current everywhere (they are cheap and Select Mode spans pages).
+    std::function<void(juce::Component&, bool)> walk = [&](juce::Component& parent, bool parentShown)
     {
         for (auto* child : parent.getChildren())
         {
             if (child == nullptr) { continue; }
+            const auto shown = parentShown && child->isVisible();
 
             if (auto* slider = dynamic_cast<juce::Slider*>(child))
             {
                 if (px3::ui::isParameterKnob(*slider))
                 {
-                    found.push_back(slider);
+                    found.push_back({ slider, shown });
                 }
             }
 
-            walk(*child);
+            walk(*child, shown);
         }
     };
-    walk(*this);
+    walk(*this, true);
 
-    for (auto& knob : found)
+    for (auto& [knob, knobShown] : found)
     {
         auto* slider = knob.getComponent();
         if (slider == nullptr) { continue; }
@@ -170,6 +175,7 @@ void PX3SynthAudioProcessorEditor::refreshMidiMappingUI()
             slider->addMouseListener(&midiSelectListener, false);
             midiKnobs.push_back(knob);
         }
+
 
         const auto parameterId = px3::ui::parameterIdOf(*slider);
         const auto cc = audioProcessor.getMidiCcForParameter(parameterId);
@@ -208,7 +214,7 @@ void PX3SynthAudioProcessorEditor::refreshMidiMappingUI()
         // assigned to any knob in the synth, so any knob has to be able to
         // show that something is moving it - the AMP ENV knobs had no ring at
         // all, which made a macro assigned to them look like it did nothing.
-        if (auto* parameter = audioProcessor.findRangedParameterById(parameterId))
+        if (auto* parameter = knobShown ? audioProcessor.findRangedParameterById(parameterId) : nullptr)
         {
             const auto modulated = audioProcessor.getModulatedNormalisedValue(*parameter);
             const auto shown = static_cast<double>(
@@ -223,6 +229,7 @@ void PX3SynthAudioProcessorEditor::refreshMidiMappingUI()
 
         // The route rings: compared before writing, so a knob repaints only
         // when its routing or a depth actually changed.
+        if (knobShown)
         {
             const auto rings = modRingsFor(parameterId);
             const auto& shownRings = slider->getProperties()[px3::knob_properties::modRings];

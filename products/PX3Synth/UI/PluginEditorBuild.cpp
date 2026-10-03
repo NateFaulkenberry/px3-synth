@@ -103,7 +103,9 @@ void PX3SynthAudioProcessorEditor::buildImagesAndMasks()
     }
 
     setResizable(true, true);
-    setResizeLimits(980, 600, 1900, 980);
+    // Minimum: the VOICE strip (sub + 3 oscillators, 2 filters, AMP) with every
+    // knob still readable and no caption clipped. Maximum: large displays.
+    setResizeLimits(1100, 700, 2400, 1400);
 
     addAndMakeVisible(performanceControls);
     addAndMakeVisible(pianoKeyboard);
@@ -522,6 +524,31 @@ void PX3SynthAudioProcessorEditor::buildSelectors()
     configureEffectKnob(isaacTextureKnob, isaacTextureLabel, "AMOUNT", audioProcessor.getDelayAmountParam());
     configureEffectKnob(delayTimeKnob, delayTimeLabel, "TIME", audioProcessor.getDelayTimeParam());
     configureEffectKnob(delayFeedbackKnob, delayFeedbackLabel, "FEEDBACK", audioProcessor.getDelayFeedbackParam());
+    {
+        struct Extra { juce::Slider& knob; KnobLabel& label; const char* text; const char* id; const char* tip; };
+        const Extra extras[] = {
+            { delayQualityKnob, delayQualityLabel, "QUALITY", "fx.delay.tape.quality",
+              "TAPE: condition of the tape. Low is worn (dull, noisy, unstable); high is pristine" },
+            { delayWobbleKnob, delayWobbleLabel, "WOBBLE", "fx.delay.wobble",
+              "TAPE: wow and flutter - how much the echo's pitch wavers" },
+            { delaySlipKnob, delaySlipLabel, "SLIP", "fx.delay.tape.slip",
+              "How often the tape head slips backward, playing the echo in reverse for a moment." },
+            { delayModDepthKnob, delayModDepthLabel, "MOD DEPTH", "fx.delay.mod.depth",
+              "MODULATED: how far the delay time is swept (chorused, pitch-moving repeats)" },
+        };
+        for (const auto& extra : extras)
+        {
+            if (auto* parameter = dynamic_cast<juce::AudioParameterFloat*>(
+                    audioProcessor.findRangedParameterById(extra.id)))
+            {
+                configureEffectKnob(extra.knob, extra.label, extra.text, *parameter);
+                attachSlider(*parameter, extra.knob);
+            }
+            extra.label.getProperties().set("compactLabel", true);
+            extra.knob.setTooltip(extra.tip);
+            extra.label.setTooltip(extra.tip);
+        }
+    }
     configureEffectKnob(moodMixKnob, moodMixLabel, "MIX", audioProcessor.getMoodMixParam());
     configureEffectKnob(moodClockKnob, moodClockLabel, "CLOCK", audioProcessor.getMoodClockParam());
     configureEffectKnob(moodWetTimeKnob, moodWetTimeLabel, "WET TIME", audioProcessor.getMoodWetTimeParam());
@@ -980,6 +1007,12 @@ void PX3SynthAudioProcessorEditor::buildSettingsAndOverlays()
     buildReverbCard();
     buildChorusCard();
     buildStereoSpreadCard();
+    buildDriveCard();
+    buildVibeCard();
+
+    fxPanel->setDelayAlgorithmControls({ &delayQualityKnob, &delayQualityLabel, &delayWobbleKnob, &delayWobbleLabel,
+                                         &delaySlipKnob, &delaySlipLabel, &delayModDepthKnob, &delayModDepthLabel });
+    fxPanel->setDelayAlgorithm(audioProcessor.getDelayAlgorithmParam().getIndex());
 
     fxPanel->onChainOrderChanged = [this](const px3::FxOrder& order)
     {

@@ -414,8 +414,18 @@ void EnvelopeComponent::resized()
                                        inner.rowControl(1));
         if (extras)
         {
-            loopButton->setBounds(juce::Rectangle<int>(juce::jmin(64, cell(0).getWidth()), 22)
-                                      .withCentre(cell(0).getCentre()));
+            const auto chipWidth = juce::jmin(64, cell(0).getWidth());
+            if (syncButton != nullptr)
+            {
+                loopButton->setBounds(juce::Rectangle<int>(chipWidth, 20)
+                                          .withCentre(cell(0).getCentre().translated(0, -12)));
+                syncButton->setBounds(juce::Rectangle<int>(chipWidth, 20)
+                                          .withCentre(cell(0).getCentre().translated(0, 12)));
+            }
+            else
+            {
+                loopButton->setBounds(juce::Rectangle<int>(chipWidth, 22).withCentre(cell(0).getCentre()));
+            }
             px3::ui::layoutLabelledControl(cell(2),
                                            { keyLabel, keyKnob, keyValueLabel,
                                              ControlShape::square, 16, 20, 84 },
@@ -778,7 +788,13 @@ void EnvelopeComponent::layoutCardInner()
     }
 
 
-    inner.setStylePath("cards." + px3::ui::cardTypeKey(cardStyleKey) + ".cardInner");
+    // The full-height graph (AMP ENV) has its own two-row block: graph, then
+    // knobs. Read through the shared "env" block it took that block's 12% and
+    // 24% rows and left two thirds of the card empty.
+    const auto ownInner = "cards." + cardStyleKey + ".cardInner";
+    const auto useOwn = isFullHeightGraph() && uiConfig != nullptr
+                        && ! uiConfig->getValue(ownInner + ".rows").isVoid();
+    inner.setStylePath(useOwn ? ownInner : "cards." + px3::ui::cardTypeKey(cardStyleKey) + ".cardInner");
     inner.setConfig(uiConfig);
     inner.setRowCount((isFullHeightGraph() ? 1 : 3) + (adsrKnobsWanted() ? 1 : 0));
     inner.layout(card.contentBelowTitle());

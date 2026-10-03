@@ -6,6 +6,8 @@
 
 #include "UIConfig.h"
 
+#include <algorithm>
+
 DelayComponent::DelayComponent(juce::ToggleButton& enabledButtonIn,
                                          juce::Slider& amountKnobIn,
                                          juce::Label& amountLabelIn,
@@ -54,6 +56,61 @@ DelayComponent::DelayComponent(juce::ToggleButton& enabledButtonIn,
     addAndMakeVisible(feedbackLabel);
 }
 
+void DelayComponent::setAlgorithmControls(const AlgorithmControls& controls)
+{
+    algorithmControls = controls;
+    for (auto [slider, label] : { std::pair { controls.quality, controls.qualityLabel },
+                                  std::pair { controls.wobble, controls.wobbleLabel },
+                                  std::pair { controls.slip, controls.slipLabel },
+                                  std::pair { controls.modDepth, controls.modDepthLabel } })
+    {
+        if (slider != nullptr) { addChildComponent(*slider); }
+        if (label != nullptr) { addChildComponent(*label); }
+    }
+    setAlgorithm(algorithm);
+}
+
+std::vector<std::pair<juce::Slider*, juce::Label*>> DelayComponent::shownAlgorithmControls() const
+{
+    std::vector<std::pair<juce::Slider*, juce::Label*>> shown;
+    const auto& c = algorithmControls;
+    if (algorithm == 1)
+    {
+        for (auto pair : { std::pair { c.quality, c.qualityLabel }, std::pair { c.wobble, c.wobbleLabel },
+                           std::pair { c.slip, c.slipLabel } })
+        {
+            if (pair.first != nullptr) { shown.push_back(pair); }
+        }
+    }
+    else if (algorithm == 5 && c.modDepth != nullptr)
+    {
+        shown.push_back({ c.modDepth, c.modDepthLabel });
+    }
+    return shown;
+}
+
+int DelayComponent::visibleAlgorithmControlCount() const noexcept
+{
+    return static_cast<int>(shownAlgorithmControls().size());
+}
+
+void DelayComponent::setAlgorithm(int algorithmIndex)
+{
+    const auto changed = algorithm != algorithmIndex;
+    algorithm = algorithmIndex;
+    const auto shown = shownAlgorithmControls();
+    const auto& c = algorithmControls;
+    for (auto [slider, label] : { std::pair { c.quality, c.qualityLabel }, std::pair { c.wobble, c.wobbleLabel },
+                                  std::pair { c.slip, c.slipLabel }, std::pair { c.modDepth, c.modDepthLabel } })
+    {
+        const auto visible = std::find_if(shown.begin(), shown.end(),
+                                          [s = slider](const auto& p) { return p.first == s; }) != shown.end();
+        if (slider != nullptr) { slider->setVisible(visible); }
+        if (label != nullptr) { label->setVisible(visible); }
+    }
+    if (changed || ! shown.empty()) { resized(); }
+}
+
 void DelayComponent::setAccentColour(juce::Colour accentIn)
 {
     accent = accentIn;
@@ -80,6 +137,13 @@ void DelayComponent::setActive(bool enabled, bool granularModeSelectable)
     amountKnob.getProperties().set("psychedelicBypassGray", !isActive);
     timeKnob.getProperties().set("psychedelicBypassGray", !isActive);
     feedbackKnob.getProperties().set("psychedelicBypassGray", !isActive);
+    for (auto* slider : { algorithmControls.quality, algorithmControls.wobble,
+                          algorithmControls.slip, algorithmControls.modDepth })
+    {
+        if (slider == nullptr) { continue; }
+        slider->setEnabled(isActive);
+        slider->getProperties().set("psychedelicBypassGray", !isActive);
+    }
     px3::ui::ChipLabel::setGreyedOut(!isActive,
                                      { &amountLabel, &algorithmLabel, &syncLabel,
                                        &modeLabel, &timeLabel, &feedbackLabel });
@@ -121,7 +185,8 @@ void DelayComponent::resized()
 
     inner.setStylePath("cards.delay.cardInner");
     inner.setConfig(uiConfig);
-    inner.setRowCount(2);
+    const auto extras = shownAlgorithmControls();
+    inner.setRowCount(extras.empty() ? 2 : 3);
     inner.layout(card.contentBelowTitle());
 
     // The power toggle is pinned to cardInner's corner, outside the flex flow,
@@ -190,6 +255,26 @@ void DelayComponent::resized()
                                        { &modeLabel, &modeBox, nullptr,
                                          ControlShape::stretch, 14, 0, 22 },
                                        inner.rowControl(1));
+    }
+
+    // Row 3: the controls this algorithm has and the others do not.
+    if (! extras.empty())
+    {
+        auto flex = inner.rowFlex(2);
+        const auto gap = inner.rowGap(2);
+        const auto row = inner.rowContent(2);
+        for (std::size_t i = 0; i < extras.size(); ++i)
+        {
+            flex.items.add(juce::FlexItem(60.0f, static_cast<float>(juce::jmax(1, row.getHeight()))).withMargin(gap));
+        }
+        flex.performLayout(row.toFloat());
+        for (std::size_t i = 0; i < extras.size(); ++i)
+        {
+            px3::ui::layoutLabelledControl(flex.items.getReference(static_cast<int>(i)).currentBounds.toNearestInt(),
+                                           { nullptr, extras[i].first, extras[i].second,
+                                             ControlShape::square, 0, 16, 44 },
+                                           inner.rowControl(2));
+        }
     }
 }
 

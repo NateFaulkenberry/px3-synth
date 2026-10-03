@@ -1,8 +1,10 @@
 #include "TopMenuBar.h"
+#include "Theme.h"
 
 #include "GlobalSettings.h"
 
 #include <cmath>
+#include <vector>
 
 #include "CardInner.h"
 
@@ -194,70 +196,31 @@ void TopMenuTabButton::paintButton(juce::Graphics& g,
     const auto area = getLocalBounds().toFloat();
     const auto on = getToggleState();
 
-    // The face does NOT change on hover. It is what tells you whether the
-    // section is open, and lifting it made a hovered unselected tab approach
-    // the colour of the selected one.
-    const auto face = on ? style.faceActive : style.face;
-
-    // Flat, not graded: the tabs sit on the bar's own colour, so any vertical
-    // ramp here reads as a button laid on top of the bar rather than as part
-    // of it. The LED, the lit top edge and the brighter inset carry state.
+    // The theme's tab: a flat key on the header rail. Selected is a lifted
+    // face with the section's identity colour as an underline; hover is a
+    // faint wash. State is carried by the face and the underline, not by an
+    // LED or a glow.
+    namespace tc = px3::ui::theme::colour;
+    const auto face = on ? juce::Colour(0xff2a3036) : juce::Colour(0xff1b1f23);
     g.setColour(face);
-    g.fillRect(area);
-
-    // Hover and press are an inner glow over that face - the equivalent of a
-    // CSS inset box-shadow. Drawn as a stack of inset rectangle outlines
-    // fading inward, which is what gives it a soft edge without a blur pass.
+    g.fillRoundedRectangle(area.reduced(0.5f), 3.0f);
     if (shouldDrawButtonAsHighlighted || shouldDrawButtonAsDown)
     {
-        const auto strength = shouldDrawButtonAsDown ? style.pressedGlowOpacity
-                                                     : style.hoverGlowOpacity;
-        const auto size = juce::jmax(1.0f, style.hoverGlowSize);
-        const auto steps = juce::jlimit(1, 48, juce::roundToInt(size));
-
-        for (int i = 0; i < steps; ++i)
-        {
-            // Strongest at the edge, falling to nothing at `size` inward. The
-            // square keeps the falloff weighted towards the edge rather than
-            // spreading evenly across the face.
-            const auto t = static_cast<float>(i) / static_cast<float>(steps);
-            const auto alpha = strength * (1.0f - t) * (1.0f - t) / static_cast<float>(steps) * 3.0f;
-
-            g.setColour(style.hoverGlow.withAlpha(juce::jlimit(0.0f, 1.0f, alpha)));
-            g.drawRect(area.reduced(static_cast<float>(i)), 1.0f);
-        }
+        g.setColour(juce::Colours::white.withAlpha(shouldDrawButtonAsDown ? 0.10f : 0.05f));
+        g.fillRoundedRectangle(area.reduced(0.5f), 3.0f);
     }
-
-    // The attention glow, over the face and under everything that carries
-    // state. Same inset-glow construction as hover, so it belongs to the tab
-    // rather than being a badge stuck on it - and it stacks with hover instead
-    // of replacing it, because a tab can be both.
     if (attention)
     {
-        const auto strength = 0.30f + 0.45f * attentionPhase;
-        const auto steps = juce::jlimit(1, 48, juce::roundToInt(juce::jmax(1.0f, style.hoverGlowSize)));
-
-        for (int i = 0; i < steps; ++i)
-        {
-            const auto t = static_cast<float>(i) / static_cast<float>(steps);
-            const auto alpha = strength * (1.0f - t) * (1.0f - t) / static_cast<float>(steps) * 3.0f;
-
-            g.setColour(attentionColour.withAlpha(juce::jlimit(0.0f, 1.0f, alpha)));
-            g.drawRect(area.reduced(static_cast<float>(i)), 1.0f);
-        }
+        g.setColour(attentionColour.withAlpha(0.18f + 0.30f * attentionPhase));
+        g.drawRoundedRectangle(area.reduced(1.0f), 3.0f, 1.5f);
     }
-
-    // A lit top edge marks the selected tab, the way a selected panel does.
-    if (on)
+    g.setColour(on ? juce::Colours::white.withAlpha(0.10f) : tc::panelEdge);
+    g.drawRoundedRectangle(area.reduced(0.5f), 3.0f, 1.0f);
+    if (on && showLed)
     {
         g.setColour(accent);
-        g.fillRect(area.withHeight(2.0f));
+        g.fillRoundedRectangle(area.reduced(6.0f, 0.0f).removeFromBottom(2.0f).translated(0.0f, -1.0f), 1.0f);
     }
-
-    // A hairline one pixel in from the edge. Inset rather than on the boundary
-    // so butted neighbours do not draw two lines against each other.
-    g.setColour(on ? style.insetActive : style.inset);
-    g.drawRect(area.reduced(1.0f), 1.0f);
 
     // ---- icon --------------------------------------------------------------
     if (! icon.isEmpty())
@@ -275,7 +238,7 @@ void TopMenuTabButton::paintButton(juce::Graphics& g,
     const auto led = juce::Rectangle<float>(ledDiameter, ledDiameter)
                          .withCentre({ area.getCentreX(), area.getY() + area.getHeight() * 0.34f });
 
-    if (showLed)
+    if (false)
     {
         g.setColour(juce::Colour::fromRGBA(0, 0, 0, 190));
         g.fillEllipse(led.expanded(1.4f));
@@ -298,7 +261,8 @@ void TopMenuTabButton::paintButton(juce::Graphics& g,
 
     // With no lamp above it the legend centres in the whole face instead of the
     // band beneath one.
-    auto legendArea = showLed ? area.withTop(led.getBottom() + 2.0f) : area;
+    auto legendArea = area;
+    juce::ignoreUnused(led);
 
     // A tab with neither a category nor an author is laid out exactly as it was
     // before any of this existed: one legend, centred in the whole face.
@@ -351,7 +315,8 @@ void TopMenuTabButton::paintButton(juce::Graphics& g,
     }
 
     g.setColour(content.nameColour.isTransparent() ? legend : content.nameColour);
-    g.setFont(juce::FontOptions(legendFontSize, content.nameBold ? juce::Font::bold : juce::Font::plain));
+    g.setFont(hasSubtitle ? juce::Font(juce::FontOptions(legendFontSize, content.nameBold ? juce::Font::bold : juce::Font::plain))
+                          : px3::ui::theme::font(px3::ui::theme::Type::tab));
     g.drawFittedText(getButtonText(), legendArea.toNearestInt(), juce::Justification::centred, 1);
 
     if (hasSubtitle)
@@ -445,7 +410,9 @@ TopMenuBar::TopMenuBar()
     presetNextButton.setButtonText(">");
     presetMenuButton.setButtonText("MENU");
 
-    configureTopMenuSectionButton(topMenuOscButton, "OSC", 0);
+    // VOICE is OSC, FILTER and AMP on one page (the synthesis strip), so the
+    // AMP and FLT tabs are not shown: their sections are reached through VOICE.
+    configureTopMenuSectionButton(topMenuOscButton, "VOICE", 0);
     configureTopMenuSectionButton(topMenuModButton, "MOD", 1);
     configureTopMenuSectionButton(topMenuAmpButton, "AMP", 2);
     configureTopMenuSectionButton(topMenuFltButton, "FLT", 3);
@@ -508,8 +475,8 @@ TopMenuBar::TopMenuBar()
     addAndMakeVisible(settingsButton);
     addAndMakeVisible(topMenuOscButton);
     addAndMakeVisible(topMenuModButton);
-    addAndMakeVisible(topMenuAmpButton);
-    addAndMakeVisible(topMenuFltButton);
+    addChildComponent(topMenuAmpButton);
+    addChildComponent(topMenuFltButton);
     addAndMakeVisible(topMenuFxButton);
     addAndMakeVisible(topMenuMixButton);
 }
@@ -568,7 +535,12 @@ void TopMenuBar::resized()
         auto box = readFlex("topMenu.sections.flex", fallback).toFlexBox();
         const auto gap = readFlex("topMenu.sections.flex", fallback).gapMargin();
         const auto row = topMenuSectionButtonsArea;
-        const auto count = static_cast<int>(topMenuSectionButtons.size());
+        std::vector<int> shownSections;
+        for (const auto section : sectionDisplayOrder)
+        {
+            if (! isMergedIntoVoice(section)) { shownSections.push_back(section); }
+        }
+        const auto count = static_cast<int>(shownSections.size());
 
         const auto laidOutWidth = static_cast<float>(juce::jmax(1, row.getWidth())) + gap.left + gap.right;
         const std::vector<float> natural(static_cast<std::size_t>(count),
@@ -590,7 +562,7 @@ void TopMenuBar::resized()
 
         for (int i = 0; i < count; ++i)
         {
-            const auto section = sectionDisplayOrder[static_cast<std::size_t>(i)];
+            const auto section = shownSections[static_cast<std::size_t>(i)];
             auto* button = topMenuSectionButtons[static_cast<std::size_t>(section)];
             button->setBounds(box.items.getReference(i).currentBounds.toNearestInt());
             button->setShowSeam(i < count - 1);
@@ -700,8 +672,9 @@ void TopMenuBar::setSelectedSection(int sectionIndex)
     // the strip lying about what is open.
     for (int i = 0; i < 6; ++i)
     {
-        topMenuSectionButtons[static_cast<std::size_t>(i)]->setToggleState(i == clamped,
-                                                                          juce::dontSendNotification);
+        // VOICE stays lit for the sections it holds.
+        const auto lit = i == clamped || (i == 0 && isMergedIntoVoice(clamped));
+        topMenuSectionButtons[static_cast<std::size_t>(i)]->setToggleState(lit, juce::dontSendNotification);
     }
 
     settingsButton.setToggleState(clamped == kSettingsSection, juce::dontSendNotification);

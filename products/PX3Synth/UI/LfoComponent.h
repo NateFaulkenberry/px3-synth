@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "Theme.h"
 
 #include "Card.h"
 #include "CardInner.h"
@@ -57,7 +58,7 @@ private:
     static float rampPreviewSample(float t, int waveformIndex);
     static juce::String formatRampSeconds(double seconds);
 
-    struct WaveformComboLookAndFeel final : public juce::LookAndFeel_V4
+    struct WaveformComboLookAndFeel final : public px3::ui::InstrumentLookAndFeel
     {
         juce::PopupMenu::Options getOptionsForComboBoxPopupMenu(juce::ComboBox& box,
                                                                  juce::Label& label) override;

@@ -27,7 +27,8 @@ namespace px3::ui
 // Layout is declared as rows of controls and resolved by CardInner, so an FX
 // with a different control set is a different declaration rather than a
 // different resized().
-class FxCardComponent final : public juce::Component
+class FxCardComponent final : public juce::Component,
+                              public juce::TooltipClient
 {
 public:
     struct KnobSpec
@@ -80,6 +81,33 @@ public:
     // One knob given its own row and drawn large - the macro control the rest
     // of the card feeds into.
     void addFeatureKnobRow(KnobSpec spec);
+    // A sub-section heading: a printed caption with a rule, so one card can
+    // say it holds two things (VIBE: the Uni-Vibe stage, then ANALOG DRIFT).
+    void addHeadingRow(const juce::String& text, const juce::String& tooltip = {});
+
+    // Marks the most recently added row as ADVANCED: it is laid out only while
+    // the card's SHIFT/ADVANCED switch (setAltMode) is on, and takes no space
+    // otherwise. This is the card's "advanced fold".
+    void markLastRowAdvanced();
+
+    // A strip along the bottom of the card, outside the declared rows, for a
+    // product-specific extra (the Synth's Reverb IR loader). Not owned. Takes
+    // space only while shown (setFooterShown).
+    void setFooter(juce::Component* footerComponent, int heightPx);
+    void setFooterShown(bool shouldShow);
+    bool isFooterShown() const noexcept { return footer != nullptr && footerShown; }
+
+    // One line saying what the effect does: the card's tooltip (hover anywhere
+    // on its faceplate) and the power button's.
+    void setDescription(const juce::String& text);
+    const juce::String& getDescription() const noexcept { return description; }
+
+    // The caption currently printed for a knob (its name, or its value while
+    // the knob is hovered or dragged), and its name regardless.
+    juce::String debugKnobCaption(const juce::String& id) const;
+    // Every row's ids, kind and whether it is laid out right now.
+    juce::StringArray debugRowIds() const;
+    bool debugIsRowLaidOut(int rowIndex) const;
 
     // Null for an id the card does not have, so a wiring mistake is a crash at
     // the call site rather than a silently unattached control.
@@ -114,6 +142,7 @@ public:
     void resized() override;
     void paint(juce::Graphics& g) override;
     void mouseUp(const juce::MouseEvent& event) override;
+    juce::String getTooltip() override { return description; }
 
     // Everything this card lays out, as text: the rows in order, and each
     // control's id and bounds within the card.
@@ -126,13 +155,35 @@ public:
     juce::String debugLayoutSignature() const;
 
 private:
-    enum class RowKind { toggles, choices, knobs, featureKnob };
+    enum class RowKind { toggles, choices, knobs, featureKnob, heading };
 
     struct Row
     {
         RowKind kind { RowKind::knobs };
         std::vector<juce::String> ids;
+        bool advanced { false };
+        juce::String text;  // heading rows
+        juce::Rectangle<int> headingBounds;
     };
+
+    // Shows a knob's value in its caption while it is hovered or dragged.
+    struct ValueCaption final : public juce::MouseListener
+    {
+        explicit ValueCaption(FxCardComponent& ownerIn) : owner(ownerIn) {}
+        void mouseEnter(const juce::MouseEvent& e) override { owner.showValueFor(e.eventComponent, true); }
+        void mouseExit(const juce::MouseEvent& e) override { owner.showValueFor(e.eventComponent, false); }
+        void mouseDrag(const juce::MouseEvent& e) override { owner.showValueFor(e.eventComponent, true); }
+        void mouseUp(const juce::MouseEvent& e) override
+        { owner.showValueFor(e.eventComponent, e.eventComponent->isMouseOver(false)); }
+        FxCardComponent& owner;
+    };
+    ValueCaption valueCaption { *this };
+    void showValueFor(juce::Component* knobComponent, bool show);
+    bool isRowLaidOut(const Row& row) const noexcept { return ! row.advanced || altMode; }
+    juce::String description;
+    juce::Component* footer { nullptr };
+    int footerHeight { 0 };
+    bool footerShown { false };
 
     struct KnobEntry
     {
@@ -145,6 +196,10 @@ private:
         juce::String altId;
         std::unique_ptr<juce::Slider> altKnob;
         std::unique_ptr<ChipLabel> altLabel;
+
+        // The printed names, restored when a value readout ends.
+        juce::String caption;
+        juce::String altCaption;
     };
 
     struct ChoiceEntry

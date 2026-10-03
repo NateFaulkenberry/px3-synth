@@ -306,6 +306,17 @@ void ModPanel::configureOwnedEnvBundle(int envIndex, EnvBundle& bundle)
         bundle.loopButton.setAccentColour(accent);
         bundle.loopAttachment = std::make_unique<juce::ButtonParameterAttachment>(*loop, bundle.loopButton, nullptr);
     }
+    if (auto* sync = dynamic_cast<juce::AudioParameterBool*>(
+            processor.findRangedParameterById("mod.env" + juce::String(envIndex + 1) + ".sync")))
+    {
+        bundle.syncButton.setButtonText("SYNC");
+        bundle.syncButton.setClickingTogglesState(true);
+        bundle.syncButton.setTooltip("Tempo sync: attack, decay and release snap to musical divisions of the host "
+                                     "or MIDI clock tempo");
+        bundle.syncButton.setAccentColour(accent);
+        bundle.syncAttachment = std::make_unique<juce::ButtonParameterAttachment>(*sync, bundle.syncButton, nullptr);
+        bundle.component->setSyncButton(&bundle.syncButton);
+    }
     if (auto* key = processor.findRangedParameterById("mod.env" + juce::String(envIndex + 1) + ".keytrack"))
     {
         bundle.keyKnob.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);

@@ -268,7 +268,8 @@ bool PX3SynthAudioProcessorEditor::isPanelVisible(int sectionIndex) const
         return false;
     }
 
-    if (isPrimaryCoreComposite() && (sectionIndex == kSectionAmp || sectionIndex == kSectionFilter))
+    if (isPrimaryCoreComposite()
+        && (sectionIndex == kSectionOsc || sectionIndex == kSectionAmp || sectionIndex == kSectionFilter))
     {
         return true;
     }

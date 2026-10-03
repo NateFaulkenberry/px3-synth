@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "Theme.h"
 
 #include "FilterTypes.h"
 #include "FilterComponent.h"
@@ -91,7 +92,7 @@ public:
     void layoutCardControls();
 
 private:
-    struct FilterComboLookAndFeel final : public juce::LookAndFeel_V4
+    struct FilterComboLookAndFeel final : public px3::ui::InstrumentLookAndFeel
     {
         juce::PopupMenu::Options getOptionsForComboBoxPopupMenu(juce::ComboBox& box,
                                                                  juce::Label& label) override;

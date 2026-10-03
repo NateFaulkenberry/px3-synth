@@ -251,6 +251,16 @@ private:
     float lastRelease { -1.0f };
     bool currentEnabled { true };
     bool hardwareFaceplate { false };
+    juce::Button* syncButton { nullptr };
+public:
+    // SYNC, stacked under LOOP in the same cell.
+    void setSyncButton(juce::Button* button)
+    {
+        syncButton = button;
+        if (syncButton != nullptr) { addAndMakeVisible(*syncButton); }
+        resized();
+    }
+private:
     bool adsrOnly { false };
     juce::String configPrefix;
     juce::String cardStyleKey;

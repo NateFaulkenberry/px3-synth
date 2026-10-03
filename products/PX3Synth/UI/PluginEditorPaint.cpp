@@ -18,6 +18,7 @@
 #include "BinaryData.h"
 #include "PX3Version.h"
 #include "UIConfig.h"
+#include "Theme.h"
 #include <algorithm>
 #include <cmath>
 #include <functional>
@@ -44,84 +45,32 @@ void PX3SynthAudioProcessorEditor::paint(juce::Graphics& g)
             }
         }
     }
-    const auto stripRadius = uiConfig != nullptr ? uiConfig->getFloat("editor.topStrip.cornerRadius", 3.0f) : 3.0f;
     g.fillAll(bg);
 
-    const auto chassis = getLocalBounds().toFloat().reduced(3.0f);
-    g.setColour(juce::Colour::fromRGBA(225, 232, 230, 30));
-    g.drawRect(chassis, 1.0f);
-    constexpr float fastenerRadius = 3.5f;
-    for (const auto point : { chassis.getTopLeft(), chassis.getTopRight(),
-                              chassis.getBottomRight(), chassis.getBottomLeft() })
+    // The header is the instrument's top rail: a flat strip with a lit lower
+    // edge, the same depth language as the module faceplates below it. No
+    // screws or outlines around the window - the modules carry the structure.
+    namespace tc = px3::ui::theme::colour;
+    if (! headerArea.isEmpty())
     {
-        px3::ui::panel::drawScrew(g, point + juce::Point<float>(fastenerRadius + 2.0f,
-                                                               fastenerRadius + 2.0f),
-                                  fastenerRadius);
-    }
+        const auto rail = headerArea.toFloat();
+        g.setColour(tc::rail);
+        g.fillRoundedRectangle(rail, px3::ui::theme::space::panelRadius);
+        g.setColour(tc::panelEdge);
+        g.drawRoundedRectangle(rail.reduced(0.5f), px3::ui::theme::space::panelRadius, 1.0f);
+        g.setColour(tc::panelLight);
+        g.drawHorizontalLine(juce::roundToInt(rail.getY()) + 1, rail.getX() + 4.0f, rail.getRight() - 4.0f);
 
-    // A single instrument strip, rather than a toolbar floating over artwork.
-    g.setColour(uiConfig != nullptr
-                    ? uiConfig->getColour("editor.topStrip.fillColour", juce::Colour::fromRGB(0x1A, 0x1A, 0x1A))
-                    : juce::Colour::fromRGB(0x1A, 0x1A, 0x1A));
-    g.fillRoundedRectangle(topMenuStripArea.toFloat(), stripRadius);
-
-    // The logo and master gain sections get the same hairline the tabs carry,
-    // so every block in the bar is framed alike. Rounded here rather than
-    // square because these two sit at the strip's rounded ends - a square
-    // outline would cut across the corner.
-    {
-        const auto insetColour = uiConfig != nullptr
-                                     ? uiConfig->getColour("topMenu.tabStyle.inset",
-                                                           juce::Colour::fromRGBA(226, 232, 240, 40))
-                                     : juce::Colour::fromRGBA(226, 232, 240, 40);
-        const auto defaultRadius = juce::jmax(0.0f, stripRadius - 1.0f);
-
-        // Per-corner radii for the INSET hairline itself - this is the only
-        // border these two sections have. Nothing here fills, so changing a
-        // radius moves the outline and leaves the background untouched. A
-        // section that butts against the tabs can be square on that side and
-        // follow the strip's rounding on the other.
-        const auto strokeSection = [&](const juce::Rectangle<int>& section, const juce::String& path)
+        // Hairline dividers either side of the logo and the master gain.
+        g.setColour(tc::railEdge);
+        if (! logoPanelArea.isEmpty())
         {
-            if (section.isEmpty())
-            {
-                return;
-            }
-
-            const auto radiusFor = [&](const char* corner)
-            {
-                return uiConfig != nullptr ? uiConfig->getFloat(path + "." + corner, defaultRadius)
-                                           : defaultRadius;
-            };
-
-            const auto area = section.toFloat().reduced(1.0f);
-            const auto tl = juce::jmax(0.0f, radiusFor("topLeft"));
-            const auto tr = juce::jmax(0.0f, radiusFor("topRight"));
-            const auto br = juce::jmax(0.0f, radiusFor("bottomRight"));
-            const auto bl = juce::jmax(0.0f, radiusFor("bottomLeft"));
-
-            juce::Path outline;
-            outline.startNewSubPath(area.getX() + tl, area.getY());
-            outline.lineTo(area.getRight() - tr, area.getY());
-            if (tr > 0.0f) outline.addArc(area.getRight() - tr * 2.0f, area.getY(), tr * 2.0f, tr * 2.0f,
-                                          0.0f, juce::MathConstants<float>::halfPi, false);
-            outline.lineTo(area.getRight(), area.getBottom() - br);
-            if (br > 0.0f) outline.addArc(area.getRight() - br * 2.0f, area.getBottom() - br * 2.0f, br * 2.0f, br * 2.0f,
-                                          juce::MathConstants<float>::halfPi, juce::MathConstants<float>::pi, false);
-            outline.lineTo(area.getX() + bl, area.getBottom());
-            if (bl > 0.0f) outline.addArc(area.getX(), area.getBottom() - bl * 2.0f, bl * 2.0f, bl * 2.0f,
-                                          juce::MathConstants<float>::pi, juce::MathConstants<float>::pi * 1.5f, false);
-            outline.lineTo(area.getX(), area.getY() + tl);
-            if (tl > 0.0f) outline.addArc(area.getX(), area.getY(), tl * 2.0f, tl * 2.0f,
-                                          juce::MathConstants<float>::pi * 1.5f, juce::MathConstants<float>::twoPi, false);
-            outline.closeSubPath();
-
-            g.strokePath(outline, juce::PathStrokeType(1.0f));
-        };
-
-        g.setColour(insetColour);
-        strokeSection(logoPanelArea, "topMenu.logoSection.inset.cornerRadius");
-        strokeSection(topMenuGainArea, "topMenu.gainSection.inset.cornerRadius");
+            g.drawVerticalLine(logoPanelArea.getRight(), rail.getY() + 6.0f, rail.getBottom() - 6.0f);
+        }
+        if (! topMenuGainArea.isEmpty())
+        {
+            g.drawVerticalLine(topMenuGainArea.getX() - 1, rail.getY() + 6.0f, rail.getBottom() - 6.0f);
+        }
     }
 
     if (logoFrame.isValid())

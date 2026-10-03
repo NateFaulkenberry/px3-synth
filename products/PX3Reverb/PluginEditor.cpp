@@ -1,31 +1,11 @@
 #include "PluginEditor.h"
+#include "FxCardDeclarations.h"
 
 PX3ReverbAudioProcessorEditor::PX3ReverbAudioProcessorEditor(PX3ReverbAudioProcessor& processorIn)
     : px3::fx::FxCardEditor(processorIn, "reverb", "REVERB")
 {
-    // Unlike the other cards these rows have no counterpart in the Synth: the
-    // Synth shows Reverb as a compact face with a mode and an amount, and the
-    // nine controls below have never had a UI there at all. They are laid out
-    // the way every other PX3 card is - a choice row, then knob rows, then the
-    // feature knob - rather than in a new visual language.
-    rows().addChoiceRow({ { "algorithm", "MODE", "Room, plate, hall or cloud",
-                            processorIn.algorithm().choices } });
-
-    rows().addKnobRow({ { "size", "SIZE", "Room size" },
-                        { "decay", "DECAY", "How long the tail lasts" },
-                        { "damping", "DAMPING", "How fast the top of the tail is lost" },
-                        { "preDelay", "PRE", "Gap before the tail begins" } });
-
-    // Three rows rather than one of five: five cells overran the inner card at
-    // the width it is drawn, clipping the outer captions off both edges.
-    rows().addKnobRow({ { "modDepth", "DEPTH", "Movement in the tail" },
-                        { "modRate", "RATE", "How fast that movement is" },
-                        { "width", "WIDTH", "Stereo spread of the tail" } });
-
-    rows().addKnobRow({ { "cloudFeedback", "REGEN", "Cloud regeneration" },
-                        { "cloudDiffusion", "SMEAR", "Cloud smearing" } });
-
-    rows().addFeatureKnobRow({ "amount", "AMOUNT", "Dry against wet" });
+    // The same rows the Synth builds: one declaration, FxCardDeclarations.h.
+    px3::ui::fxcards::declareReverbRows(rows(), processorIn.algorithm().choices);
 
     attachKnob("amount", processorIn.amount());
     attachKnob("size", processorIn.size());
@@ -37,6 +17,14 @@ PX3ReverbAudioProcessorEditor::PX3ReverbAudioProcessorEditor(PX3ReverbAudioProce
     attachKnob("width", processorIn.width());
     attachKnob("cloudFeedback", processorIn.cloudFeedback());
     attachKnob("cloudDiffusion", processorIn.cloudDiffusion());
+    for (auto* parameter : processorIn.getParameters())
+    {
+        if (auto* f = dynamic_cast<juce::AudioParameterFloat*>(parameter);
+            f != nullptr && f->getParameterID() == "fx.reverb.shimmer")
+        {
+            attachKnob("shimmer", *f);
+        }
+    }
     attachChoice("algorithm", processorIn.algorithm());
     attachBypass(processorIn.enabled());
 

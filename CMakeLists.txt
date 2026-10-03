@@ -94,6 +94,7 @@ set(PX3_SHARED_SOURCES
         shared/UI/Fx/FilterComponent.cpp
         shared/UI/Style/UIConfig.cpp
         shared/UI/Style/KnobLookAndFeel.cpp
+        shared/UI/Style/Theme.cpp
         shared/UI/Style/KnobOverlays.cpp
         shared/UI/Style/MacroKnobLook.cpp
         shared/UI/Style/UIConfigManager.cpp
