@@ -28,6 +28,31 @@ struct ModulationDestinationDescriptor
     bool enabled { true };
 };
 
+// One route's contribution in normalised units. The single definition of the
+// depth / polarity / curve / swing rule, used by the global graph and by voices.
+inline float routeContribution(bool sourceBipolar, float signal, ModulationPolarity polarity,
+                               ModulationCurve curve, float depth, float base) noexcept
+{
+    if (! std::isfinite(signal) || ! std::isfinite(depth)) { return 0.0f; }
+    signal = sourceBipolar ? std::clamp(signal, -1.0f, 1.0f) : std::clamp(signal, 0.0f, 1.0f);
+    auto bipolar = sourceBipolar;
+    if (polarity == ModulationPolarity::bipolar && ! bipolar)
+    {
+        signal = signal * 2.0f - 1.0f;
+        bipolar = true;
+    }
+    else if (polarity == ModulationPolarity::unipolar && bipolar)
+    {
+        signal = (signal + 1.0f) * 0.5f;
+        bipolar = false;
+    }
+    const auto magnitude = std::abs(signal);
+    if (curve == ModulationCurve::square) { signal = std::copysign(magnitude * magnitude, signal); }
+    if (curve == ModulationCurve::squareRoot) { signal = std::copysign(std::sqrt(magnitude), signal); }
+    const auto swing = bipolar ? 0.5f : (depth >= 0.0f ? 1.0f - base : base);
+    return std::clamp(depth, -1.0f, 1.0f) * swing * signal;
+}
+
 struct ModulationRoute
 {
     int slot { -1 };
@@ -148,30 +173,26 @@ public:
             if (static_cast<std::size_t>(route.source) < enabledSources.size()
                 && ! enabledSources[static_cast<std::size_t>(route.source)]) { continue; }
             const auto& source = sources[static_cast<std::size_t>(route.source)];
-            auto signal = signals[static_cast<std::size_t>(route.source)];
-            if (! std::isfinite(signal)) { continue; }
-            signal = source.bipolar ? std::clamp(signal, -1.0f, 1.0f) : std::clamp(signal, 0.0f, 1.0f);
-            auto bipolar = source.bipolar;
-            if (route.polarity == ModulationPolarity::bipolar && ! bipolar)
-            {
-                signal = signal * 2.0f - 1.0f;
-                bipolar = true;
-            }
-            else if (route.polarity == ModulationPolarity::unipolar && bipolar)
-            {
-                signal = (signal + 1.0f) * 0.5f;
-                bipolar = false;
-            }
-            const auto magnitude = std::abs(signal);
-            if (route.curve == ModulationCurve::square) { signal = std::copysign(magnitude * magnitude, signal); }
-            if (route.curve == ModulationCurve::squareRoot) { signal = std::copysign(std::sqrt(magnitude), signal); }
             const auto depth = static_cast<std::size_t>(route.slot) < automatedDepths.size()
                                    ? automatedDepths[static_cast<std::size_t>(route.slot)] : route.depth;
-            if (! std::isfinite(depth)) { continue; }
-            const auto swing = bipolar ? 0.5f : (depth >= 0.0f ? 1.0f - base : base);
-            delta += std::clamp(depth, -1.0f, 1.0f) * swing * signal;
+            delta += routeContribution(source.bipolar, signals[static_cast<std::size_t>(route.source)],
+                                       route.polarity, route.curve, depth, base);
         }
         return delta;
+    }
+
+    // Every route into one destination, with its source's descriptor.
+    template <typename Fn>
+    void forEachRouteTo(int destination, Fn&& fn) const
+    {
+        for (int index = 0; index < routeCount; ++index)
+        {
+            const auto& route = routes[static_cast<std::size_t>(index)];
+            if (route.destination == destination && route.source >= 0 && route.source < sourceCount)
+            {
+                fn(route, sources[static_cast<std::size_t>(route.source)]);
+            }
+        }
     }
 
     std::span<const int> evaluationOrder() const noexcept

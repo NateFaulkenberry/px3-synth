@@ -782,6 +782,49 @@ void testFilterRoutingUpgrade()
 void testModulationUpgrade()
 {
     suite("MODULATION UPGRADE");
+
+    {
+        // Envelopes are per voice: a note's filter follows ITS envelope, not an
+        // average over the chord. B starts while A's two-second attack is half
+        // way up; B's own envelope is near zero, so B must sound the same as
+        // when A starts with it. Averaging used to open B's filter to A's level.
+        auto bFundamental = [](int aStartSample, bool playB = true)
+        {
+            PX3SynthAudioProcessor processor;
+            makePlainPatch(processor);
+            setChoice(processor, "voice.osc1.mode", 1);
+            setParam(processor, "voice.amp.sustain", 1.0f);
+            setParam(processor, "voice.filter1.enabled", 1.0f);
+            setChoice(processor, "voice.filter1.type", 1);   // LP24
+            setParam(processor, "voice.filter1.cutoff", 200.0f);
+            setParam(processor, "mod.env1.enabled", 1.0f);
+            setParam(processor, "mod.env1.amount", 1.0f);
+            setParam(processor, "mod.env1.attack", 2.0f);
+            setParam(processor, "mod.env1.sustain", 1.0f);
+            processor.setEnvelopeAssignmentByParameterId(0, "voice.filter1.cutoff", false);
+            std::vector<NoteEvent> events { { aStartSample, true, 45, 0.9f } };
+            if (playB) events.push_back({ 48000, true, 84, 0.9f });
+            const auto capture = render(processor, 48000 * 3 / 2, events);
+            // Hann-windowed so A's harmonics (110 Hz apart, the nearest 54 Hz
+            // away) cannot leak into B's bin.
+            double c = 0.0, sn = 0.0;
+            for (int k = 0; k < 4800; ++k)
+            {
+                const auto n = 48960 + k;
+                const auto hann = 0.5 - 0.5 * std::cos(juce::MathConstants<double>::twoPi * k / 4799.0);
+                const auto w = juce::MathConstants<double>::twoPi * 1046.502 * n / 48000.0;
+                c += hann * capture.left[static_cast<std::size_t>(n)] * std::cos(w);
+                sn += hann * capture.left[static_cast<std::size_t>(n)] * std::sin(w);
+            }
+            return 10.0 * std::log10(c * c + sn * sn + 1.0e-30);
+        };
+        const auto aEarlier = bFundamental(0);
+        const auto together = bFundamental(48000);
+        const auto aAlone = bFundamental(0, false);
+        check("ModGraph_EnvelopesModulateEachVoiceOnItsOwn", std::abs(aEarlier - together) < 3.0 && aAlone < aEarlier - 10.0,
+              "B's fundamental with A's envelope half open " + juce::String(aEarlier, 1) + " dB, with A starting alongside "
+                  + juce::String(together, 1) + " dB (A alone in that bin " + juce::String(aAlone, 1) + " dB)");
+    }
     {
         using namespace px3::synth;
         CompiledModulationGraph graph;

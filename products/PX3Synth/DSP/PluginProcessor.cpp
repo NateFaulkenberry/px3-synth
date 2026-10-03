@@ -1007,6 +1007,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     addParameter(filterParallelBalanceParam);
     addParameter(fxSeparateOutputParam);
     parameterCatalog.attachTo(*this);
+    initialiseVoiceModulationTargets();
 
     buildLfoAssignableTargets();
 
@@ -1900,6 +1901,7 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
                               || ! shapedMod[static_cast<std::size_t>(envIndex)].isPlainAdsr();
     }
 
+    buildVoiceModulationPlan(voiceModulationPlan);
     for (int voiceIndex = 0; voiceIndex < kPolyphonyVoiceCount; ++voiceIndex)
     {
         if (auto* voice = typedVoices[static_cast<std::size_t>(voiceIndex)])
@@ -1922,6 +1924,7 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
             voice->setControlBlockLength(buffer.getNumSamples());
             voice->setSubOscillatorSettings(subOsc);
             voice->setOscillatorLayerSettings(oscillatorLayers);
+            voice->setVoiceModulationPlan(voiceModulationPlan);
             voice->setPerformanceModulation(pitchBend,
                                             modWheel,
                                             bendRange,

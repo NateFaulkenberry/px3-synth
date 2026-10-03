@@ -104,11 +104,18 @@ float PX3SynthAudioProcessor::applyModulationToNormalizedValue(juce::RangedAudio
         enabledSources[index] = getLfoEnabledParam(i).get() && isLfoClockAvailable(i);
         depths[index] = getLfoAmountParam(i).get();
     }
+    // Envelopes are per-voice sources. For a destination that lives inside the
+    // voice, each voice adds its own envelopes (VoiceModulation.h), so they are
+    // left out here rather than applied as one cross-voice average.
+    const auto parameterIndex = parameter->getParameterIndex();
+    const auto envelopesAreVoiceLocal = parameterIndex >= 0
+                                        && static_cast<std::size_t>(parameterIndex) < voiceModulatedParameter.size()
+                                        && voiceModulatedParameter[static_cast<std::size_t>(parameterIndex)];
     for (int i = 0; i < kEnvelopeSourceCount; ++i)
     {
         const auto index = static_cast<std::size_t>(i);
         signals[static_cast<std::size_t>(kLfoSourceCount + i)] = modulationEnvelopeValues[index].load(std::memory_order_relaxed);
-        enabledSources[static_cast<std::size_t>(kLfoSourceCount + i)] = getEnvelopeEnabledParam(i).get();
+        enabledSources[static_cast<std::size_t>(kLfoSourceCount + i)] = getEnvelopeEnabledParam(i).get() && ! envelopesAreVoiceLocal;
         depths[static_cast<std::size_t>(kLfoSourceCount + i)] = getEnvelopeAmountParam(i).get();
     }
     for (int macro = 0; macro < kMacroCount; ++macro)
@@ -1502,4 +1509,88 @@ bool PX3SynthAudioProcessor::compileModulationGraph(
     const auto compiled = plan.compile(sources, { destinations.data(), static_cast<std::size_t>(getParameters().size()) }, routes, error);
     graphError = error;
     return compiled;
+}
+
+
+void PX3SynthAudioProcessor::initialiseVoiceModulationTargets()
+{
+    using T = px3::synth::VoiceModTarget;
+    auto set = [this](T target, juce::AudioParameterFloat& parameter)
+    {
+        voiceModTargets[static_cast<std::size_t>(target)] = &parameter;
+        const auto index = parameter.getParameterIndex();
+        if (index >= 0 && static_cast<std::size_t>(index) < voiceModulatedParameter.size())
+        {
+            voiceModulatedParameter[static_cast<std::size_t>(index)] = true;
+        }
+    };
+    set(T::filter1Cutoff, getFilterCutoffParam(0));
+    set(T::filter2Cutoff, getFilterCutoffParam(1));
+    set(T::filter1Resonance, getFilterResonanceParam(0));
+    set(T::filter2Resonance, getFilterResonanceParam(1));
+    for (int osc = 0; osc < kOscillatorSourceCount; ++osc)
+    {
+        set(static_cast<T>(static_cast<int>(T::osc1Fine) + osc), getOscillatorFineParam(osc));
+        set(static_cast<T>(static_cast<int>(T::osc1PitchMod) + osc), getOscillatorPitchModParam(osc));
+        set(static_cast<T>(static_cast<int>(T::osc1MacroA) + osc), getOscillatorMacroAParam(osc));
+        set(static_cast<T>(static_cast<int>(T::osc1MacroB) + osc), getOscillatorMacroBParam(osc));
+        set(static_cast<T>(static_cast<int>(T::osc1MacroC) + osc), getOscillatorMacroCParam(osc));
+        set(static_cast<T>(static_cast<int>(T::osc1WtPosition) + osc), getOscillatorWtPositionParam(osc));
+    }
+}
+
+void PX3SynthAudioProcessor::buildVoiceModulationPlan(px3::synth::VoiceModulationPlan& plan) const
+{
+    plan.active = false;
+    auto graph = modulationGraph.read();
+    if (! graph) { return; }
+
+    // The same depth table the global evaluation uses.
+    auto depths = graph->depths();
+    for (int i = 0; i < kEnvelopeSourceCount; ++i)
+    {
+        depths[static_cast<std::size_t>(kLfoSourceCount + i)] = getEnvelopeAmountParam(i).get();
+    }
+    for (int slot = 0; slot < kGraphRouteSlots; ++slot)
+    {
+        depths[static_cast<std::size_t>(kLfoSourceCount + kEnvelopeSourceCount + kMacroRouteSlots + slot)]
+            = graphRouteDepthParams[static_cast<std::size_t>(slot)]->get();
+    }
+
+    for (int target = 0; target < px3::synth::kVoiceModTargetCount; ++target)
+    {
+        auto& destination = plan.destinations[static_cast<std::size_t>(target)];
+        destination.routeCount = 0;
+        auto* parameter = voiceModTargets[static_cast<std::size_t>(target)];
+        if (parameter == nullptr) { continue; }
+
+        const auto base = juce::jlimit(0.0f, 1.0f, static_cast<juce::RangedAudioParameter*>(parameter)->getValue());
+        graph->forEachRouteTo(parameter->getParameterIndex(), [&](const px3::synth::ModulationRoute& route,
+                                                                  const px3::synth::ModulationSourceDescriptor& source)
+        {
+            const auto envelope = route.source - kLfoSourceCount;
+            if (envelope < 0 || envelope >= kEnvelopeSourceCount || ! getEnvelopeEnabledParam(envelope).get()
+                || destination.routeCount >= px3::synth::kVoiceModRoutesPerTarget)
+            {
+                return;
+            }
+            auto& voiceRoute = destination.routes[static_cast<std::size_t>(destination.routeCount++)];
+            voiceRoute.envelope = envelope;
+            voiceRoute.depth = static_cast<std::size_t>(route.slot) < depths.size()
+                                   ? depths[static_cast<std::size_t>(route.slot)] : route.depth;
+            voiceRoute.sourceBipolar = source.bipolar;
+            voiceRoute.polarity = route.polarity;
+            voiceRoute.curve = route.curve;
+        });
+        if (destination.routeCount == 0) { continue; }
+
+        float unfolded = base;
+        applyModulationToNormalizedValue(parameter, base, nullptr, nullptr, &unfolded);
+        destination.base = base;
+        destination.unfolded = unfolded;
+        destination.start = parameter->range.start;
+        destination.end = parameter->range.end;
+        destination.skew = parameter->range.skew;
+        plan.active = true;
+    }
 }

@@ -4,6 +4,7 @@
 
 #include "AmpEnvelope.h"
 #include "EnvelopeGenerator.h"
+#include "VoiceModulation.h"
 #include "PX3Diagnostics.h"
 #include "SmoothedGain.h"
 #include "EnvelopeTypes.h"
@@ -90,6 +91,9 @@ public:
     // pushed for that block ramp across exactly this many.
     void setControlBlockLength(int samples) noexcept { controlBlockLength = juce::jmax(1, samples); }
     void setOscillatorLayerSettings(const std::array<OscillatorLayerSettings, kOscillatorSourceCount>& settings);
+    // Adds this voice's own envelopes to the destinations that live in it.
+    // Called after the settings above, every block.
+    void setVoiceModulationPlan(const px3::synth::VoiceModulationPlan& plan);
     void setPerformanceModulation(float pitchBendNormalized,
                                   float modWheelNormalized,
                                   float pitchBendRangeSemitones,

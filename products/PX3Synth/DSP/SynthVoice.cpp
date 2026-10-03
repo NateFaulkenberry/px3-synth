@@ -1371,6 +1371,65 @@ void SynthVoice::setOscillatorLayerSettings(const std::array<OscillatorLayerSett
     }
 }
 
+void SynthVoice::setVoiceModulationPlan(const px3::synth::VoiceModulationPlan& plan)
+{
+    if (! plan.active) { return; }
+
+    using T = px3::synth::VoiceModTarget;
+    std::array<bool, kOscillatorSourceCount> oscillatorChanged { { false, false, false } };
+    for (int target = 0; target < px3::synth::kVoiceModTargetCount; ++target)
+    {
+        const auto& d = plan.destinations[static_cast<std::size_t>(target)];
+        if (d.routeCount == 0) { continue; }
+
+        auto delta = 0.0f;
+        for (int r = 0; r < d.routeCount; ++r)
+        {
+            const auto& route = d.routes[static_cast<std::size_t>(r)];
+            const auto envelope = static_cast<std::size_t>(juce::jlimit(0, 2, route.envelope));
+            delta += px3::synth::routeContribution(route.sourceBipolar, modEnvelopeValues[envelope],
+                                                   route.polarity, route.curve, route.depth, d.base);
+        }
+        const auto value = px3::synth::rangeFrom0to1(d, px3::synth::foldUnit(d.unfolded + delta));
+
+        const auto t = static_cast<T>(target);
+        const auto osc = [&](T first) { return static_cast<std::size_t>(target - static_cast<int>(first)); };
+        switch (t)
+        {
+            case T::filter1Cutoff: filterSettings[0].cutoffHz = value; break;
+            case T::filter2Cutoff: filterSettings[1].cutoffHz = value; break;
+            case T::filter1Resonance: filterSettings[0].resonanceQ = value; break;
+            case T::filter2Resonance: filterSettings[1].resonanceQ = value; break;
+            case T::osc1Fine: case T::osc2Fine: case T::osc3Fine:
+                oscillatorLayerSettings[osc(T::osc1Fine)].fineCents = value; break;
+            case T::osc1PitchMod: case T::osc2PitchMod: case T::osc3PitchMod:
+                oscillatorLayerSettings[osc(T::osc1PitchMod)].pitchModSemitones = value; break;
+            case T::osc1MacroA: case T::osc2MacroA: case T::osc3MacroA:
+                oscillatorLayerSettings[osc(T::osc1MacroA)].oscillator.macroA = juce::jlimit(0.0f, 1.0f, value);
+                oscillatorChanged[osc(T::osc1MacroA)] = true; break;
+            case T::osc1MacroB: case T::osc2MacroB: case T::osc3MacroB:
+                oscillatorLayerSettings[osc(T::osc1MacroB)].oscillator.macroB = juce::jlimit(0.0f, 1.0f, value);
+                oscillatorChanged[osc(T::osc1MacroB)] = true; break;
+            case T::osc1MacroC: case T::osc2MacroC: case T::osc3MacroC:
+                oscillatorLayerSettings[osc(T::osc1MacroC)].oscillator.macroC = juce::jlimit(0.0f, 1.0f, value);
+                oscillatorChanged[osc(T::osc1MacroC)] = true; break;
+            case T::osc1WtPosition: case T::osc2WtPosition: case T::osc3WtPosition:
+                oscillatorLayerSettings[osc(T::osc1WtPosition)].oscillator.wtPosition = juce::jlimit(0.0f, 1.0f, value);
+                oscillatorChanged[osc(T::osc1WtPosition)] = true; break;
+            case T::count: break;
+        }
+    }
+
+    for (int oscIndex = 0; oscIndex < kOscillatorSourceCount; ++oscIndex)
+    {
+        if (oscillatorChanged[static_cast<std::size_t>(oscIndex)])
+        {
+            oscillatorUnits[static_cast<std::size_t>(oscIndex)].setSettings(
+                oscillatorLayerSettings[static_cast<std::size_t>(oscIndex)].oscillator, controlBlockLength);
+        }
+    }
+}
+
 void SynthVoice::setPerformanceModulation(float pitchBendNormalized,
                                           float modWheelNormalized,
                                           float newPitchBendRangeSemitones,

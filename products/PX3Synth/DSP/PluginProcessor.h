@@ -17,6 +17,7 @@
 #include "Lucy.h"
 #include "LucyControlModel.h"
 #include "StereoSpread.h"
+#include "VoiceModulation.h"
 #include "Mood.h"
 #include "MoodControlModel.h"
 #include "PianoKeyboard.h"
@@ -1072,6 +1073,14 @@ private:
     juce::AudioParameterChoice* lfoWaveformParam { nullptr };
     std::array<juce::AudioParameterFloat*, kEnvelopeSourceCount> envelopeAmountParams { { nullptr, nullptr, nullptr } };
     std::array<juce::AudioParameterBool*, kEnvelopeSourceCount> envelopeLoopParams { { nullptr, nullptr, nullptr } };
+    // Per-voice modulation (VoiceModulation.h): the parameters whose envelope
+    // routes are evaluated inside each voice, and a flag per parameter index so
+    // the global path leaves those routes out.
+    std::array<juce::AudioParameterFloat*, px3::synth::kVoiceModTargetCount> voiceModTargets {};
+    std::array<bool, 2048> voiceModulatedParameter {};
+    px3::synth::VoiceModulationPlan voiceModulationPlan;
+    void initialiseVoiceModulationTargets();
+    void buildVoiceModulationPlan(px3::synth::VoiceModulationPlan& plan) const;
     std::array<juce::AudioParameterFloat*, kEnvelopeSourceCount> envelopeKeyTrackParams { { nullptr, nullptr, nullptr } };
 
     struct LfoAssignableTarget
