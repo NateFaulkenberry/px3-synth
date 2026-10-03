@@ -132,6 +132,26 @@ void testUILayout()
               && roundTripped.getStyleTokens().size() == 4,
           error);
 
+    roundTripped.beginTransaction();
+    const auto presentationChanged = roundTripped.setNodePresentation(
+        "osc1.octave", px3::ui::InstrumentSceneNodeKind::parameterControl,
+        "OSC 1 OCTAVE", "voice.osc1.tuning.octave", error);
+    const auto presentationCommitted = roundTripped.commitTransaction();
+    InstrumentSceneDocument presentationRoundTrip;
+    const auto presentationLoaded = presentationRoundTrip.loadJson(roundTripped.toJson(), error);
+    control = presentationRoundTrip.findNode("osc1.octave");
+    check("InstrumentScene_EditsAndSerializesControlPresentation",
+          presentationChanged && presentationCommitted && presentationLoaded
+              && control != nullptr && control->label == "OSC 1 OCTAVE"
+              && control->bindingId == "voice.osc1.tuning.octave",
+          error);
+    const auto presentationBeforeReject = roundTripped.toJson();
+    const auto invalidPresentation = ! roundTripped.setNodePresentation(
+        "osc1.octave", InstrumentSceneNodeKind::parameterControl, "BROKEN", {}, error);
+    check("InstrumentScene_RejectsUnboundControlPresentationWithoutMutation",
+          invalidPresentation && roundTripped.toJson() == presentationBeforeReject,
+          error);
+
     const auto previous = panel != nullptr ? panel->bounds : juce::Rectangle<float>();
     const auto rejectedBounds
         = ! roundTripped.setBounds("surface.osc", { 0.8f, 0.2f, 0.6f, 0.5f }, error);

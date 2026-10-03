@@ -586,6 +586,39 @@ bool InstrumentSceneDocument::setVisible(const juce::String& id, bool visible, j
     return true;
 }
 
+bool InstrumentSceneDocument::setNodePresentation(const juce::String& id,
+                                                   InstrumentSceneNodeKind kind,
+                                                   const juce::String& label,
+                                                   const juce::String& bindingId,
+                                                   juce::String& error)
+{
+    const auto target = std::find_if(nodes.begin(), nodes.end(), [&id](const auto& node)
+    {
+        return node.id == id;
+    });
+    if (target == nodes.end())
+    {
+        error = "Unknown scene node: " + id;
+        return false;
+    }
+
+    const auto previousKind = target->kind;
+    const auto previousLabel = target->label;
+    const auto previousBinding = target->bindingId;
+    target->kind = kind;
+    target->label = label;
+    target->bindingId = bindingId;
+    if (validate(error))
+    {
+        return true;
+    }
+
+    target->kind = previousKind;
+    target->label = previousLabel;
+    target->bindingId = previousBinding;
+    return false;
+}
+
 const InstrumentSceneNode* InstrumentSceneDocument::findNode(const juce::String& id) const noexcept
 {
     const auto index = std::find_if(nodes.begin(), nodes.end(), [&id](const auto& region)

@@ -30,9 +30,9 @@ UILayoutDesignerWindow::UILayoutDesignerWindow(const px3::ui::InstrumentSceneDoc
 {
     setUsingNativeTitleBar(true);
     setResizable(true, true);
-    setResizeLimits(360, 780, 780, 980);
+    setResizeLimits(360, 900, 780, 1100);
     setAlwaysOnTop(true);
-    setBounds(72, 72, 520, 800);
+    setBounds(72, 72, 520, 920);
 
     regionLabel.setText("NODE", juce::dontSendNotification);
     regionLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(220, 224, 222));
@@ -54,6 +54,60 @@ UILayoutDesignerWindow::UILayoutDesignerWindow(const px3::ui::InstrumentSceneDoc
         }
         beginPropertyEdit();
         setStatus(callbacks.visibilityChanged(selectedRegionId, visibilityToggle.getToggleState()));
+        endPropertyEdit();
+    };
+
+    kindLabel.setText("KIND", juce::dontSendNotification);
+    kindLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(174, 183, 180));
+    kindLabel.setFont(juce::FontOptions(10.5f, juce::Font::bold));
+    addAndMakeVisible(kindLabel);
+    kindSelector.addItem("Container", 1);
+    kindSelector.addItem("Parameter Control", 2);
+    kindSelector.addItem("Display", 3);
+    kindSelector.addItem("Decoration", 4);
+    addAndMakeVisible(kindSelector);
+    kindSelector.onChange = [this]
+    {
+        if (suppressCallbacks) { return; }
+        beginPropertyEdit();
+        applyNodePresentationFromInspector();
+        endPropertyEdit();
+    };
+
+    labelEditorLabel.setText("LABEL", juce::dontSendNotification);
+    labelEditorLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(174, 183, 180));
+    labelEditorLabel.setFont(juce::FontOptions(10.5f, juce::Font::bold));
+    addAndMakeVisible(labelEditorLabel);
+    labelEditor.setMultiLine(false);
+    labelEditor.setColour(juce::TextEditor::textColourId, juce::Colour::fromRGB(235, 238, 235));
+    labelEditor.setColour(juce::TextEditor::backgroundColourId, juce::Colour::fromRGB(17, 19, 20));
+    labelEditor.onReturnKey = [this] { applyNodePresentationFromInspector(); };
+    labelEditor.onFocusLost = [this] { applyNodePresentationFromInspector(); };
+    addAndMakeVisible(labelEditor);
+
+    bindingLabel.setText("PARAMETER", juce::dontSendNotification);
+    bindingLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(174, 183, 180));
+    bindingLabel.setFont(juce::FontOptions(10.5f, juce::Font::bold));
+    addAndMakeVisible(bindingLabel);
+    bindingSelector.addItem("None", 1);
+    bindingIds.add(juce::String());
+    auto bindingItemId = 2;
+    for (const auto& option : callbacks.bindingOptions)
+    {
+        bindingIds.add(option.id);
+        bindingSelector.addItem(option.id + "  |  " + option.label, bindingItemId++);
+    }
+    addAndMakeVisible(bindingSelector);
+    bindingSelector.onChange = [this]
+    {
+        if (suppressCallbacks || selectedRegionId.isEmpty()) { return; }
+        const auto* node = document.findNode(selectedRegionId);
+        if (node == nullptr || node->kind != px3::ui::InstrumentSceneNodeKind::parameterControl)
+        {
+            return;
+        }
+        beginPropertyEdit();
+        applyNodePresentationFromInspector();
         endPropertyEdit();
     };
 
@@ -307,6 +361,21 @@ void UILayoutDesignerWindow::resized()
     visibilityToggle.setBounds(row.removeFromRight(88));
     row.removeFromRight(8);
     styleSelector.setBounds(row);
+    area.removeFromTop(8);
+    row = area.removeFromTop(30);
+    kindLabel.setBounds(row.removeFromLeft(66));
+    row.removeFromLeft(8);
+    kindSelector.setBounds(row);
+    area.removeFromTop(8);
+    row = area.removeFromTop(30);
+    labelEditorLabel.setBounds(row.removeFromLeft(66));
+    row.removeFromLeft(8);
+    labelEditor.setBounds(row);
+    area.removeFromTop(8);
+    row = area.removeFromTop(30);
+    bindingLabel.setBounds(row.removeFromLeft(66));
+    row.removeFromLeft(8);
+    bindingSelector.setBounds(row);
     area.removeFromTop(12);
 
     constexpr int rowHeight = 34;
@@ -336,6 +405,15 @@ void UILayoutDesignerWindow::refreshInspector()
     suppressCallbacks = true;
     visibilityToggle.setEnabled(region != nullptr);
     visibilityToggle.setToggleState(region != nullptr && region->visible, juce::dontSendNotification);
+    kindSelector.setSelectedId(region != nullptr ? static_cast<int>(region->kind) + 1 : 1,
+                               juce::dontSendNotification);
+    labelEditor.setText(region != nullptr ? region->label : juce::String(), juce::dontSendNotification);
+    const auto bindingIndex = region != nullptr ? bindingIds.indexOf(region->bindingId) : 0;
+    bindingSelector.setSelectedId(bindingIndex >= 0 ? bindingIndex + 1 : 1,
+                                  juce::dontSendNotification);
+    bindingSelector.setEnabled(region != nullptr);
+    labelEditor.setEnabled(region != nullptr);
+    kindSelector.setEnabled(region != nullptr);
     const auto styleIndex = region != nullptr ? styleIds.indexOf(region->styleToken) : -1;
     styleSelector.setSelectedId(styleIndex >= 0 ? styleIndex + 1 : 0, juce::dontSendNotification);
     const auto parentIndex = region != nullptr ? parentIds.indexOf(region->parentId) : -1;
@@ -449,6 +527,21 @@ void UILayoutDesignerWindow::applySizeConstraintsFromInspector()
     const juce::Point<float> maximumSize(static_cast<float>(propertySliders[10].getValue()),
                                          static_cast<float>(propertySliders[11].getValue()));
     setStatus(callbacks.sizeConstraintsChanged(selectedRegionId, minimumSize, maximumSize));
+}
+
+void UILayoutDesignerWindow::applyNodePresentationFromInspector()
+{
+    if (suppressCallbacks || callbacks.presentationChanged == nullptr || selectedRegionId.isEmpty())
+    {
+        return;
+    }
+    const auto kind = static_cast<px3::ui::InstrumentSceneNodeKind>(kindSelector.getSelectedId() - 1);
+    const auto bindingIndex = bindingSelector.getSelectedId() - 1;
+    const auto bindingId = kind == px3::ui::InstrumentSceneNodeKind::parameterControl
+                               && juce::isPositiveAndBelow(bindingIndex, bindingIds.size())
+                             ? bindingIds[bindingIndex]
+                             : juce::String();
+    setStatus(callbacks.presentationChanged(selectedRegionId, kind, labelEditor.getText(), bindingId));
 }
 
 void UILayoutDesignerWindow::beginPropertyEdit()

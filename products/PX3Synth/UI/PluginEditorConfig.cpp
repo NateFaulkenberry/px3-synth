@@ -351,7 +351,26 @@ void PX3SynthAudioProcessorEditor::openUILayoutDesigner()
         addAndMakeVisible(*uiSelectionOverlay);
 
         UILayoutDesignerWindow::Callbacks callbacks;
+        for (const auto& entry : audioProcessor.getParameterCatalog().entries())
+        {
+            callbacks.bindingOptions.push_back({ entry.id, entry.name });
+        }
         callbacks.selectionChanged = [this](const juce::String& id) { selectLayoutRegion(id); };
+        callbacks.presentationChanged = [this](const juce::String& id,
+                                               px3::ui::InstrumentSceneNodeKind kind,
+                                               const juce::String& label,
+                                               const juce::String& bindingId)
+        {
+            if (kind == px3::ui::InstrumentSceneNodeKind::parameterControl
+                && audioProcessor.getParameterCatalog().find(bindingId) == nullptr)
+            {
+                return juce::String("Select a parameter from the catalog");
+            }
+            juce::String error;
+            if (! uiLayout.setNodePresentation(id, kind, label, bindingId, error)) { return error; }
+            resized();
+            return juce::String("Updated presentation for ") + id;
+        };
         callbacks.boundsChanged = [this](const juce::String& id, juce::Rectangle<float> bounds)
         {
             return updateLayoutRegionBounds(id, bounds);

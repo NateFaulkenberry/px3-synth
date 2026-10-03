@@ -13,6 +13,17 @@ class UILayoutDesignerWindow final : public juce::DocumentWindow
 public:
     struct Callbacks
     {
+        struct BindingOption
+        {
+            juce::String id;
+            juce::String label;
+        };
+
+        std::vector<BindingOption> bindingOptions;
+        std::function<juce::String(const juce::String&,
+                                   px3::ui::InstrumentSceneNodeKind,
+                                   const juce::String&,
+                                   const juce::String&)> presentationChanged;
         std::function<void(const juce::String&)> selectionChanged;
         std::function<juce::String(const juce::String&, juce::Rectangle<float>)> boundsChanged;
         std::function<juce::String(const juce::String&, int)> orderChanged;
@@ -47,6 +58,7 @@ private:
     void applyParentFromInspector();
     void applyFlowFromInspector();
     void applySizeConstraintsFromInspector();
+    void applyNodePresentationFromInspector();
     void beginPropertyEdit();
     void endPropertyEdit();
 
@@ -60,6 +72,12 @@ private:
     juce::Label layoutLabel;
     juce::ComboBox styleSelector;
     juce::Label styleLabel;
+    juce::ComboBox kindSelector;
+    juce::Label kindLabel;
+    juce::TextEditor labelEditor;
+    juce::Label labelEditorLabel;
+    juce::ComboBox bindingSelector;
+    juce::Label bindingLabel;
     juce::ToggleButton visibilityToggle { "Visible" };
     std::array<juce::Label, 12> propertyLabels;
     std::array<juce::Slider, 12> propertySliders;
@@ -70,6 +88,7 @@ private:
     juce::StringArray regionIds;
     juce::StringArray parentIds;
     juce::StringArray styleIds;
+    juce::StringArray bindingIds;
     juce::String selectedRegionId;
     bool suppressCallbacks { false };
     bool propertyEditActive { false };

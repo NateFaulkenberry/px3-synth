@@ -88,6 +88,11 @@ public:
                    juce::String& error);
     bool setOrder(const juce::String& id, int order, juce::String& error);
     bool setVisible(const juce::String& id, bool visible, juce::String& error);
+    bool setNodePresentation(const juce::String& id,
+                            InstrumentSceneNodeKind kind,
+                            const juce::String& label,
+                            const juce::String& bindingId,
+                            juce::String& error);
 
     void beginTransaction();
     bool commitTransaction();
