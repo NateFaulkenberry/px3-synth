@@ -125,6 +125,15 @@ void AmpEnvelopeComponent::setPanelContentBounds(juce::Rectangle<int> panelConte
     repaint();
 }
 
+void AmpEnvelopeComponent::setHardwareFaceplate(juce::Colour accent)
+{
+    if (envelopeGraph != nullptr)
+    {
+        envelopeGraph->setHardwareFaceplate(true);
+        envelopeGraph->setAccentColour(accent);
+    }
+}
+
 
 void AmpEnvelopeComponent::setUIConfig(std::shared_ptr<const UIConfig> configIn)
 {

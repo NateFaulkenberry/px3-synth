@@ -360,6 +360,7 @@ public:
     void setConfig(std::shared_ptr<const UIConfig> config);
     // The parent panel's content box: the reference for percentage dimensions.
     void setPanelContentBounds(juce::Rectangle<int> panelContent);
+    void setHardwareFaceplate(bool enabled) noexcept { hardwareFaceplate = enabled; }
 
     // Resolves the card box from the component's own bounds. Call from resized().
     void layout(juce::Rectangle<int> componentBounds);
@@ -382,6 +383,8 @@ private:
     juce::Rectangle<int> panelContentBounds;
     juce::Rectangle<int> lastComponentBounds;
     juce::Rectangle<float> cardBounds;
+    bool hardwareFaceplate { false };
+    CardStyle paintStyle() const;
 };
 
 // Draws border, background, gloss and title. Nothing else: what goes inside the

@@ -440,6 +440,35 @@ bool InstrumentSceneDocument::setFlowProperties(const juce::String& id,
     return false;
 }
 
+bool InstrumentSceneDocument::setSizeConstraints(const juce::String& id,
+                                                  juce::Point<float> minimumSize,
+                                                  juce::Point<float> maximumSize,
+                                                  juce::String& error)
+{
+    const auto index = std::find_if(nodes.begin(), nodes.end(), [&id](const auto& node)
+    {
+        return node.id == id;
+    });
+    if (index == nodes.end())
+    {
+        error = "Unknown scene node: " + id;
+        return false;
+    }
+
+    const auto previousMinimum = index->minimumSize;
+    const auto previousMaximum = index->maximumSize;
+    index->minimumSize = minimumSize;
+    index->maximumSize = maximumSize;
+    if (validate(error))
+    {
+        return true;
+    }
+
+    index->minimumSize = previousMinimum;
+    index->maximumSize = previousMaximum;
+    return false;
+}
+
 bool InstrumentSceneDocument::setParentNode(const juce::String& id,
                                             const juce::String& parentId,
                                             juce::String& error)

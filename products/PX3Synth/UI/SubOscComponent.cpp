@@ -38,6 +38,12 @@ void SubOscComponent::setAccentColour(juce::Colour accentIn)
     repaint();
 }
 
+void SubOscComponent::setHardwareFaceplate(bool enabled)
+{
+    card.setHardwareFaceplate(enabled);
+    repaint();
+}
+
 void SubOscComponent::setUIConfig(std::shared_ptr<const UIConfig> configIn)
 {
     uiConfig = std::move(configIn);

@@ -35,6 +35,7 @@ public:
                         juce::Colour accentIn);
 
     void setAccentColour(juce::Colour accentIn);
+    void setHardwareFaceplate(bool enabled);
     // Which oscillator this instance is. Drives both the card's title, which is
     // the component's own content, and which style block it reads - so Osc 1,
     // 2 and 3 share one implementation and can still be styled independently.

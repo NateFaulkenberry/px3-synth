@@ -234,7 +234,16 @@ void FltPanel::setSceneStyle(juce::Colour background,
     sceneBorderWidth = juce::jmax(0.0f, borderWidth);
     hasSceneStyle = true;
 
-    const auto tint = [foreground](auto&& self, juce::Component& component) -> void
+    for (auto& filterComponent : filterComponents)
+    {
+        if (filterComponent != nullptr)
+        {
+            filterComponent->setAccentColour(accentIn);
+            filterComponent->setHardwareFaceplate(true);
+        }
+    }
+
+    const auto tint = [foreground, accentIn](auto&& self, juce::Component& component) -> void
     {
         if (dynamic_cast<juce::Label*>(&component) != nullptr)
         {
@@ -243,6 +252,10 @@ void FltPanel::setSceneStyle(juce::Colour background,
         if (dynamic_cast<juce::ComboBox*>(&component) != nullptr)
         {
             component.setColour(juce::ComboBox::textColourId, foreground);
+        }
+        if (auto* slider = dynamic_cast<juce::Slider*>(&component))
+        {
+            slider->setColour(juce::Slider::rotarySliderFillColourId, accentIn);
         }
         for (int i = 0; i < component.getNumChildComponents(); ++i)
         {

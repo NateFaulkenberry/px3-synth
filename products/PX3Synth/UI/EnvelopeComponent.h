@@ -36,6 +36,7 @@ public:
     ~EnvelopeComponent() override;
 
     void setAccentColour(juce::Colour accentIn);
+    void setHardwareFaceplate(bool useHardwareFaceplate);
     void setUIConfig(std::shared_ptr<const UIConfig> configIn);
 
     // The card key and title this component draws under. They default to the
@@ -239,6 +240,7 @@ private:
     float lastSustain { -1.0f };
     float lastRelease { -1.0f };
     bool currentEnabled { true };
+    bool hardwareFaceplate { false };
     bool adsrOnly { false };
     juce::String configPrefix;
     juce::String cardStyleKey;

@@ -22,6 +22,7 @@ public:
                     juce::Colour accentIn);
 
     void setAccentColour(juce::Colour accentIn);
+    void setHardwareFaceplate(bool useHardwareFaceplate);
     void setUIConfig(std::shared_ptr<const UIConfig> configIn);
     // The filter's controls belong to FltPanel, not to this component - they
     // are its siblings. So this lays out the card and its rows and hands the

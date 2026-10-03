@@ -80,6 +80,12 @@ void OscillatorComponent::setAccentColour(juce::Colour accentIn)
     repaint();
 }
 
+void OscillatorComponent::setHardwareFaceplate(bool enabled)
+{
+    card.setHardwareFaceplate(enabled);
+    repaint();
+}
+
 void OscillatorComponent::setWavetableControls(juce::ComboBox& tableBox,
                                                juce::Label& tableLabel,
                                                juce::Slider& positionSlider,

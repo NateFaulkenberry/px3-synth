@@ -36,6 +36,12 @@ void FilterComponent::setAccentColour(juce::Colour accentIn)
     repaint();
 }
 
+void FilterComponent::setHardwareFaceplate(bool useHardwareFaceplate)
+{
+    card.setHardwareFaceplate(useHardwareFaceplate);
+    repaint();
+}
+
 void FilterComponent::setUIConfig(std::shared_ptr<const UIConfig> configIn)
 {
     uiConfig = std::move(configIn);

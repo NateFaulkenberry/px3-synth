@@ -112,6 +112,23 @@ void EnvelopeComponent::setAccentColour(juce::Colour accentIn)
     repaint();
 }
 
+void EnvelopeComponent::setHardwareFaceplate(bool useHardwareFaceplate)
+{
+    hardwareFaceplate = useHardwareFaceplate;
+    card.setHardwareFaceplate(useHardwareFaceplate);
+    if (adsrKnobsBuilt)
+    {
+        constexpr const char* fullNames[] { "ATTACK", "DECAY", "SUSTAIN", "RELEASE" };
+        constexpr const char* compactNames[] { "ATK", "DEC", "SUS", "REL" };
+        for (std::size_t i = 0; i < adsrKnobs.size(); ++i)
+        {
+            adsrKnobs[i].label.setText(hardwareFaceplate ? compactNames[i] : fullNames[i],
+                                       juce::dontSendNotification);
+        }
+    }
+    repaint();
+}
+
 void EnvelopeComponent::setUIConfig(std::shared_ptr<const UIConfig> configIn)
 {
     breakpointEditor.setUIConfig(configIn);
@@ -550,7 +567,8 @@ void EnvelopeComponent::buildAdsrKnobs()
     if (adsrKnobsBuilt || ! adsrKnobsWanted()) { return; }
 
     juce::AudioParameterFloat* params[4] = { &attack, &decay, &sustain, &release };
-    const char* names[4] = { "ATTACK", "DECAY", "SUSTAIN", "RELEASE" };
+    constexpr const char* fullNames[] { "ATTACK", "DECAY", "SUSTAIN", "RELEASE" };
+    constexpr const char* compactNames[] { "ATK", "DEC", "SUS", "REL" };
 
     for (int i = 0; i < 4; ++i)
     {
@@ -564,7 +582,8 @@ void EnvelopeComponent::buildAdsrKnobs()
         if (knobLookAndFeel != nullptr) { entry.knob.setLookAndFeel(knobLookAndFeel); }
         addAndMakeVisible(entry.knob);
 
-        entry.label.setText(names[i], juce::dontSendNotification);
+        entry.label.setText(hardwareFaceplate ? compactNames[i] : fullNames[i],
+                    juce::dontSendNotification);
         entry.label.setJustificationType(juce::Justification::centred);
         entry.label.setFont(juce::FontOptions(11.0f));
         entry.label.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));

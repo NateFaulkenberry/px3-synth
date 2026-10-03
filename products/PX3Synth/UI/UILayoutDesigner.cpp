@@ -30,9 +30,9 @@ UILayoutDesignerWindow::UILayoutDesignerWindow(const px3::ui::InstrumentSceneDoc
 {
     setUsingNativeTitleBar(true);
     setResizable(true, true);
-    setResizeLimits(360, 620, 780, 900);
+    setResizeLimits(360, 780, 780, 980);
     setAlwaysOnTop(true);
-    setBounds(72, 72, 520, 640);
+    setBounds(72, 72, 520, 800);
 
     regionLabel.setText("NODE", juce::dontSendNotification);
     regionLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(220, 224, 222));
@@ -96,8 +96,9 @@ UILayoutDesignerWindow::UILayoutDesignerWindow(const px3::ui::InstrumentSceneDoc
     addAndMakeVisible(layoutSelector);
     layoutSelector.onChange = [this] { applyLayoutFromInspector(); };
 
-    constexpr std::array<const char*, 8> propertyNames {
-        "X", "Y", "WIDTH", "HEIGHT", "ORDER", "FLEX GROW", "SPACING", "GRID COLUMNS"
+    constexpr std::array<const char*, 12> propertyNames {
+        "X", "Y", "WIDTH", "HEIGHT", "ORDER", "FLEX GROW", "SPACING", "GRID COLUMNS",
+        "MIN WIDTH", "MIN HEIGHT", "MAX WIDTH", "MAX HEIGHT"
     };
     for (std::size_t i = 0; i < propertySliders.size(); ++i)
     {
@@ -110,8 +111,8 @@ UILayoutDesignerWindow::UILayoutDesignerWindow(const px3::ui::InstrumentSceneDoc
         auto& slider = propertySliders[i];
         slider.setSliderStyle(juce::Slider::LinearBar);
         slider.setTextBoxStyle(juce::Slider::TextBoxRight, false, 64, 22);
-        const auto maximum = i < 4 ? 1.0 : (i == 4 || i == 7 ? 32.0 : (i == 5 ? 8.0 : 160.0));
-        const auto step = i < 4 ? 0.001 : ((i == 4 || i == 7 || i == 6) ? 1.0 : 0.1);
+        const auto maximum = i < 4 ? 1.0 : (i == 4 || i == 7 ? 32.0 : (i == 5 ? 8.0 : (i == 6 ? 160.0 : 4096.0)));
+        const auto step = i < 4 ? 0.001 : ((i == 4 || i == 6 || i == 7 || i >= 8) ? 1.0 : 0.1);
         slider.setRange(0.0, maximum, step);
         slider.setColour(juce::Slider::textBoxTextColourId, juce::Colour::fromRGB(235, 238, 235));
         slider.setColour(juce::Slider::textBoxBackgroundColourId, juce::Colour::fromRGB(17, 19, 20));
@@ -133,6 +134,10 @@ UILayoutDesignerWindow::UILayoutDesignerWindow(const px3::ui::InstrumentSceneDoc
             if (i == 4)
             {
                 applyOrderFromInspector();
+            }
+            else if (i >= 8)
+            {
+                applySizeConstraintsFromInspector();
             }
             else if (i >= 5)
             {
@@ -345,6 +350,10 @@ void UILayoutDesignerWindow::refreshInspector()
     propertySliders[5].setValue(region != nullptr ? region->flexGrow : 1.0f, juce::dontSendNotification);
     propertySliders[6].setValue(region != nullptr ? region->spacing : 0.0f, juce::dontSendNotification);
     propertySliders[7].setValue(region != nullptr ? region->gridColumns : 0, juce::dontSendNotification);
+    propertySliders[8].setValue(region != nullptr ? region->minimumSize.x : 0.0f, juce::dontSendNotification);
+    propertySliders[9].setValue(region != nullptr ? region->minimumSize.y : 0.0f, juce::dontSendNotification);
+    propertySliders[10].setValue(region != nullptr ? region->maximumSize.x : 0.0f, juce::dontSendNotification);
+    propertySliders[11].setValue(region != nullptr ? region->maximumSize.y : 0.0f, juce::dontSendNotification);
     suppressCallbacks = false;
 }
 
@@ -427,6 +436,19 @@ void UILayoutDesignerWindow::applyFlowFromInspector()
                                     static_cast<float>(propertySliders[5].getValue()),
                                     static_cast<float>(propertySliders[6].getValue()),
                                     static_cast<int>(propertySliders[7].getValue())));
+}
+
+void UILayoutDesignerWindow::applySizeConstraintsFromInspector()
+{
+    if (callbacks.sizeConstraintsChanged == nullptr || selectedRegionId.isEmpty())
+    {
+        return;
+    }
+    const juce::Point<float> minimumSize(static_cast<float>(propertySliders[8].getValue()),
+                                         static_cast<float>(propertySliders[9].getValue()));
+    const juce::Point<float> maximumSize(static_cast<float>(propertySliders[10].getValue()),
+                                         static_cast<float>(propertySliders[11].getValue()));
+    setStatus(callbacks.sizeConstraintsChanged(selectedRegionId, minimumSize, maximumSize));
 }
 
 void UILayoutDesignerWindow::beginPropertyEdit()

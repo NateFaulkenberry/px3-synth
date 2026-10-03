@@ -20,6 +20,7 @@ public:
         std::function<juce::String(const juce::String&, px3::ui::InstrumentSceneLayoutMode)> layoutChanged;
         std::function<juce::String(const juce::String&, const juce::String&)> parentChanged;
         std::function<juce::String(const juce::String&, float, float, int)> flowChanged;
+        std::function<juce::String(const juce::String&, juce::Point<float>, juce::Point<float>)> sizeConstraintsChanged;
         std::function<juce::String(const juce::String&, bool)> visibilityChanged;
         std::function<void()> beginEdit;
         std::function<void()> endEdit;
@@ -45,6 +46,7 @@ private:
     void applyLayoutFromInspector();
     void applyParentFromInspector();
     void applyFlowFromInspector();
+    void applySizeConstraintsFromInspector();
     void beginPropertyEdit();
     void endPropertyEdit();
 
@@ -59,8 +61,8 @@ private:
     juce::ComboBox styleSelector;
     juce::Label styleLabel;
     juce::ToggleButton visibilityToggle { "Visible" };
-    std::array<juce::Label, 8> propertyLabels;
-    std::array<juce::Slider, 8> propertySliders;
+    std::array<juce::Label, 12> propertyLabels;
+    std::array<juce::Slider, 12> propertySliders;
     juce::TextButton undoButton { "Undo" };
     juce::TextButton redoButton { "Redo" };
     juce::TextButton saveButton { "Save Layout" };

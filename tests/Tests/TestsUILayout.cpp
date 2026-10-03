@@ -40,6 +40,14 @@ void testUILayout()
         const auto file = juce::File::getCurrentWorkingDirectory()
                               .getChildFile("shared/UI/Style/InstrumentScene.json");
         const auto loaded = file.existsAsFile() && shipped.loadJson(file.loadFileAsString(), error);
+        const auto* surface = shipped.findStyleToken("surface");
+        const auto* oscStyle = shipped.findStyleToken("oscillator.panel");
+        const auto* filterStyle = shipped.findStyleToken("filter.panel");
+        const auto* ampStyle = shipped.findStyleToken("amp.panel");
+          const auto* primary = shipped.findNode("primary");
+          const auto* oscNode = shipped.findNode("primary.osc");
+          const auto* filterNode = shipped.findNode("primary.filter");
+          const auto* ampNode = shipped.findNode("primary.amp");
         check("InstrumentScene_LoadsShippedPrimaryAndDedicatedViews",
               loaded && shipped.findNode("primary.osc") != nullptr
                   && shipped.findNode("primary.filter") != nullptr
@@ -47,6 +55,35 @@ void testUILayout()
                   && shipped.findNode("view.filter") != nullptr
                   && shipped.findNode("view.amp") != nullptr,
               error);
+        const auto oscBounds = shipped.resolveBounds("primary.osc", { 0, 0, 1200, 480 });
+        const auto filterBounds = shipped.resolveBounds("primary.filter", { 0, 0, 1200, 480 });
+        const auto ampBounds = shipped.resolveBounds("primary.amp", { 0, 0, 1200, 480 });
+        check("InstrumentScene_PrimaryModulesFollowHorizontalSignalFlow",
+              primary != nullptr && primary->layout == px3::ui::InstrumentSceneLayoutMode::row
+                  && oscNode != nullptr && oscNode->parentId == "primary"
+                  && filterNode != nullptr && filterNode->parentId == "primary"
+                  && ampNode != nullptr && ampNode->parentId == "primary"
+                  && oscBounds.getX() == 0.0f && filterBounds.getX() >= oscBounds.getRight()
+                  && ampBounds.getX() >= filterBounds.getRight()
+                  && juce::approximatelyEqual(oscBounds.getY(), 0.0f)
+                  && juce::approximatelyEqual(filterBounds.getY(), 0.0f)
+                  && juce::approximatelyEqual(ampBounds.getY(), 0.0f)
+                  && juce::approximatelyEqual(oscBounds.getHeight(), 480.0f)
+                  && juce::approximatelyEqual(filterBounds.getHeight(), 480.0f)
+                  && juce::approximatelyEqual(ampBounds.getHeight(), 480.0f)
+                  && ampBounds.getWidth() >= 280.0f
+                  && juce::approximatelyEqual(ampBounds.getRight(), 1200.0f),
+              "OSC, filter, AMP share a row without overlap; AMP has room for its controls");
+        check("InstrumentScene_PrimaryModulesShareTheFaceplatePalette",
+              surface != nullptr && oscStyle != nullptr && filterStyle != nullptr && ampStyle != nullptr
+                  && surface->background == "#101214"
+                  && oscStyle->background == filterStyle->background
+                  && filterStyle->background == ampStyle->background
+                  && surface->foreground == "#F2F3F1"
+                  && oscStyle->borderRadius == 0.0f && oscStyle->borderWidth == 0.0f
+                  && filterStyle->borderRadius == 0.0f && filterStyle->borderWidth == 0.0f
+                  && ampStyle->borderRadius == 0.0f && ampStyle->borderWidth == 0.0f,
+              "near-black shared surface, white labels, and no floating panel borders");
     }
 
     InstrumentSceneDocument document;
@@ -182,12 +219,25 @@ void testUILayout()
     const auto flowUpdated = flowDocument.setFlowProperties("root", 1.0f, 100.0f, 2, error);
     const auto modeUpdated = flowDocument.setLayoutMode("root", px3::ui::InstrumentSceneLayoutMode::column,
                                                         error);
+        const auto constraintsUpdated = flowDocument.setSizeConstraints("first", { 120.0f, 80.0f },
+                                                   { 480.0f, 320.0f }, error);
     const auto parentUpdated = flowDocument.setParentNode("second", "first", error);
     const auto* reparented = flowDocument.findNode("second");
     check("InstrumentScene_EditsLayoutModeFlowAndParent",
-          flowUpdated && modeUpdated && parentUpdated && reparented != nullptr
+            flowUpdated && modeUpdated && parentUpdated && constraintsUpdated && reparented != nullptr
               && reparented->parentId == "first",
           error);
+
+        const auto* constrained = flowDocument.findNode("first");
+        check("InstrumentScene_EditsAndSerializesSizeConstraints",
+            constrained != nullptr && constrained->minimumSize == juce::Point<float>(120.0f, 80.0f)
+              && constrained->maximumSize == juce::Point<float>(480.0f, 320.0f));
+        const auto validConstraints = flowDocument.toJson();
+        const auto invalidConstraints = ! flowDocument.setSizeConstraints("first", { 500.0f, 80.0f },
+                                                    { 480.0f, 320.0f }, error);
+        check("InstrumentScene_RejectsInvalidSizeConstraintsWithoutMutation",
+            invalidConstraints && flowDocument.toJson() == validConstraints,
+            error);
 
     const auto cycleParentRejected = ! flowDocument.setParentNode("root", "second", error);
     check("InstrumentScene_RejectsReparentCycle", cycleParentRejected, error);

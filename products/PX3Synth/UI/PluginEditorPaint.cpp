@@ -27,9 +27,23 @@
 
 void PX3SynthAudioProcessorEditor::paint(juce::Graphics& g)
 {
-    const auto bg = uiConfig != nullptr
-                        ? uiConfig->getColour("editor.background.baseColour", juce::Colour::fromRGB(0x1A, 0x1A, 0x1A))
-                        : juce::Colour::fromRGB(0x1A, 0x1A, 0x1A);
+    auto bg = uiConfig != nullptr
+                  ? uiConfig->getColour("editor.background.baseColour", juce::Colour::fromRGB(0x10, 0x12, 0x14))
+                  : juce::Colour::fromRGB(0x10, 0x12, 0x14);
+    if (const auto* root = uiLayout.findNode("instrument"); root != nullptr)
+    {
+        if (const auto* style = uiLayout.findStyleToken(root->styleToken); style != nullptr)
+        {
+            const auto colour = style->background.trim();
+            if (colour.startsWithChar('#') && colour.length() == 7)
+            {
+                const auto value = colour.substring(1).getHexValue32();
+                bg = juce::Colour::fromRGB(static_cast<juce::uint8>((value >> 16) & 0xff),
+                                           static_cast<juce::uint8>((value >> 8) & 0xff),
+                                           static_cast<juce::uint8>(value & 0xff));
+            }
+        }
+    }
     const auto stripRadius = uiConfig != nullptr ? uiConfig->getFloat("editor.topStrip.cornerRadius", 3.0f) : 3.0f;
     g.fillAll(bg);
 

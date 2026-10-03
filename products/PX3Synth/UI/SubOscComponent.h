@@ -20,6 +20,7 @@ public:
                            juce::Colour accentIn);
 
     void setAccentColour(juce::Colour accentIn);
+    void setHardwareFaceplate(bool enabled);
     void setUIConfig(std::shared_ptr<const UIConfig> configIn);
     // The panel's content box. Percentage card dimensions are resolved against
     // this and nothing else, so the component has to be told what it is.

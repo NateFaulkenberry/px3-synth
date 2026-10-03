@@ -19,6 +19,7 @@ public:
     void resized() override;
 
     void setPanelContentBounds(juce::Rectangle<int> panelContent);
+    void setHardwareFaceplate(juce::Colour accent);
     void setUIConfig(std::shared_ptr<const UIConfig> configIn);
     void refreshFromParameters();
 

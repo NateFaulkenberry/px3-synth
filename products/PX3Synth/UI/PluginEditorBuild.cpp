@@ -501,6 +501,8 @@ void PX3SynthAudioProcessorEditor::buildSelectors()
     osc3MacroCLabel.setFont(juce::FontOptions(11.0f));
     for (auto* tuning : { &oscTuning[0], &oscTuning[1], &oscTuning[2], &subTuning })
     {
+        tuning->coarseLabel.setText("OCT", juce::dontSendNotification);
+        tuning->fineLabel.setText("CENT", juce::dontSendNotification);
         tuning->coarseLabel.setFont(juce::FontOptions(11.0f));
         tuning->fineLabel.setFont(juce::FontOptions(11.0f));
     }

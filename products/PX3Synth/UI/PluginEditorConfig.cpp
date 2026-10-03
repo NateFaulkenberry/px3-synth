@@ -380,6 +380,15 @@ void PX3SynthAudioProcessorEditor::openUILayoutDesigner()
         {
             return updateSceneFlow(id, flexGrow, spacing, gridColumns);
         };
+        callbacks.sizeConstraintsChanged = [this](const juce::String& id,
+                                                  juce::Point<float> minimumSize,
+                                                  juce::Point<float> maximumSize)
+        {
+            juce::String error;
+            if (! uiLayout.setSizeConstraints(id, minimumSize, maximumSize, error)) { return error; }
+            resized();
+            return "Updated size constraints for " + id;
+        };
         callbacks.beginEdit = [this]() { uiLayout.beginTransaction(); };
         callbacks.visibilityChanged = [this](const juce::String& id, bool visible)
         {

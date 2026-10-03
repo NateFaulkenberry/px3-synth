@@ -539,14 +539,38 @@ juce::Rectangle<int> CardHost::contentBelowTitle() const
     return area;
 }
 
+CardStyle CardHost::paintStyle() const
+{
+    auto style = cache.style();
+    if (! hardwareFaceplate)
+    {
+        return style;
+    }
+
+    style.border.enabled = true;
+    style.border.width = 1.0f;
+    style.border.colour = juce::Colour::fromRGB(214, 218, 216);
+    style.border.opacity = 0.42f;
+    style.border.radius = 0.0f;
+    style.background.opacity = 0.0f;
+    style.artwork.image.clear();
+    style.artwork.opacity = 0.0f;
+    style.shadow.opacity = 0.0f;
+    style.shadow.radius = 0.0f;
+    style.gloss.topFill.opacity = 0.0f;
+    style.gloss.bottomFill.opacity = 0.0f;
+    style.title.colour = juce::Colour::fromRGB(242, 243, 241);
+    return style;
+}
+
 void CardHost::draw(juce::Graphics& g, const juce::String& title) const
 {
-    drawCard(g, cardBounds, cache.style(), title);
+    drawCard(g, cardBounds, paintStyle(), title);
 }
 
 void CardHost::drawInactive(juce::Graphics& g, const juce::String& title) const
 {
-    drawCard(g, cardBounds, cache.style().disabledVariant(), title);
+    drawCard(g, cardBounds, paintStyle().disabledVariant(), title);
 }
 
 // ---------------------------------------------------------------------------

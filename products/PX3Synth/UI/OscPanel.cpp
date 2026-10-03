@@ -167,7 +167,21 @@ void OscPanel::setSceneStyle(juce::Colour background,
     sceneBorderWidth = juce::jmax(0.0f, borderWidth);
     hasSceneStyle = true;
 
-    const auto tint = [foreground](auto&& self, juce::Component& component) -> void
+    if (subOscComponent != nullptr)
+    {
+        subOscComponent->setAccentColour(accentIn);
+        subOscComponent->setHardwareFaceplate(true);
+    }
+    for (auto& oscillatorComponent : oscillatorComponents)
+    {
+        if (oscillatorComponent != nullptr)
+        {
+            oscillatorComponent->setAccentColour(accentIn);
+            oscillatorComponent->setHardwareFaceplate(true);
+        }
+    }
+
+    const auto tint = [foreground, accentIn](auto&& self, juce::Component& component) -> void
     {
         if (dynamic_cast<juce::Label*>(&component) != nullptr)
         {
@@ -176,6 +190,10 @@ void OscPanel::setSceneStyle(juce::Colour background,
         if (dynamic_cast<juce::ComboBox*>(&component) != nullptr)
         {
             component.setColour(juce::ComboBox::textColourId, foreground);
+        }
+        if (auto* slider = dynamic_cast<juce::Slider*>(&component))
+        {
+            slider->setColour(juce::Slider::rotarySliderFillColourId, accentIn);
         }
         for (int i = 0; i < component.getNumChildComponents(); ++i)
         {

@@ -64,11 +64,16 @@ void AmpPanel::setSceneStyle(juce::Colour background,
 
     if (ampEnvelopeComponent != nullptr)
     {
-        const auto tint = [foreground](auto&& self, juce::Component& component) -> void
+        ampEnvelopeComponent->setHardwareFaceplate(accentIn);
+        const auto tint = [foreground, accentIn](auto&& self, juce::Component& component) -> void
         {
             if (dynamic_cast<juce::Label*>(&component) != nullptr)
             {
                 component.setColour(juce::Label::textColourId, foreground);
+            }
+            if (auto* slider = dynamic_cast<juce::Slider*>(&component))
+            {
+                slider->setColour(juce::Slider::rotarySliderFillColourId, accentIn);
             }
             for (int i = 0; i < component.getNumChildComponents(); ++i)
             {

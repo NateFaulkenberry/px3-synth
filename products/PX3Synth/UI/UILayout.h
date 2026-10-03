@@ -76,6 +76,10 @@ public:
                            float spacing,
                            int gridColumns,
                            juce::String& error);
+    bool setSizeConstraints(const juce::String& id,
+                            juce::Point<float> minimumSize,
+                            juce::Point<float> maximumSize,
+                            juce::String& error);
     bool setParentNode(const juce::String& id,
                        const juce::String& parentId,
                        juce::String& error);
