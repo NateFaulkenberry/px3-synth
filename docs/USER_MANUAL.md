@@ -305,6 +305,18 @@ tune.
 **Use it for:** Width and thickness. Try +7 ct on Oscillator 2 against
 Oscillator 1 left at zero.
 
+### SLOP
+
+**What it does:** Lets the oscillator drift on its own, slowly and randomly —
+up to ±12 cents at full, wandering to a new point every second or so. Every
+note, and every oscillator within a note, drifts independently.
+
+**Sound:** The gentle instability of analogue oscillators. A little (10–30%)
+makes stacked oscillators and chords breathe; a lot sounds like an old,
+warming-up synth.
+
+**Use it for:** Taking the "too perfect" edge off a pad or a unison stack.
+
 ### Pitch Mod
 
 **What it does:** A modulation destination worth up to two octaves either way.
@@ -374,7 +386,8 @@ unless you ask it to start with each note.
 | --- | --- |
 | **RATE** | 0.01 Hz to 20 Hz. Shown for the cyclic shapes |
 | **TIME** | 0.05 s to 60 s. Takes RATE's place for RAMP UP and RAMP DOWN |
-| **WAVEFORM** | SINE, TRIANGLE, SAW, SQUARE, RAMP UP, RAMP DOWN |
+| **WAVEFORM** | SINE, TRIANGLE, SAW, SQUARE, RAMP UP, RAMP DOWN, S&H (a new random step every cycle), SMOOTH RND (random, gliding between values) |
+| **CLOCK** | FREE (RATE in Hz), TEMPO (a musical division of the host's tempo), TRANSPORT (locked to the song position). With no host — in the standalone — an external MIDI clock drives TEMPO and TRANSPORT |
 | **KEY SYNC** | Restart the LFO on every new note |
 | **ASSIGN** | Destination |
 | **AMOUNT** | Depth and direction, −100% to +100% |
@@ -418,7 +431,18 @@ repeats, an envelope describes a journey with a beginning and an end.
 
 ENV 1–3 use the same editor as the amplitude envelope — see [AMP](#amp--amplitude)
 for the handles, the knobs and the curves. Each has an ASSIGN menu and an AMOUNT
-knob of its own.
+knob of its own, plus:
+
+| Control | Function |
+| --- | --- |
+| **LOOP** | While the key is held, the envelope restarts its attack/decay each time it reaches sustain — a repeating, rhythmic contour |
+| **KEY** | Keyboard tracking: higher notes run the whole envelope faster (an octave up is twice as fast at 100%) |
+| **SYNC** | Snaps attack, decay and release to musical note lengths at the current tempo (host or MIDI clock) |
+
+Each note has its own envelope. When an envelope modulates something inside the
+voice — filter cutoff and resonance, oscillator tuning, the oscillator PARAMs or
+wavetable position — every note follows *its own* contour, so a chord's notes
+open and close independently.
 
 ### Envelope type
 
@@ -649,7 +673,19 @@ an envelope at it for a filter sweep, or a Macro for a performance control.
 
 **Sound:** Low settings are neutral. As you raise it, a peak forms at the cutoff
 frequency and the filter takes on a vocal, whistling character. Combined with a
-moving cutoff it produces the classic sweep.
+moving cutoff it produces the classic sweep. The top of the knob whistles hard;
+in the LADDER, CURTIS and ARP types it goes into self-oscillation — the filter
+sings a pure tone at the cutoff on its own — and stays under control.
+
+### KEY TRK and KEY
+
+**What they do:** Make the cutoff follow the keyboard. At 100% the cutoff moves
+up an octave for every octave you play, so the filter keeps the same tone across
+the keyboard; at 0% it ignores the keyboard; negative values close it as you
+play higher. KEY sets the note where tracking has no effect (C4 by default).
+
+**Use it for:** Basses and leads that should stay equally bright high and low,
+and a self-oscillating filter you can play in tune (100% tracking).
 
 ### TYPE
 
@@ -662,6 +698,11 @@ moving cutoff it produces the classic sweep.
 | **BandPass** | Keeps a band around the cutoff, removing above and below. |
 | **Notch** | Removes a band around the cutoff, keeping the rest. |
 | **AllPass** | Passes everything, altering phase. In PARALLEL against another filter it makes phase-cancellation notches. |
+| **Comb** | A tuned resonator: metallic, string- and pipe-like tones. |
+| **SVF12 / SVF24** | Clean, smooth state-variable low pass. |
+| **Ladder12 / Ladder24** | A transistor-ladder low pass: round, bass-thinning as resonance rises, self-oscillates at the top. |
+| **Curtis24** | A four-pole OTA cascade in the spirit of the CEM3320 chips: smooth, keeps its low end at high resonance. |
+| **ARP12** | An aggressive two-pole low pass inspired by vintage ARP filters: bright, biting resonance that screams at the top. |
 
 **Use them for:** LP24 for basses and anything that should sit low in a mix. HP12
 to thin a pad so it leaves room for a bass. BandPass for a narrow, telephone-like
@@ -684,11 +725,18 @@ can scroll freely while the strip stays in view.
 > **Note:** Bypassing an effect clears it out. Switching it back on starts clean
 > rather than releasing whatever was caught inside when you switched it off.
 
-## VIBE — analogue imperfection
+## VIBE — Uni-Vibe and analogue drift
 
-**What it is:** Not an effect on the mix. VIBE runs *inside each voice*, before
-the sources are summed, because saturating four signals separately does not
-sound like saturating their sum.
+**What it is:** Two things. The main effect is a **Uni-Vibe**-style phase-shift
+modulator, inspired by the photocell vibe pedal: four phase stages swept by a
+lamp-and-light-sensor model, which gives its characteristic lopsided, throbbing
+swirl. **SPEED** sets the rate, **INTENSITY** the depth (0 = off), and the
+**CHORUS / VIBRATO** switch chooses between a swirling chorus (mixed with the dry
+sound) and pure pitch wobble.
+
+Underneath it, the **analogue drift** (AMOUNT and TYPE) runs *inside each voice*,
+before the sources are summed, because saturating four signals separately does
+not sound like saturating their sum.
 
 **Sound:** Every voice drifts at its own rate, so a held chord thickens rather
 than wobbling in unison. The saturation adds harmonics and softens transients.
@@ -715,7 +763,15 @@ for tempo-locked times, and an **ALGO** menu.
 | Diffusion | Smeared, closer to reverb |
 
 **FEEDBACK** sets how much of the output is fed back in — how many repeats you
-hear. Each algorithm has its own safe limit.
+hear (in Granular, how dense the cloud of grains becomes). Each algorithm has its
+own safe limit.
+
+TAPE has three more controls: **QUALITY** (worn tape at the left — darker and more
+saturated — new tape at the right), **WOBBLE** (how much the tape speed wanders:
+wow and flutter, from a perfect transport to a badly worn machine) and **SLIP**
+(how often the tape head slips backward for a moment, playing the echo in
+reverse). MODULATED has **MOD DEPTH**, the strength of its chorus-like
+movement.
 
 ## REVERB
 
@@ -726,7 +782,8 @@ hear. Each algorithm has its own safe limit.
 | **ROOM** | Nine distinct early reflections per channel into a short tail. Small, believable spaces. |
 | **PLATE** | A dense, bright plate. Classic on vocals, snares and leads. |
 | **HALL** | A long, diffuse tail with damping. Concert-hall scale. |
-| **CLOUD** | The hall network stretched much longer, for an expansive modulated wash. |
+| **CLOUD** | The hall network stretched much longer, for an expansive modulated wash. **SHIMMER** shifts the tail up an octave and feeds it back, so it climbs as it fades. |
+| **IR** | Convolution with an impulse response you load (LOAD IR… — WAV, AIFF or FLAC up to 12 seconds): a recording of a real room, plate or anything else. Silent until one is loaded. |
 
 **Use them for:** ROOM to place a sound without obviously reverberating it. PLATE
 for shine. HALL and CLOUD for scale and atmosphere.
@@ -878,8 +935,11 @@ modulated in anti-phase and summed with opposite polarity.
 audible vibrato, just width. The wet signal cancels when summed to mono, so it is
 completely mono-safe.
 
-**Controls:** Nine modes, from the softest Dimension setting through combinations
-to an ensemble mode and a warmer single-path character.
+**Controls:** Twelve modes: the four Dimension settings and their combinations,
+an ensemble mode, a warmer single-path character, and three **JUNO** modes
+inspired by the Juno-60/106 chorus buttons — **I** (slow and gentle), **II**
+(faster and deeper) and **I+II** (a fast, shallow shimmer). The Juno modes run at
+their own fixed rates; RATE trims around them.
 
 The dry path is never filtered, so a bass note keeps its weight while its
 harmonics move.
@@ -895,7 +955,25 @@ phase, highs by level.
 
 **Controls:** Four modes — CLASSIC, WIDE, DEEP, MONO SAFE.
 
-The mono sum keeps its level and its low end at every setting.
+SPREAD works on the whole instrument — dry sound and effects together — as the
+last stage before the output, so it widens even a completely dry patch. It is off
+until you raise its amount. The mono sum keeps its level and its low end at every
+setting.
+
+## DRIVE
+
+**What it is:** An overdrive and distortion stage in the spirit of classic pedals,
+not a copy of any one circuit. It sits early in the effects chain, before the
+modulation and time effects, as it would on a pedalboard.
+
+| Control | Function |
+| --- | --- |
+| **DRIVE** | How hard the signal hits the clipper, up to +40 dB |
+| **TYPE** | SOFT (smooth, compressed op-amp overdrive), HARD (buzzier diode clipping), ASYM (unmatched diodes: warmer, with even harmonics) |
+| **TIGHT** | Keeps low end out of the clipper so the grit sits in the mids and the bass stays solid |
+| **TONE** | Dark to open, after the clipper |
+| **LEVEL** | Output trim around an automatic level match — DRIVE changes the character, not the volume |
+| **MIX** | Blend with the clean sound; 0 is off |
 
 ---
 
