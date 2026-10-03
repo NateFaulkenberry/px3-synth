@@ -60,7 +60,7 @@ function(px3_add_product)
         NEEDS_MIDI_OUTPUT FALSE
         IS_MIDI_EFFECT FALSE
         EDITOR_WANTS_KEYBOARD_FOCUS FALSE
-        COPY_PLUGIN_AFTER_BUILD ${PX3_COPY_PLUGIN_AFTER_BUILD}
+        COPY_PLUGIN_AFTER_BUILD FALSE
         # Shared across the ecosystem: one manufacturer, many products.
         PLUGIN_MANUFACTURER_CODE SyPr
         PLUGIN_CODE ${PX3P_PLUGIN_CODE}
@@ -189,4 +189,20 @@ function(px3_add_product)
         PUBLIC
             juce::juce_recommended_config_flags
             juce::juce_recommended_lto_flags)
+
+    if (APPLE)
+        foreach(px3Format IN LISTS PX3P_FORMATS)
+            if (TARGET ${PX3P_TARGET}_${px3Format})
+                add_custom_command(TARGET ${PX3P_TARGET}_${px3Format} POST_BUILD
+                    COMMAND /usr/bin/codesign --force --sign - --timestamp=none
+                        "$<TARGET_FILE_DIR:${PX3P_TARGET}_${px3Format}>/../.."
+                    COMMENT "Seal ${PX3P_PRODUCT_NAME} ${px3Format} after bundle generation"
+                    VERBATIM)
+            endif()
+        endforeach()
+    endif()
+
+    if (PX3_COPY_PLUGIN_AFTER_BUILD)
+        juce_enable_copy_plugin_step(${PX3P_TARGET})
+    endif()
 endfunction()

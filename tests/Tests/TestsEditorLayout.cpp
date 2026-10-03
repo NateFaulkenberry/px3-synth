@@ -17,6 +17,110 @@ namespace px3tests
 void testEditorLayout()
 {
     suite("EDITOR LAYOUT");
+    {
+        PX3SynthAudioProcessor processor;
+        processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        processor.prepareToPlay(kSampleRate, kBlockSize);
+        std::unique_ptr<juce::AudioProcessorEditor> base(processor.createEditor());
+        auto* editor = dynamic_cast<PX3SynthAudioProcessorEditor*>(base.get());
+        auto parameterInvalidates = false;
+        auto animationInvalidates = false;
+        if (editor != nullptr)
+        {
+            editor->setSize(1518, 918);
+            const auto snapshot = [&]
+            {
+                const auto image = editor->createComponentSnapshot(editor->getLocalBounds());
+                juce::MemoryOutputStream output;
+                juce::PNGImageFormat().writeImageToStream(image, output);
+                return juce::SHA256(output.getMemoryBlock()).toHexString();
+            };
+            const auto original = snapshot();
+            setParam(processor, "voice.filter1.cutoff", 400.0f);
+            editor->debugTimerTick();
+            const auto changed = snapshot();
+            parameterInvalidates = original != changed;
+            for (int frame = 0; frame < 4; ++frame) { editor->debugTimerTick(); }
+            animationInvalidates = changed != snapshot();
+        }
+        check("EditorPaint_BufferedPrimaryInvalidatesWhenParametersChange", parameterInvalidates);
+        check("EditorPaint_BufferedPrimaryKeepsAnimationLive", animationInvalidates);
+    }
+    {
+        PX3SynthAudioProcessor processor;
+        processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        processor.prepareToPlay(kSampleRate, kBlockSize);
+        std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
+        std::function<juce::Component*(juce::Component&, const juce::String&)> find = [&](juce::Component& component, const juce::String& id)
+        {
+            if (component.getComponentID() == id) { return &component; }
+            for (auto* child : component.getChildren()) { if (auto* result = find(*child, id)) { return result; } }
+            return static_cast<juce::Component*>(nullptr);
+        };
+        auto* button = dynamic_cast<juce::Button*>(find(*editor, "mod.routes.open"));
+        if (button != nullptr && button->onClick) { button->onClick(); }
+        juce::Component* canvas = nullptr;
+        auto& desktop = juce::Desktop::getInstance();
+        for (int index = 0; index < desktop.getNumComponents(); ++index)
+        {
+            if (auto* candidate = find(*desktop.getComponent(index), "mod.graph.canvas")) { canvas = candidate; break; }
+        }
+        auto rendered = false;
+        auto connected = false;
+        juce::String snapshotPath;
+        if (canvas != nullptr)
+        {
+            const auto source = juce::Point<float>(150.0f, 40.0f);
+            const auto destination = juce::Point<float>(static_cast<float>(canvas->getWidth() - 220), 12.0f);
+            const auto now = juce::Time::getCurrentTime();
+            const auto event = [&](juce::Point<float> position, bool dragged)
+            {
+                return juce::MouseEvent(desktop.getMainMouseSource(), position, juce::ModifierKeys(juce::ModifierKeys::leftButtonModifier),
+                                        1.0f, 0.0f, 0.0f, 0.0f, 0.0f, canvas, canvas, now, source, now, 1, dragged);
+            };
+            canvas->mouseDown(event(source, false));
+            canvas->mouseDrag(event(destination, true));
+            canvas->mouseUp(event(destination, true));
+            connected = processor.getGraphRoute(0).source == 1
+                && processor.getGraphRoute(0).destination == "voice.filter1.cutoff"
+                && std::abs(processor.getGraphRouteDepthParam(0).get() - 0.5f) < 1.0e-6f;
+            const auto image = canvas->createComponentSnapshot(canvas->getLocalBounds());
+            auto ink = 0;
+            for (int row = 0; row < image.getHeight(); row += 2)
+            {
+                for (int column = 0; column < image.getWidth(); column += 2)
+                {
+                    const auto colour = image.getPixelAt(column, row);
+                    if (colour.getRed() + colour.getGreen() + colour.getBlue() > 300) { ++ink; }
+                }
+            }
+            rendered = image.isValid() && ink > 100;
+            const auto file = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("px3-route-canvas.png");
+            snapshotPath = file.getFullPathName();
+            juce::FileOutputStream output(file);
+            output.setPosition(0);
+            output.truncate();
+            rendered = rendered && output.openedOk() && juce::PNGImageFormat().writeImageToStream(image, output);
+            if (auto* window = canvas->findParentComponentOfClass<juce::DocumentWindow>())
+            {
+                auto* content = window->getContentComponent();
+                const auto* sourceMenu = dynamic_cast<juce::ComboBox*>(find(*content, "mod.route.source"));
+                const auto* destinationMenu = dynamic_cast<juce::ComboBox*>(find(*content, "mod.route.destination"));
+                check("ModRouteUi_CableSelectionRefreshesItsEndpointMenus",
+                      sourceMenu != nullptr && sourceMenu->getSelectedId() == 3
+                          && destinationMenu != nullptr && destinationMenu->getSelectedId() > 1);
+                const auto fullImage = content->createComponentSnapshot(content->getLocalBounds());
+                juce::FileOutputStream fullOutput(file.getSiblingFile("px3-route-editor.png"));
+                fullOutput.setPosition(0);
+                fullOutput.truncate();
+                rendered = rendered && fullOutput.openedOk() && juce::PNGImageFormat().writeImageToStream(fullImage, fullOutput);
+            }
+            canvas->keyPressed(juce::KeyPress(juce::KeyPress::deleteKey));
+            check("ModRouteUi_DeleteRemovesTheSelectedCable", processor.getGraphRoute(0).source == -1);
+        }
+        check("ModRouteUi_CableDragCreatesTheActualAutomatableRoute", connected);
+        check("ModRouteUi_CanvasRendersPortsLabelsAndCables", rendered, snapshotPath);
+    }
 
     // ---- the bar, the panel and the keyboard never overlap -----------------
     //

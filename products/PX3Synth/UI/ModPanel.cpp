@@ -7,10 +7,193 @@
 
 namespace
 {
+class GraphCableCanvas final : public juce::Component
+{
+public:
+    explicit GraphCableCanvas(PX3SynthAudioProcessor& processorIn) : processor(processorIn)
+    {
+        setComponentID("mod.graph.canvas");
+        setWantsKeyboardFocus(true);
+    }
+    std::function<void(int)> slotSelected;
+    int selectedSlot { 0 };
+    int preferredHeight()
+    {
+        refreshDestinations();
+        return juce::jmax(sourceCount, destinations.size()) * 28 + 24;
+    }
+    void paint(juce::Graphics& graphics) override
+    {
+        refreshDestinations();
+        graphics.fillAll(juce::Colour(0xff141819));
+        graphics.setFont(juce::FontOptions(11.5f));
+        for (int source = 0; source < sourceCount; ++source)
+        {
+            const auto point = sourcePoint(source);
+            graphics.setColour(sourceColour(source));
+            graphics.drawEllipse(point.x - 5.0f, point.y - 5.0f, 10.0f, 10.0f, 1.5f);
+            graphics.setColour(juce::Colour(0xffe2e5e3));
+            graphics.drawText(PX3SynthAudioProcessor::graphSourceName(source),
+                              8, juce::roundToInt(point.y) - 10, 132, 20, juce::Justification::centredLeft);
+        }
+        for (int destination = 0; destination < destinations.size(); ++destination)
+        {
+            const auto point = destinationPoint(destination);
+            graphics.setColour(juce::Colour(0xffc1c9c7));
+            graphics.drawEllipse(point.x - 5.0f, point.y - 5.0f, 10.0f, 10.0f, 1.5f);
+            if (const auto* entry = processor.getParameterCatalog().find(destinations[destination]))
+            {
+                graphics.drawFittedText(entry->name,
+                    { juce::roundToInt(point.x) + 12, juce::roundToInt(point.y) - 10,
+                      juce::jmax(1, getWidth() - juce::roundToInt(point.x) - 20), 20 },
+                    juce::Justification::centredLeft, 1);
+            }
+        }
+        for (int slot = 0; slot < PX3SynthAudioProcessor::kGraphRouteSlots; ++slot)
+        {
+            const auto route = processor.getGraphRoute(slot);
+            const auto destination = destinations.indexOf(route.destination);
+            if (route.source < 0 || destination < 0) { continue; }
+            const auto path = cable(sourcePoint(route.source), destinationPoint(destination));
+            graphics.setColour(sourceColour(route.source).withAlpha(slot == selectedSlot ? 1.0f : 0.48f));
+            graphics.strokePath(path, juce::PathStrokeType(slot == selectedSlot ? 3.0f : 1.5f));
+        }
+        if (dragSource >= 0)
+        {
+            graphics.setColour(sourceColour(dragSource));
+            graphics.strokePath(cable(sourcePoint(dragSource), dragPoint), juce::PathStrokeType(2.0f));
+        }
+    }
+    void mouseDown(const juce::MouseEvent& event) override
+    {
+        grabKeyboardFocus();
+        refreshDestinations();
+        for (int source = 0; source < sourceCount; ++source)
+        {
+            if (sourcePoint(source).getDistanceFrom(event.position) <= 12.0f)
+            {
+                dragSource = source;
+                dragPoint = event.position;
+                repaint();
+                return;
+            }
+        }
+        for (int slot = 0; slot < PX3SynthAudioProcessor::kGraphRouteSlots; ++slot)
+        {
+            const auto route = processor.getGraphRoute(slot);
+            const auto destination = destinations.indexOf(route.destination);
+            if (route.source < 0 || destination < 0) { continue; }
+            juce::Path hit;
+            juce::PathStrokeType(12.0f).createStrokedPath(hit, cable(sourcePoint(route.source), destinationPoint(destination)));
+            if (hit.contains(event.position))
+            {
+                selectedSlot = slot;
+                if (slotSelected) { slotSelected(slot); }
+                repaint();
+                return;
+            }
+        }
+    }
+    void mouseDrag(const juce::MouseEvent& event) override
+    {
+        if (dragSource >= 0)
+        {
+            dragPoint = event.position;
+            if (auto* viewport = findParentComponentOfClass<juce::Viewport>())
+            {
+                const auto point = viewport->getLocalPoint(this, event.getPosition());
+                viewport->autoScroll(point.x, point.y, 24, 12);
+            }
+            repaint();
+        }
+    }
+    void mouseUp(const juce::MouseEvent& event) override
+    {
+        if (dragSource < 0) { return; }
+        for (int destination = 0; destination < destinations.size(); ++destination)
+        {
+            if (destinationPoint(destination).getDistanceFrom(event.position) > 12.0f) { continue; }
+            for (int slot = 0; slot < PX3SynthAudioProcessor::kGraphRouteSlots; ++slot)
+            {
+                if (processor.getGraphRoute(slot).source >= 0) { continue; }
+                juce::String error;
+                if (processor.setGraphRoute(slot, { dragSource, destinations[destination] }, error))
+                {
+                    auto& depth = processor.getGraphRouteDepthParam(slot);
+                    depth.beginChangeGesture();
+                    depth.setValueNotifyingHost(depth.convertTo0to1(0.5f));
+                    depth.endChangeGesture();
+                    selectedSlot = slot;
+                    if (slotSelected) { slotSelected(slot); }
+                }
+                break;
+            }
+            break;
+        }
+        dragSource = -1;
+        repaint();
+    }
+    bool keyPressed(const juce::KeyPress& key) override
+    {
+        if (key.getKeyCode() != juce::KeyPress::deleteKey && key.getKeyCode() != juce::KeyPress::backspaceKey) { return false; }
+        juce::String error;
+        if (processor.setGraphRoute(selectedSlot, {}, error))
+        {
+            if (slotSelected) { slotSelected(selectedSlot); }
+            repaint();
+        }
+        return true;
+    }
+private:
+    static constexpr int sourceCount = PX3SynthAudioProcessor::kLfoSourceCount
+                                      + PX3SynthAudioProcessor::kEnvelopeSourceCount + PX3SynthAudioProcessor::kMacroCount;
+    juce::Point<float> sourcePoint(int source) const
+    {
+        return { 150.0f, 12.0f + static_cast<float>(source) * 28.0f };
+    }
+    juce::Point<float> destinationPoint(int destination) const
+    {
+        return { static_cast<float>(getWidth() - 220), 12.0f + static_cast<float>(destination) * 28.0f };
+    }
+    static juce::Colour sourceColour(int source)
+    {
+        return source < 3 ? juce::Colour(0xff7fc6b2) : source < 6 ? juce::Colour(0xffd7b873) : juce::Colour(0xff79b5d3);
+    }
+    static juce::Path cable(juce::Point<float> start, juce::Point<float> end)
+    {
+        juce::Path path;
+        path.startNewSubPath(start);
+        const auto bend = juce::jmax(24.0f, (end.x - start.x) * 0.4f);
+        path.cubicTo(start.x + bend, start.y, end.x - bend, end.y, end.x, end.y);
+        return path;
+    }
+    void refreshDestinations()
+    {
+        destinations.clear();
+        for (int slot = 0; slot < PX3SynthAudioProcessor::kGraphRouteSlots; ++slot)
+        {
+            const auto route = processor.getGraphRoute(slot);
+            if (route.source >= 0 && ! destinations.contains(route.destination)) { destinations.add(route.destination); }
+        }
+        const auto selected = processor.getGraphRoute(selectedSlot);
+        if (selected.destination.isNotEmpty() && ! destinations.contains(selected.destination)) { destinations.add(selected.destination); }
+        for (const auto* id : { "voice.filter1.cutoff", "voice.filter1.resonance", "voice.filter2.cutoff", "mix.osc1.pan",
+                                "voice.osc1.macro.a", "voice.osc1.pitch.mod", "fx.delay.amount", "fx.reverb.amount" })
+        {
+            if (destinations.size() >= 12) { break; }
+            if (! destinations.contains(id)) { destinations.add(id); }
+        }
+    }
+    PX3SynthAudioProcessor& processor;
+    juce::StringArray destinations;
+    int dragSource { -1 };
+    juce::Point<float> dragPoint;
+};
+
 class GraphRouteEditor final : public juce::Component
 {
 public:
-    explicit GraphRouteEditor(PX3SynthAudioProcessor& processorIn) : processor(processorIn)
+    explicit GraphRouteEditor(PX3SynthAudioProcessor& processorIn) : processor(processorIn), canvas(processorIn)
     {
         constexpr std::array<const char*, 6> names { "SLOT", "SOURCE", "DESTINATION", "POLARITY", "CURVE", "DEPTH" };
         for (std::size_t index = 0; index < labels.size(); ++index)
@@ -24,6 +207,7 @@ public:
             slot.addItem(juce::String(index + 1).paddedLeft('0', 2), index + 1);
         }
         source.addItem("None", 1);
+        source.setComponentID("mod.route.source");
         for (int index = 0; index < PX3SynthAudioProcessor::kLfoSourceCount
                                   + PX3SynthAudioProcessor::kEnvelopeSourceCount
                                   + PX3SynthAudioProcessor::kMacroCount; ++index)
@@ -31,6 +215,7 @@ public:
             source.addItem(PX3SynthAudioProcessor::graphSourceName(index), index + 2);
         }
         destination.addItem("None", 1);
+        destination.setComponentID("mod.route.destination");
         destinationIds.add(juce::String());
         for (const auto& entry : processor.getParameterCatalog().entries())
         {
@@ -45,6 +230,14 @@ public:
         addAndMakeVisible(depth);
         addAndMakeVisible(clear);
         addAndMakeVisible(status);
+        canvasViewport.setViewedComponent(&canvas, false);
+        canvasViewport.setScrollBarsShown(true, false);
+        addAndMakeVisible(canvasViewport);
+        canvas.slotSelected = [this](int index)
+        {
+            slot.setSelectedId(index + 1, juce::dontSendNotification);
+            loadSlot();
+        };
         slot.onChange = [this] { loadSlot(); };
         for (auto* menu : { &source, &destination, &polarity, &curve })
         {
@@ -58,7 +251,7 @@ public:
         };
         slot.setSelectedId(1, juce::dontSendNotification);
         loadSlot();
-        setSize(640, 330);
+        setSize(980, 650);
     }
 
     void paint(juce::Graphics& graphics) override { graphics.fillAll(juce::Colour(0xff1b1e20)); }
@@ -75,6 +268,10 @@ public:
         }
         clear.setBounds(area.removeFromTop(28).removeFromLeft(110));
         status.setBounds(area.removeFromTop(30));
+        area.removeFromTop(8);
+        canvasViewport.setBounds(area);
+        canvas.setSize(juce::jmax(1, area.getWidth() - canvasViewport.getScrollBarThickness()),
+                   juce::jmax(area.getHeight(), canvas.preferredHeight()));
     }
 
 private:
@@ -90,6 +287,9 @@ private:
         curve.setSelectedId(static_cast<int>(route.curve) + 1, juce::dontSendNotification);
         attachment = std::make_unique<juce::SliderParameterAttachment>(processor.getGraphRouteDepthParam(index), depth, nullptr);
         loading = false;
+        canvas.selectedSlot = index;
+        resized();
+        canvas.repaint();
     }
     void apply()
     {
@@ -112,6 +312,8 @@ private:
         juce::String error;
         processor.setGraphRoute(slot.getSelectedId() - 1, route, error);
         status.setText(error, juce::dontSendNotification);
+        resized();
+        canvas.repaint();
     }
     PX3SynthAudioProcessor& processor;
     std::array<juce::Label, 6> labels;
@@ -121,6 +323,8 @@ private:
     juce::TextButton clear { "CLEAR ROUTE" };
     juce::Label status;
     bool loading { false };
+    GraphCableCanvas canvas;
+    juce::Viewport canvasViewport;
     std::unique_ptr<juce::SliderParameterAttachment> attachment;
 };
 
@@ -132,9 +336,17 @@ public:
     {
         setUsingNativeTitleBar(true);
         setContentOwned(new GraphRouteEditor(processor), true);
-        centreWithSize(640, 365);
+        setResizable(true, true);
+        setResizeLimits(760, 650, 1400, 1000);
+        centreWithSize(980, 685);
     }
     void closeButtonPressed() override { setVisible(false); }
+    bool keyPressed(const juce::KeyPress& key) override
+    {
+        if (key.getKeyCode() != juce::KeyPress::escapeKey) { return false; }
+        setVisible(false);
+        return true;
+    }
 };
 }
 
@@ -173,6 +385,7 @@ ModPanel::ModPanel(PX3SynthAudioProcessor& processorIn,
     lfoComponent->attachRampAndKeySync(processor.getLfoRampTimeParam(0),
                                        processor.getLfoKeySyncParam(0),
                                        lfoKnobLookAndFeel);
+    lfoComponent->attachClock(processor.getLfoClockModeParam(0), processor.getLfoClockDivisionParam(0));
 
     // LFO 1's rate label is left exactly as configureKnob set it. This used to
     // blank the text to match the other LFO cards, which had no rate label at
@@ -332,6 +545,7 @@ void ModPanel::configureOwnedLfoBundle(int lfoIndex, LfoBundle& bundle)
     bundle.component->attachRampAndKeySync(processor.getLfoRampTimeParam(lfoIndex),
                                            processor.getLfoKeySyncParam(lfoIndex),
                                            lfoKnobLookAndFeel);
+        bundle.component->attachClock(processor.getLfoClockModeParam(lfoIndex), processor.getLfoClockDivisionParam(lfoIndex));
 }
 
 void ModPanel::configureOwnedEnvBundle(int envIndex, EnvBundle& bundle)
@@ -628,6 +842,7 @@ void ModPanel::refreshLfoFromParameters()
                                             processor.getLfoFrequencyParam(0).get(),
                                             processor.getLfoAmountParam(0).get(),
                                             processor.getLfoWaveformParam(0).getIndex());
+                            lfoComponent->setClockAvailable(processor.isLfoClockAvailable(0));
     }
 
     for (int i = 0; i < static_cast<int>(extraLfos.size()); ++i)
@@ -647,6 +862,7 @@ void ModPanel::refreshLfoFromParameters()
                                                     processor.getLfoFrequencyParam(lfoIndex).get(),
                                                     processor.getLfoAmountParam(lfoIndex).get(),
                                                     processor.getLfoWaveformParam(lfoIndex).getIndex());
+            bundle.component->setClockAvailable(processor.isLfoClockAvailable(lfoIndex));
         }
     }
 }

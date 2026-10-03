@@ -78,7 +78,7 @@ public:
     // The transport, so a test can answer without a network. Returns the body,
     // and sets the result on failure.
     using Fetcher = std::function<juce::String(const juce::URL&, UpdateResult&)>;
-    void setFetcherForTesting(Fetcher fetcher) { transport = std::move(fetcher); }
+    void setFetcherForTesting(Fetcher fetcher, std::function<void()> cancel = {});
 
     // Runs the lookup on the CALLING thread rather than a background one, so a
     // test does not need a message loop to see the answer.
@@ -89,6 +89,8 @@ private:
 
     juce::String owner, repo;
     Fetcher transport;
+    std::function<void()> cancelTransport;
+    std::function<void()> prepareTransport;
     bool synchronous { false };
     bool includePreReleases { false };
     std::unique_ptr<LookupJob> job;

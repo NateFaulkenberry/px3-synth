@@ -634,6 +634,9 @@ public:
     juce::AudioParameterChoice& getLfoWaveformParam(int lfoIndex) const;
     juce::AudioParameterFloat& getLfoRampTimeParam(int lfoIndex) const;
     juce::AudioParameterBool& getLfoKeySyncParam(int lfoIndex) const;
+    juce::AudioParameterChoice& getLfoClockModeParam(int lfoIndex) const;
+    juce::AudioParameterChoice& getLfoClockDivisionParam(int lfoIndex) const;
+    bool isLfoClockAvailable(int lfoIndex) const;
     juce::AudioParameterFloat& getEnvelopeAmountParam() const;
     juce::AudioParameterFloat& getEnvelopeAmountParam(int envIndex) const;
     const juce::StringArray& getLfoAssignmentDisplayNames() const;
@@ -846,6 +849,15 @@ private:
     // ignoreUnused, which reads exactly like dead code and is the opposite -
     // it is what makes the LFOs run.
     void advanceLfosForBlock(int numSamples);
+    void updateHostClock();
+    std::array<juce::AudioParameterChoice*, kLfoSourceCount> lfoClockModeParams {};
+    std::array<juce::AudioParameterChoice*, kLfoSourceCount> lfoClockDivisionParams {};
+    double hostTempoBpm { 120.0 };
+    double hostTransportPpq { 0.0 };
+    double hostBeatsPerBar { 4.0 };
+    bool hostTransportPlaying { false };
+    std::atomic<bool> hostTempoAvailable { false };
+    std::atomic<bool> hostPositionAvailable { false };
     float currentLfoSignalForBlock(int lfoIndex, int numSamples);
     void collectModulationEnvelopeValuesFromVoices();
 

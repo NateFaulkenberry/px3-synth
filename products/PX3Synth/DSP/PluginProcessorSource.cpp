@@ -427,6 +427,15 @@ LfoSettings PX3SynthAudioProcessor::currentLfoSettings(int lfoIndex) const
     settings.rampSeconds = ramp.convertFrom0to1(applyModulationToNormalizedValue(
         &ramp, static_cast<juce::RangedAudioParameter&>(ramp).getValue()));
     settings.keySync = getLfoKeySyncParam(idx).get();
+    settings.clockMode = static_cast<LfoClockMode>(getLfoClockModeParam(idx).getIndex());
+    settings.clockDivision = getLfoClockDivisionParam(idx).getIndex();
+    settings.tempoBpm = hostTempoBpm;
+    settings.transportPpq = hostTransportPpq;
+    settings.beatsPerBar = hostBeatsPerBar;
+    settings.transportPlaying = hostTransportPlaying;
+    settings.clockAvailable = isLfoClockAvailable(idx);
+    settings.clockRateScale = settings.frequencyHz / juce::jmax(0.01f, getLfoFrequencyParam(idx).get());
+    settings.clockRampScale = settings.rampSeconds / juce::jmax(0.001f, getLfoRampTimeParam(idx).get());
     return settings;
 }
 

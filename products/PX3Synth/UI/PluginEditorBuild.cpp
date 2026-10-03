@@ -950,6 +950,10 @@ void PX3SynthAudioProcessorEditor::buildSettingsAndOverlays()
     addAndMakeVisible(*fltPanel);
     addAndMakeVisible(*fxPanel);
     addAndMakeVisible(*mixPanel);
+    for (auto* panel : std::array<juce::Component*, 3> { oscPanel.get(), fltPanel.get(), ampPanel.get() })
+    {
+        panel->setBufferedToImage(true);
+    }
 
     busEqOverlay = std::make_unique<px3::ui::BusEqOverlay>(audioProcessor);
     busCompOverlay = std::make_unique<px3::ui::BusCompOverlay>(audioProcessor);

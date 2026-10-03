@@ -81,6 +81,49 @@ LfoComponent::~LfoComponent()
     rampTimeKnob.setLookAndFeel(nullptr);
 }
 
+void LfoComponent::attachClock(juce::AudioParameterChoice& mode, juce::AudioParameterChoice& division)
+{
+    clockModeBox.addItemList(mode.choices, 1);
+    clockDivisionBox.addItemList(division.choices, 1);
+    clockModeLabel.setText("CLOCK", juce::dontSendNotification);
+    clockDivisionLabel.setText("DIVISION", juce::dontSendNotification);
+    for (auto* label : { &clockModeLabel, &clockDivisionLabel, &clockStatus })
+    {
+        label->setFont(juce::FontOptions(10.5f));
+        label->setColour(juce::Label::textColourId, juce::Colour(0xffdadada));
+        addAndMakeVisible(*label);
+    }
+    addAndMakeVisible(clockModeBox);
+    addAndMakeVisible(clockDivisionBox);
+    clockModeBox.setTooltip("LFO clock mode");
+    clockDivisionBox.setTooltip("LFO musical division");
+    clockModeBox.onChange = [this] { refreshClockControls(); };
+    clockModeAttachment = std::make_unique<juce::ComboBoxParameterAttachment>(mode, clockModeBox, nullptr);
+    clockDivisionAttachment = std::make_unique<juce::ComboBoxParameterAttachment>(division, clockDivisionBox, nullptr);
+    clockControlsAttached = true;
+    refreshClockControls();
+    resized();
+}
+
+void LfoComponent::setClockAvailable(bool available)
+{
+    clockAvailable = available;
+    refreshClockControls();
+}
+
+void LfoComponent::refreshClockControls()
+{
+    if (! clockControlsAttached) { return; }
+    const auto free = clockModeBox.getSelectedId() == 1;
+    clockModeBox.setEnabled(currentEnabled);
+    clockDivisionBox.setEnabled(currentEnabled && ! free);
+    rateKnob.setEnabled(currentEnabled && free);
+    rampTimeKnob.setEnabled(currentEnabled && free);
+    keySyncButton.setEnabled(currentEnabled && clockModeBox.getSelectedId() != 3);
+    if (! free) { rateValueLabel.setText("SYNC", juce::dontSendNotification); }
+    clockStatus.setText(! free && ! clockAvailable ? "NO HOST CLOCK" : juce::String(), juce::dontSendNotification);
+}
+
 void LfoComponent::attachRampAndKeySync(juce::RangedAudioParameter& rampTimeParameter,
                                         juce::RangedAudioParameter& keySyncParameter,
                                         juce::LookAndFeel* knobLookAndFeel)
@@ -273,6 +316,18 @@ void LfoComponent::resized()
 
     using px3::ui::ControlShape;
 
+    if (clockControlsAttached)
+    {
+        auto area = inner.rowContent(2).removeFromTop(54);
+        auto first = area.removeFromLeft(area.getWidth() / 2).reduced(2, 0);
+        auto second = area.reduced(2, 0);
+        clockModeLabel.setBounds(first.removeFromTop(14));
+        clockDivisionLabel.setBounds(second.removeFromTop(14));
+        clockModeBox.setBounds(first.removeFromTop(24));
+        clockDivisionBox.setBounds(second.removeFromTop(24));
+        clockStatus.setBounds(first.removeFromTop(16));
+    }
+
     // Row 1: bypass, assign and wave type.
     {
         auto flex = inner.rowFlex(0);
@@ -405,7 +460,7 @@ void LfoComponent::paint(juce::Graphics& g)
 
     // The graph is row 3. It used to be found by replaying resized()'s stack of
     // removeFromTop calls against a separately-derived card rectangle.
-    const auto graph = inner.rowContent(2).toFloat().reduced(0.0f, 2.0f);
+    const auto graph = inner.rowContent(2).withTrimmedTop(clockControlsAttached ? 54 : 0).toFloat().reduced(0.0f, 2.0f);
 
     if (graph.getWidth() < 40.0f || graph.getHeight() < 20.0f)
     {

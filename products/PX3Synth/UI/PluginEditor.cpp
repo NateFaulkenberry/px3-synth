@@ -89,6 +89,7 @@ void PX3SynthAudioProcessorEditor::configureKnob(KnobBinding& binding,
     auto& label = *binding.label;
 
     knob.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+    knob.setBufferedToImage(true);
     knob.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
     const auto& range = parameter.getNormalisableRange();
     knob.setRange(range.start, range.end);
@@ -109,6 +110,7 @@ void PX3SynthAudioProcessorEditor::configureEffectKnob(juce::Slider& slider,
                                                        juce::AudioParameterFloat& parameter)
 {
     slider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+    slider.setBufferedToImage(true);
     slider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
     const auto& range = parameter.getNormalisableRange();
     slider.setRange(range.start, range.end);

@@ -398,7 +398,10 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
         const auto suffix = juce::String(slot + 1).paddedLeft('0', 2);
         graphRouteDepthParams[static_cast<std::size_t>(slot)] = parameterCatalog.createFloat(
             "mod.routes.slot" + suffix + ".depth", "Route " + suffix + " Depth",
-            juce::NormalisableRange<float>(-1.0f, 1.0f), 0.0f);
+            juce::NormalisableRange<float>(-1.0f, 1.0f), 0.0f,
+            juce::AudioParameterFloatAttributes().withLabel("%")
+                .withStringFromValueFunction([](float value, int) { return juce::String(juce::roundToInt(value * 100.0f)) + "%"; })
+                .withValueFromStringFunction([](const juce::String& text) { return text.getFloatValue() / 100.0f; }));
         addParameter(graphRouteDepthParams[static_cast<std::size_t>(slot)]);
     }
 
@@ -722,6 +725,11 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
             juce::ParameterID(idPrefix + "key.sync", 1),
             labelPrefix + "Key Sync",
             false);
+        lfoClockModeParams[static_cast<std::size_t>(lfoIndex)] = parameterCatalog.createChoice(
+            idPrefix + "clock.mode", labelPrefix + "Clock", { "FREE", "TEMPO", "TRANSPORT" }, 0);
+        lfoClockDivisionParams[static_cast<std::size_t>(lfoIndex)] = parameterCatalog.createChoice(
+            idPrefix + "clock.division", labelPrefix + "Division",
+            { "4 BARS", "2 BARS", "1 BAR", "1/2", "1/4", "1/8", "1/16", "1/8T" }, 4);
     }
 
     for (int envIndex = 0; envIndex < kEnvelopeSourceCount; ++envIndex)
@@ -940,6 +948,8 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     {
         addParameter(lfoEnabledParams[static_cast<std::size_t>(lfoIndex)]);
         addParameter(lfoFrequencyParams[static_cast<std::size_t>(lfoIndex)]);
+        addParameter(lfoClockModeParams[static_cast<std::size_t>(lfoIndex)]);
+        addParameter(lfoClockDivisionParams[static_cast<std::size_t>(lfoIndex)]);
         addParameter(lfoAmountParams[static_cast<std::size_t>(lfoIndex)]);
         addParameter(lfoWaveformParams[static_cast<std::size_t>(lfoIndex)]);
     }
@@ -1468,6 +1478,37 @@ bool PX3SynthAudioProcessor::isBusesLayoutSupported(const BusesLayout& layouts) 
     return true;
 }
 
+void PX3SynthAudioProcessor::updateHostClock()
+{
+    auto tempoAvailable = false;
+    auto positionAvailable = false;
+    hostTransportPlaying = false;
+    hostBeatsPerBar = 4.0;
+    if (auto* playHead = getPlayHead())
+    {
+        if (const auto position = playHead->getPosition())
+        {
+            if (const auto bpm = position->getBpm(); bpm && std::isfinite(*bpm) && *bpm > 0.0)
+            {
+                hostTempoBpm = *bpm;
+                tempoAvailable = true;
+            }
+            if (const auto ppq = position->getPpqPosition(); ppq && std::isfinite(*ppq))
+            {
+                hostTransportPpq = *ppq;
+                positionAvailable = true;
+            }
+            if (const auto signature = position->getTimeSignature(); signature && signature->denominator > 0)
+            {
+                hostBeatsPerBar = static_cast<double>(signature->numerator) * 4.0 / signature->denominator;
+            }
+            hostTransportPlaying = position->getIsPlaying();
+        }
+    }
+    hostTempoAvailable.store(tempoAvailable, std::memory_order_relaxed);
+    hostPositionAvailable.store(positionAvailable && tempoAvailable, std::memory_order_relaxed);
+}
+
 void PX3SynthAudioProcessor::advanceLfosForBlock(int numSamples)
 {
     const std::array<int, kLfoSourceCount> defaultOrder { 0, 1, 2 };
@@ -1720,6 +1761,7 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     constexpr float vibratoRateHz = 5.0f;
     constexpr float vibratoMaxDepthSemitones = 1.0f;
 
+    updateHostClock();
     advanceLfosForBlock(buffer.getNumSamples());
 
 #if PX3_DEBUG_PANEL

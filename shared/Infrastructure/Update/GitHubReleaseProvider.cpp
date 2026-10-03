@@ -1,4 +1,5 @@
 #include "GitHubReleaseProvider.h"
+#include <mutex>
 
 namespace px3::update
 {
@@ -55,6 +56,35 @@ juce::Time parseIso8601(const juce::String& text)
 }
 } // namespace
 
+namespace
+{
+struct NetworkTransportState
+{
+    std::mutex mutex;
+    juce::WebInputStream* stream { nullptr };
+    bool cancelled { false };
+};
+
+class RegisteredWebStream final : public juce::WebInputStream
+{
+public:
+    RegisteredWebStream(const juce::URL& url, std::shared_ptr<NetworkTransportState> stateIn)
+        : juce::WebInputStream(url, false), state(std::move(stateIn))
+    {
+        const std::lock_guard<std::mutex> lock(state->mutex);
+        if (state->cancelled) { cancel(); }
+        else { state->stream = this; }
+    }
+    ~RegisteredWebStream() override
+    {
+        const std::lock_guard<std::mutex> lock(state->mutex);
+        if (state->stream == this) { state->stream = nullptr; }
+    }
+private:
+    std::shared_ptr<NetworkTransportState> state;
+};
+}
+
 // The background half. Owns nothing the provider needs after cancellation:
 // the cancelled flag is shared, so a job that outlives its provider notices
 // and delivers nothing.
@@ -79,7 +109,7 @@ public:
     {
     }
 
-    ~LookupJob() override { stopThread(3000); }
+    ~LookupJob() override { stopThread(-1); }
 
     void run() override
     {
@@ -117,18 +147,24 @@ private:
 GitHubReleaseProvider::GitHubReleaseProvider(juce::String repositoryOwner, juce::String repositoryName)
     : owner(std::move(repositoryOwner)), repo(std::move(repositoryName))
 {
-    transport = [](const juce::URL& url, UpdateResult& result) -> juce::String
+    const auto state = std::make_shared<NetworkTransportState>();
+    cancelTransport = [state]
     {
-        int status = 0;
-        auto options = juce::URL::InputStreamOptions(juce::URL::ParameterHandling::inAddress)
-                           .withConnectionTimeoutMs(15000)
-                           .withStatusCode(&status)
-                           .withExtraHeaders("Accept: application/vnd.github+json\r\n"
-                                             "User-Agent: PX3-Updater\r\n");
-
-        auto stream = url.createInputStream(options);
-
-        if (stream == nullptr)
+        const std::lock_guard<std::mutex> lock(state->mutex);
+        state->cancelled = true;
+        if (state->stream != nullptr) { state->stream->cancel(); }
+    };
+    prepareTransport = [state]
+    {
+        const std::lock_guard<std::mutex> lock(state->mutex);
+        state->cancelled = false;
+    };
+    transport = [state](const juce::URL& url, UpdateResult& result) -> juce::String
+    {
+        RegisteredWebStream stream(url, state);
+        stream.withConnectionTimeout(15000).withExtraHeaders("Accept: application/vnd.github+json\r\n"
+                                                            "User-Agent: PX3-Updater\r\n");
+        if (! stream.connect(nullptr))
         {
             // No stream at all is indistinguishable from being offline here,
             // and "check your connection" is the more useful thing to say.
@@ -136,6 +172,7 @@ GitHubReleaseProvider::GitHubReleaseProvider(juce::String repositoryOwner, juce:
                                            "createInputStream returned null");
             return {};
         }
+        const auto status = stream.getStatusCode();
 
         // 404 from /releases/latest is not a failure. It is what GitHub
         // answers for a repository that has published nothing yet - a normal
@@ -160,7 +197,7 @@ GitHubReleaseProvider::GitHubReleaseProvider(juce::String repositoryOwner, juce:
             return {};
         }
 
-        return stream->readEntireStreamAsString();
+        return stream.readEntireStreamAsString();
     };
 }
 
@@ -195,7 +232,16 @@ juce::URL GitHubReleaseProvider::latestReleaseUrl() const
 void GitHubReleaseProvider::cancel()
 {
     cancelled->store(true);
-    if (job != nullptr) { job->stopThread(3000); }
+    if (cancelTransport) { cancelTransport(); }
+    if (job != nullptr) { job->stopThread(-1); }
+}
+
+void GitHubReleaseProvider::setFetcherForTesting(Fetcher fetcher, std::function<void()> cancelHook)
+{
+    cancel();
+    transport = std::move(fetcher);
+    cancelTransport = std::move(cancelHook);
+    prepareTransport = {};
 }
 
 void GitHubReleaseProvider::fetchLatestRelease(const juce::String& productId,
@@ -203,6 +249,8 @@ void GitHubReleaseProvider::fetchLatestRelease(const juce::String& productId,
                                                const juce::String& architecture,
                                                LookupCallback callback)
 {
+    cancel();
+    if (prepareTransport) { prepareTransport(); }
     // A fresh flag per lookup, so cancelling an old one cannot silence a new.
     cancelled = std::make_shared<std::atomic<bool>>(false);
 

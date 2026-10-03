@@ -972,6 +972,78 @@ void testModulationUpgrade()
         writer.join();
         check("ModGraph_RoutePublicationAndStateSnapshotsCoexistWithRendering", writerOk.load() && finite && audible);
     }
+    {
+        LfoGenerator generator;
+        generator.prepare(48000.0);
+        LfoSettings settings;
+        settings.clockMode = LfoClockMode::tempo;
+        settings.clockDivision = 4;
+        settings.tempoBpm = 120.0;
+        settings.clockAvailable = true;
+        generator.setSettings(settings);
+        generator.getMidpointSignalAndAdvance(6000);
+        check("LfoClock_TempoDivisionDerivesItsRateFromHostBeats",
+              std::abs(generator.getPhaseRadians() - juce::MathConstants<float>::halfPi) < 1.0e-5f);
+        settings.clockMode = LfoClockMode::transport;
+        settings.transportPpq = 0.25;
+        settings.transportPlaying = false;
+        generator.setSettings(settings);
+        const auto held = generator.getMidpointSignalAndAdvance(512);
+        check("LfoClock_StoppedTransportHoldsThePpqPhase", std::abs(held - 1.0f) < 1.0e-6f);
+        settings.clockAvailable = false;
+        generator.setSettings(settings);
+        check("LfoClock_MissingHostTimingDoesNotPretendToFreeRun", generator.getMidpointSignalAndAdvance(512) == 0.0f);
+          settings.clockMode = LfoClockMode::tempo;
+          settings.clockAvailable = true;
+          settings.clockRateScale = 2.0f;
+          generator.retrigger();
+          generator.setSettings(settings);
+          generator.getMidpointSignalAndAdvance(3000);
+          check("LfoClock_SyncedRatesRetainGraphRateModulation",
+              std::abs(generator.getPhaseRadians() - juce::MathConstants<float>::halfPi) < 1.0e-5f);
+    }
+    {
+        class PlayHead final : public juce::AudioPlayHead
+        {
+        public:
+            juce::Optional<PositionInfo> getPosition() const override
+            {
+                PositionInfo position;
+                position.setBpm(120.0);
+                position.setPpqPosition(0.25);
+                position.setIsPlaying(false);
+                return position;
+            }
+        } playHead;
+        PX3SynthAudioProcessor processor;
+        makePlainPatch(processor);
+        setParam(processor, "mod.lfo1.enabled", 1.0f);
+        setParam(processor, "mod.lfo1.amount", 1.0f);
+        setChoice(processor, "mod.lfo1.clock.mode", 2);
+        processor.setLfoAssignmentByParameterId(0, "voice.filter1.cutoff", false);
+        auto* cutoff = findParameter(processor, "voice.filter1.cutoff");
+        cutoff->setValueNotifyingHost(0.5f);
+        processor.setPlayHead(&playHead);
+        prepareUpgrade(processor);
+        runUpgradeBlocks(processor, 1);
+        check("LfoClock_ProcessorConsumesHostPpqAndTempo",
+              processor.isLfoClockAvailable(0)
+                  && processor.getUnclampedModulatedNormalisedValue(*cutoff) > 0.99f);
+        processor.setPlayHead(nullptr);
+        runUpgradeBlocks(processor, 1);
+        check("LfoClock_ProcessorReportsMissingHostWithoutFreeRateFallback",
+              ! processor.isLfoClockAvailable(0)
+                  && std::abs(processor.getUnclampedModulatedNormalisedValue(*cutoff) - cutoff->getValue()) < 1.0e-6f,
+              "base=" + fmt(cutoff->getValue(), 8) + " effective="
+                  + fmt(processor.getUnclampedModulatedNormalisedValue(*cutoff), 8));
+        juce::String error;
+        processor.setGraphRoute(0, { 0, "voice.filter1.cutoff", px3::synth::ModulationPolarity::unipolar }, error);
+        auto& depth = processor.getGraphRouteDepthParam(0);
+        depth.setValueNotifyingHost(depth.convertTo0to1(1.0f));
+        runUpgradeBlocks(processor, 1);
+        check("LfoClock_UnavailableClockDoesNotCreateAUnipolarOffset",
+              std::abs(processor.getUnclampedModulatedNormalisedValue(*cutoff) - cutoff->getValue()) < 1.0e-6f);
+    }
     testEnvelopeTimesUpgrade();
     testStateUpgrade();
     testRampsAndKeySyncUpgrade();

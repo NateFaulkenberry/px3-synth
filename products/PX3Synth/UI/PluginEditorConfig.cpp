@@ -633,6 +633,12 @@ void PX3SynthAudioProcessorEditor::refreshUILayoutSelection()
 
 void PX3SynthAudioProcessorEditor::applyUiConfig()
 {
+    std::function<void(juce::Component&)> invalidate = [&](juce::Component& component)
+    {
+        component.repaint();
+        for (auto* child : component.getChildren()) { invalidate(*child); }
+    };
+    invalidate(*this);
     if (topMenuBar != nullptr)
     {
         topMenuBar->setUIConfig(uiConfig);

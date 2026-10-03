@@ -35,6 +35,23 @@ float foldIntoUnitRange(float value)
 }
 } // namespace
 
+juce::AudioParameterChoice& PX3SynthAudioProcessor::getLfoClockModeParam(int index) const
+{
+    return *lfoClockModeParams[static_cast<std::size_t>(juce::jlimit(0, kLfoSourceCount - 1, index))];
+}
+
+juce::AudioParameterChoice& PX3SynthAudioProcessor::getLfoClockDivisionParam(int index) const
+{
+    return *lfoClockDivisionParams[static_cast<std::size_t>(juce::jlimit(0, kLfoSourceCount - 1, index))];
+}
+
+bool PX3SynthAudioProcessor::isLfoClockAvailable(int index) const
+{
+    const auto mode = getLfoClockModeParam(index).getIndex();
+    return mode == 0 || (mode == 1 ? hostTempoAvailable.load(std::memory_order_relaxed)
+                                 : hostPositionAvailable.load(std::memory_order_relaxed));
+}
+
 float PX3SynthAudioProcessor::modulatedParameterValue(juce::AudioParameterFloat* parameter) const
 {
     if (parameter == nullptr) { return 0.0f; }
@@ -84,7 +101,7 @@ float PX3SynthAudioProcessor::applyModulationToNormalizedValue(juce::RangedAudio
     {
         const auto index = static_cast<std::size_t>(i);
         signals[index] = lfoCurrentValues[index].load(std::memory_order_relaxed);
-        enabledSources[index] = getLfoEnabledParam(i).get();
+        enabledSources[index] = getLfoEnabledParam(i).get() && isLfoClockAvailable(i);
         depths[index] = getLfoAmountParam(i).get();
     }
     for (int i = 0; i < kEnvelopeSourceCount; ++i)

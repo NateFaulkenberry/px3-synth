@@ -22,6 +22,25 @@ namespace px3tests
 void testUpdater()
 {
     suite("UPDATER");
+    {
+        juce::WaitableEvent started;
+        juce::WaitableEvent released;
+        std::atomic<bool> completed { false };
+        std::atomic<bool> callbackDelivered { false };
+        px3::update::GitHubReleaseProvider provider("owner", "repo");
+        provider.setFetcherForTesting([&](const juce::URL&, px3::update::UpdateResult&)
+        {
+            started.signal();
+            released.wait(-1);
+            completed.store(true);
+            return juce::String("{}");
+        }, [&] { released.signal(); });
+        provider.fetchLatestRelease("px3-synth", "macOS", "arm64", [&](auto) { callbackDelivered.store(true); });
+        const auto running = started.wait(5000);
+        provider.cancel();
+        check("Update_LookupCancellationJoinsTheTransportWithoutLateCallbacks",
+              running && completed.load() && ! callbackDelivered.load());
+    }
 
     using namespace px3::update;
 

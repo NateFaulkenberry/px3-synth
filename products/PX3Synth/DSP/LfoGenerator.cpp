@@ -22,6 +22,23 @@ void LfoGenerator::setSettings(const LfoSettings& newSettings)
     settings.waveformIndex = px3::clampLfoWaveformIndex(newSettings.waveformIndex);
     settings.rampSeconds = juce::jlimit(px3::lfoMinRampSeconds, px3::lfoMaxRampSeconds, newSettings.rampSeconds);
     settings.keySync = newSettings.keySync;
+    settings.clockMode = newSettings.clockMode;
+    settings.clockDivision = juce::jlimit(0, static_cast<int>(lfoClockBeats.size()) - 1, newSettings.clockDivision);
+    settings.tempoBpm = std::isfinite(newSettings.tempoBpm) ? juce::jlimit(10.0, 999.0, newSettings.tempoBpm) : 120.0;
+    settings.transportPpq = std::isfinite(newSettings.transportPpq) ? newSettings.transportPpq : 0.0;
+    settings.beatsPerBar = std::isfinite(newSettings.beatsPerBar) ? juce::jlimit(0.25, 32.0, newSettings.beatsPerBar) : 4.0;
+    settings.clockAvailable = newSettings.clockAvailable;
+    settings.transportPlaying = newSettings.transportPlaying;
+    settings.clockRateScale = std::isfinite(newSettings.clockRateScale) ? juce::jlimit(0.001f, 100.0f, newSettings.clockRateScale) : 1.0f;
+    settings.clockRampScale = std::isfinite(newSettings.clockRampScale) ? juce::jlimit(0.001f, 100.0f, newSettings.clockRampScale) : 1.0f;
+    if (settings.clockMode != LfoClockMode::free && settings.clockAvailable)
+    {
+        auto beats = lfoClockBeats[static_cast<std::size_t>(settings.clockDivision)];
+        if (settings.clockDivision <= 2) { beats *= settings.beatsPerBar / 4.0; }
+        beats /= settings.clockRateScale;
+        settings.frequencyHz = static_cast<float>(settings.tempoBpm / (60.0 * beats));
+        settings.rampSeconds = static_cast<float>(60.0 * beats / settings.tempoBpm) * settings.clockRampScale;
+    }
 }
 
 void LfoGenerator::retrigger()
@@ -41,6 +58,7 @@ void LfoGenerator::resetPhase(float newPhaseRadians)
 
 float LfoGenerator::getNextSample()
 {
+    if (settings.clockMode != LfoClockMode::free) { return getMidpointSignalAndAdvance(1); }
     const auto output = px3::isRampLfoWaveformIndex(settings.waveformIndex)
                             ? rampSampleAt(rampElapsedSeconds, settings.rampSeconds, settings.waveformIndex)
                             : waveformSampleAtPhase(phaseRadians, settings.waveformIndex);
@@ -59,6 +77,23 @@ float LfoGenerator::getNextSample()
 
 float LfoGenerator::getMidpointSignalAndAdvance(int numSamples)
 {
+    if (settings.clockMode != LfoClockMode::free && ! settings.clockAvailable) { return 0.0f; }
+    if (settings.clockMode == LfoClockMode::transport)
+    {
+        auto beats = lfoClockBeats[static_cast<std::size_t>(settings.clockDivision)];
+        if (settings.clockDivision <= 2) { beats *= settings.beatsPerBar / 4.0; }
+        beats /= settings.clockRateScale;
+        const auto cycles = settings.transportPpq / beats;
+        const auto phase = cycles - std::floor(cycles);
+        resetPhase(static_cast<float>(phase * juce::MathConstants<double>::twoPi));
+        rampElapsedSeconds = phase / settings.frequencyHz;
+        if (! settings.transportPlaying)
+        {
+            return px3::isRampLfoWaveformIndex(settings.waveformIndex)
+                       ? rampSampleAt(rampElapsedSeconds, settings.rampSeconds, settings.waveformIndex)
+                       : waveformSampleAtPhase(phaseRadians, settings.waveformIndex);
+        }
+    }
     const auto clampedSamples = juce::jmax(1, numSamples);
     const auto phaseDeltaPerSample = juce::MathConstants<float>::twoPi * settings.frequencyHz
                                      / static_cast<float>(juce::jmax(1.0, sampleRateHz));
@@ -70,7 +105,9 @@ float LfoGenerator::getMidpointSignalAndAdvance(int numSamples)
     auto output = 0.0f;
     if (px3::isRampLfoWaveformIndex(settings.waveformIndex))
     {
-        output = rampSampleAt(rampElapsedSeconds + 0.5 * blockSeconds, settings.rampSeconds, settings.waveformIndex);
+        auto elapsed = rampElapsedSeconds + 0.5 * blockSeconds;
+        if (settings.clockMode != LfoClockMode::free) { elapsed = std::fmod(elapsed, 1.0 / settings.frequencyHz); }
+        output = rampSampleAt(elapsed, settings.rampSeconds, settings.waveformIndex);
     }
     else
     {
@@ -85,6 +122,10 @@ float LfoGenerator::getMidpointSignalAndAdvance(int numSamples)
     }
 
     rampElapsedSeconds = std::min(kRampElapsedCeilingSeconds, rampElapsedSeconds + blockSeconds);
+    if (settings.clockMode == LfoClockMode::transport)
+    {
+        settings.transportPpq += blockSeconds * settings.tempoBpm / 60.0;
+    }
     return output;
 }
 

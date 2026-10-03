@@ -44,6 +44,8 @@ public:
     void attachRampAndKeySync(juce::RangedAudioParameter& rampTimeParameter,
                               juce::RangedAudioParameter& keySyncParameter,
                               juce::LookAndFeel* knobLookAndFeel);
+    void attachClock(juce::AudioParameterChoice& mode, juce::AudioParameterChoice& division);
+    void setClockAvailable(bool available);
 
     void resized() override;
     void mouseUp(const juce::MouseEvent& event) override;
@@ -95,6 +97,16 @@ private:
     juce::String rateCaptionText;
     bool rampControlsAttached { false };
     bool laidOutForRamp { false };
+    void refreshClockControls();
+    juce::ComboBox clockModeBox;
+    juce::ComboBox clockDivisionBox;
+    juce::Label clockModeLabel;
+    juce::Label clockDivisionLabel;
+    juce::Label clockStatus;
+    std::unique_ptr<juce::ComboBoxParameterAttachment> clockModeAttachment;
+    std::unique_ptr<juce::ComboBoxParameterAttachment> clockDivisionAttachment;
+    bool clockControlsAttached { false };
+    bool clockAvailable { true };
     px3::ui::CardHost card;
     px3::ui::CardInner inner;
 };

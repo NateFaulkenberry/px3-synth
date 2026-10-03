@@ -10,6 +10,9 @@
 // numbers describe a sustained condition rather than an onset transient.
 
 #include "PluginProcessor.h"
+#include "PluginEditor.h"
+#include "UpdateService.h"
+#include "MockUpdateProvider.h"
 #include "OscillatorMode.h"
 
 #include <algorithm>
@@ -751,6 +754,8 @@ int main(int argc, char* argv[])
 
     if (filter == "ui")
     {
+        px3::update::installDefaultConfiguration();
+        px3::update::UpdateService::getInstance().setProvider(std::make_unique<px3::update::MockUpdateProvider>());
         // The editor paints into an offscreen image here rather than a window,
         // so this measures the plugin's own paint work without a compositor in
         // the way. Full repaints are what the 30 Hz timer triggers whenever a
@@ -767,6 +772,9 @@ int main(int argc, char* argv[])
             std::printf("  editor could not be created\n");
             return 1;
         }
+        const auto requestedWidth = juce::SystemStats::getEnvironmentVariable("PX3_BENCH_UI_WIDTH", "0").getIntValue();
+        const auto requestedHeight = juce::SystemStats::getEnvironmentVariable("PX3_BENCH_UI_HEIGHT", "0").getIntValue();
+        if (requestedWidth > 0 && requestedHeight > 0) { editor->setSize(requestedWidth, requestedHeight); }
 
         const auto width = juce::jmax(64, editor->getWidth());
         const auto height = juce::jmax(64, editor->getHeight());
@@ -810,6 +818,31 @@ int main(int argc, char* argv[])
         // panel at (24, 24), expanded by the 8 px animation margin.
         const auto logo = timePaints("logo-panel repaint (animation region)", 60,
                                      juce::Rectangle<int>(16, 16, 166, 120));
+        if (auto* synthEditor = dynamic_cast<PX3SynthAudioProcessorEditor*>(editor.get()))
+        {
+            const auto timeFrames = [&](const char* label, bool automation)
+            {
+                std::vector<double> samples;
+                for (int frame = 0; frame < 60; ++frame)
+                {
+                    const auto start = std::chrono::steady_clock::now();
+                    if (automation) { setParameter(processor, "voice.filter1.cutoff", frame % 2 == 0 ? 400.0f : 12000.0f); }
+                    synthEditor->debugTimerTick();
+                    juce::Graphics graphics(target);
+                    editor->paintEntireComponent(graphics, false);
+                    samples.push_back(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count());
+                }
+                std::sort(samples.begin(), samples.end());
+                std::printf("  %-38s median %7.3f ms   p99 %7.3f ms\n", label, samples[samples.size() / 2], samples.back());
+            };
+            timeFrames("timer + idle animation repaint", false);
+            juce::AudioBuffer<float> audio(2, kBlockSize);
+            audio.clear();
+            juce::MidiBuffer note;
+            note.addEvent(juce::MidiMessage::noteOn(1, 69, 0.8f), 0);
+            processor.processBlock(audio, note);
+            timeFrames("timer + live note + automation repaint", true);
+        }
 
         std::printf("\n  full repaint at 30 Hz costs %.1f%% of one core\n", full * 3.0);
         std::printf("  a logo-area repaint instead would cost %.1f%%\n", logo * 3.0);
