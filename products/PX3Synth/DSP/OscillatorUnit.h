@@ -59,7 +59,7 @@ private:
     static constexpr int kHarmonicCount = 9;
     static constexpr int kSuperSawVoices = 7;
     static constexpr int kPhysicalModes = 4;
-    static constexpr int kRobPhases = 10;
+    static constexpr int kRobPhases = 12;
 
     struct HarmonicSet
     {
@@ -268,6 +268,9 @@ private:
     // ROB
     std::array<double, kRobPhases> robPhases { {} };
     double robTransient { 0.0 };
+    int robHoldCountdown { 0 };
+    std::array<double, 4> robHoldTarget { { 1.0, 1.0, 1.0, 1.0 } };
+    std::array<double, 4> robHoldValue { { 1.0, 1.0, 1.0, 1.0 } };
     px3::dsp::Adaa robBodyClip, robEdgeClip, robOutClip;
 
     // PX3

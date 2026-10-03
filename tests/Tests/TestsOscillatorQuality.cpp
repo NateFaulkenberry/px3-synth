@@ -322,25 +322,63 @@ void testOscillatorQuality()
         UnitSetup isaac;
         isaac.mode = static_cast<int>(Mode::isaac);
         isaac.a = 0.0f;
-        isaac.c = 1.0f;   // full STRETCH: the 8th partial at 8 * (1 + 1.1 * 0.03 * 8)
+        isaac.c = 1.0f;   // full STRETCH: the 8th partial at 8 * (1 + 1.1 * 0.03 * 7)
         const auto p = windowedPower(renderUnit(isaac, 110.0, fs, 1 << order, 8192), 0, order);
-        const auto stretched = peakDbNear(p, fs, 110.0 * 8.0 * (1.0 + 1.1 * 0.03 * 8.0));
+        const auto stretched = peakDbNear(p, fs, 110.0 * 8.0 * (1.0 + 1.1 * 0.03 * 7.0));
         const auto harmonic = peakDbNear(p, fs, 1100.0);
         check("OscQuality_IsaacStretchedPartialsAreReallyInharmonic", stretched > harmonic + 15.0,
               "at the stretched 8th partial " + fmt(stretched, 1) + " dB, at the 10th harmonic it used to fold onto "
                   + fmt(harmonic, 1) + " dB");
 
-        UnitSetup rob;
-        rob.mode = static_cast<int>(Mode::rob);
-        rob.a = 0.0f;
-        rob.b = 0.5f;
-        rob.c = 0.0f;
-        const auto stretch = 1.0 + 0.45 * std::pow(0.5, 0.72);
-        const auto q = windowedPower(renderUnit(rob, 110.0, fs, 1 << order, 48000), 0, order);
-        const auto body = peakDbNear(q, fs, 110.0 * stretch);
-        const auto note = peakDbNear(q, fs, 110.0);
-        check("OscQuality_RobBodySitsAtItsStretchedRatio", body > note + 10.0,
-              "at " + fmt(stretch, 3) + "x the note " + fmt(body, 1) + " dB, at the note itself " + fmt(note, 1) + " dB");
+        // STRETCH, BODY and CHAOS are timbre controls: the strongest component
+        // near the note must be the played note at every setting.
+        const auto strongestNear = [&](const std::vector<double>& power, double hz)
+        {
+            const auto binHz = fs / static_cast<double>(1 << order);
+            auto best = static_cast<int>(0.7 * hz / binHz);
+            for (int k = best; k < static_cast<int>(1.5 * hz / binHz); ++k)
+            {
+                if (power[static_cast<std::size_t>(k)] > power[static_cast<std::size_t>(best)]) { best = k; }
+            }
+            return best * binHz;
+        };
+        const auto isaacPeak = strongestNear(p, 110.0);
+        check("OscQuality_IsaacStretchKeepsTheFundamentalAtThePlayedPitch", std::abs(isaacPeak / 110.0 - 1.0) < 0.004,
+              "full STRETCH: strongest component near the note at " + fmt(isaacPeak, 2) + " Hz (played 110 Hz)");
+
+        auto worstRob = 0.0;
+        juce::String robPeaks;
+        double upper[2] {};
+        for (const auto body : { 0.0f, 1.0f })
+        {
+            for (const auto chaos : { 0.0f, 1.0f })
+            {
+                UnitSetup rob;
+                rob.mode = static_cast<int>(Mode::rob);
+                rob.a = 0.0f;
+                rob.b = body;
+                rob.c = chaos;
+                const auto q = windowedPower(renderUnit(rob, 110.0, fs, 1 << order, 48000), 0, order);
+                const auto peak = strongestNear(q, 110.0);
+                worstRob = juce::jmax(worstRob, std::abs(peak / 110.0 - 1.0));
+                robPeaks << "B" << fmt(body, 0) << "/C" << fmt(chaos, 0) << " " << fmt(peak, 1) << " Hz  ";
+                if (chaos == 0.0f)
+                {
+                    const auto binHz = fs / static_cast<double>(1 << order);
+                    double above = 0.0, total = 0.0;
+                    for (std::size_t k = 1; k < q.size(); ++k)
+                    {
+                        total += q[k];
+                        if (static_cast<double>(k) * binHz > 1.5 * 110.0) { above += q[k]; }
+                    }
+                    upper[body > 0.5f ? 1 : 0] = 10.0 * std::log10(juce::jmax(1.0e-30, above) / total);
+                }
+            }
+        }
+        check("OscQuality_RobBodyAndChaosKeepTheFundamentalAtThePlayedPitch", worstRob < 0.01,
+              robPeaks + "(played 110 Hz)");
+        check("OscQuality_RobBodyAddsUpperPartialEnergy", upper[1] > upper[0] + 6.0,
+              "energy above 1.5x the note: BODY 0 " + fmt(upper[0], 1) + " dB, BODY 1 " + fmt(upper[1], 1) + " dB of total");
     }
 
     // ---- every source starts at the same phase ----------------------------------------------

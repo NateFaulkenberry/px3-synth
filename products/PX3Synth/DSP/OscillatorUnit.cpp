@@ -332,7 +332,10 @@ void OscillatorUnit::activateMode(int modeIndex, bool strike)
             break;
         case Mode::rob:
             robPhases.fill(0.0);
-            robPhases[0] = wrap(phase * (1.0 + target.robChaos * 1.05 + target.robBody * 0.45));
+            robPhases[0] = phase;
+            robHoldCountdown = 0;
+            robHoldTarget.fill(1.0);
+            robHoldValue.fill(1.0);
             robTransient = strike ? 1.0 : 0.0;
             robBodyClip.reset();
             robEdgeClip.reset();
@@ -380,7 +383,9 @@ OscillatorUnit::HarmonicSet OscillatorUnit::buildHarmonicSet(const std::array<fl
         amp *= rollGain(i + 1, roll);
 
         set.amplitude[static_cast<std::size_t>(i)] = amp;
-        set.ratio[static_cast<std::size_t>(i)] = h * (1.0f + inharmonicity * 0.03f * h);
+        // Stretch grows with distance from the fundamental, so harmonic 1 stays
+        // on the played note: STRETCH is a timbre control, not a detune.
+        set.ratio[static_cast<std::size_t>(i)] = h * (1.0f + inharmonicity * 0.03f * (h - 1.0f));
         energy += amp * amp;
     }
     set.amplitude[8] = 0.0f;
@@ -1087,11 +1092,11 @@ double OscillatorUnit::renderRob(const RenderContext& context, const MainPhase& 
         return p;
     };
 
-    // The body runs at a stretched multiple of the note, and a slow wobble
-    // phase-modulates everything built on it. Each multiple of the body is its
-    // own accumulator - they used to be multiples of a wrapped angle, which
-    // jumped once per cycle - and each fades out as its sidebands near Nyquist.
-    const auto bodyIncrement = increment * (1.0 + chaos * 1.05 + body * 0.45);
+    // The body runs at the played note. BODY is spectral density - more and
+    // louder harmonic partials and a harder drive into the body clip - never a
+    // transposition. A slow wobble phase-modulates the partials for movement.
+    // Each multiple is its own accumulator and fades out as it nears Nyquist.
+    const auto bodyIncrement = increment;
     const auto wobbleIncrement = increment * (3.5 + chaos * 10.0);
     const auto wobbleDepth = chaos * 0.40;   // radians: nothing at all at CHAOS 0
     const auto wobble = fastSine(advance(1, wobbleIncrement)) * wobbleDepth;
@@ -1103,11 +1108,29 @@ double OscillatorUnit::renderRob(const RenderContext& context, const MainPhase& 
         return fastSine(p + multiple * wobble * kInverseTwoPi) * static_cast<double>(px3::dsp::nyquistFade(top));
     };
 
+    // CHAOS gates the body's upper partials with sample-and-hold randomness:
+    // a new random level per partial at a rate rising with the knob, slewed
+    // over about 2 ms so the flicker is grainy rather than clicky. At CHAOS 0
+    // nothing is drawn and every gate stays fully open.
+    if (chaos > 0.0)
+    {
+        if (--robHoldCountdown <= 0)
+        {
+            robHoldCountdown = juce::jmax(1, static_cast<int>(sampleRate / (4.0 + chaos * 56.0)));
+            for (auto& t : robHoldTarget) { t = 0.5 + 0.5 * static_cast<double>(noise.white()); }
+        }
+        const auto slew = 1.0 - std::exp(-1.0 / (0.002 * sampleRate));
+        for (std::size_t k = 0; k < robHoldValue.size(); ++k) { robHoldValue[k] += (robHoldTarget[k] - robHoldValue[k]) * slew; }
+    }
+    const auto gate = [&](std::size_t k) { return 1.0 - chaos * 0.92 * (1.0 - robHoldValue[k]); };
+
     const auto fundamental = component(0, 1.0);
-    const auto sub = component(2, 0.5) * (0.12 + body * 0.42);
-    const auto second = component(3, 1.34 + body * 1.10) * (0.08 + body * 0.34);
-    const auto third = component(4, 2.00 + body * 2.05) * (0.03 + body * 0.22);
-    auto bodySignal = fundamental * (0.42 + body * 0.52) + sub + second + third;
+    const auto sub = component(2, 0.5) * (0.12 + body * 0.30);
+    const auto second = component(3, 2.0 + body * 0.02) * (0.05 + body * 0.40) * gate(0);
+    const auto third = component(4, 3.0 + body * 0.05) * (0.02 + body * 0.32) * gate(1);
+    const auto fifth = component(10, 5.0 + body * 0.11) * (body * 0.22) * gate(2);
+    const auto seventh = component(11, 7.0 + body * 0.19) * (body * body * 0.16) * gate(3);
+    auto bodySignal = fundamental * (0.46 + body * 0.30) + sub + second + third + fifth + seventh;
     bodySignal = robBodyClip.process(kTanhAdaa, bodySignal * (1.12 + body * 2.40));
 
     // TRANS: the smack at the front of the note, decaying in seconds.
