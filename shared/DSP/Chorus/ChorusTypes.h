@@ -9,7 +9,8 @@ struct ChorusSettings
     // existing patches sound like.
     float amount { 0.0f };
 
-    // 0..3 = DIM 1..4, 4..6 = DIM 1+4 / 2+4 / 3+4, 7 = ENSEMBLE, 8 = CE WARM.
+    // 0..3 = DIM 1..4, 4..6 = DIM 1+4 / 2+4 / 3+4, 7 = ENSEMBLE, 8 = CE WARM,
+    // 9..11 = JUNO I / II / I+II.
     int modeIndex { 1 };
 
     float rate { 0.35f };

@@ -53,6 +53,10 @@ public:
         int stackedMode;    // -1, or the mode this one runs alongside
         float bandwidthHz;
         float companding;
+        // Juno-style modes run at fixed rates on a triangle LFO, as the hardware
+        // does; RATE trims around the fixed rate instead of setting it.
+        float fixedRateHz { 0.0f };
+        bool triangleLfo { false };
     };
 
     static ModeSpec specFor(int modeIndex);

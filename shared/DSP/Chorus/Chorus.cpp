@@ -10,7 +10,7 @@ namespace
 // The four Dimension modes. Mode 1 is documented as the softest AND as having
 // the longest delay - its VCOs run slower - which is why the base delay falls
 // rather than rises as the modes get stronger.
-constexpr std::array<Chorus::ModeSpec, 9> kModes { {
+constexpr std::array<Chorus::ModeSpec, 12> kModes { {
     // baseMs, rateScale, depthScale, paths, stackedMode, bandwidthHz, companding
     { 10.0f, 0.28f, 0.35f, 2, -1, 7200.0f, 0.55f },   // DIM 1  - softest, longest delay
     {  7.0f, 0.55f, 0.60f, 2, -1, 8200.0f, 0.50f },   // DIM 2
@@ -21,6 +21,12 @@ constexpr std::array<Chorus::ModeSpec, 9> kModes { {
     {  6.0f, 0.55f, 0.85f, 2,  3, 8200.0f, 0.50f },   // DIM 3+4
     { 14.0f, 0.20f, 0.75f, 3, -1, 6400.0f, 0.65f },   // ENSEMBLE - string machine
     { 12.0f, 0.42f, 0.70f, 1, -1, 4800.0f, 0.85f },   // CE WARM  - single BBD path
+    // Juno-style: one BBD line, triangle LFO at a fixed rate. I is slow and
+    // gentle, II faster and deeper, I+II the fast shallow shimmer you get with
+    // both buttons down. Inspired by the Juno-60/106 chorus, not a circuit model.
+    {  3.5f, 1.0f, 0.36f, 1, -1, 9500.0f, 0.50f, 0.513f, true },   // JUNO I
+    {  3.5f, 1.0f, 0.58f, 1, -1, 9500.0f, 0.50f, 0.863f, true },   // JUNO II
+    {  3.5f, 1.0f, 0.12f, 1, -1, 9500.0f, 0.50f, 8.0f,   true },   // JUNO I+II
 } };
 
 constexpr float kMaxDelayMs = 40.0f;
@@ -271,8 +277,10 @@ Chorus::Frame Chorus::renderStack(int modeIndex, float inL, float inR, float dep
     // Rate lives where the hardware's does - cycles measured in seconds. The
     // wander is a few percent, bounded and slow: enough that the cycle never
     // repeats exactly, small enough never to be heard as modulation itself.
-    const auto rateHz = juce::jmap(rateSmoothed.getCurrentValue(), 0.06f, 1.6f)
-                        * spec.rateScale * (1.0f + rateWander * 0.05f);
+    const auto rateHz = (spec.fixedRateHz > 0.0f
+                             ? spec.fixedRateHz * std::exp2((rateSmoothed.getCurrentValue() - 0.35f) * 1.5f)
+                             : juce::jmap(rateSmoothed.getCurrentValue(), 0.06f, 1.6f) * spec.rateScale)
+                        * (1.0f + rateWander * 0.05f);
     const auto increment = rateHz / static_cast<float>(sampleRateHz);
 
     Frame wetA {};
@@ -307,7 +315,9 @@ Chorus::Frame Chorus::renderStack(int modeIndex, float inL, float inR, float dep
         // which trades a little of the pitch cancellation for a wider field.
         phaseOffset += (path == 1 ? spread * 0.12f : 0.0f);
 
-        const auto lfo = trapezoid(lfoPhase[stack][p] + phaseOffset) * polarity;
+        const auto shapePhase = lfoPhase[stack][p] + phaseOffset;
+        const auto lfo = (spec.triangleLfo ? 1.0f - 4.0f * std::abs(shapePhase - std::floor(shapePhase) - 0.5f)
+                                           : trapezoid(shapePhase)) * polarity;
         const auto delaySamples = baseSamples + lfo * excursion * (1.0f + depthWander * 0.04f);
 
         for (int ch = 0; ch < 2; ++ch)

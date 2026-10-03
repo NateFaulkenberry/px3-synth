@@ -174,6 +174,73 @@ void testChorus()
 {
     suite("CHORUS");
 
+    {
+        // JUNO I, II and I+II: audible, finite, and at their own rates - the
+        // pitch wobble of a sine through each cycles at about 0.5, 0.86 and 8 Hz.
+        auto wobbleRate = [](int mode, bool& finite, double& changed)
+        {
+            px3::Chorus chorus;
+            chorus.prepare(48000.0);
+            ChorusSettings settings;
+            settings.enabled = true;
+            settings.amount = 1.0f;
+            settings.mix = 1.0f;
+            settings.depth = 1.0f;
+            settings.modeIndex = mode;
+            std::vector<double> crossings;
+            finite = true;
+            double diff = 0.0, dry = 0.0;
+            float previous = 0.0f;
+            for (int n = 0; n < 48000 * 6; ++n)
+            {
+                if (n % 512 == 0) chorus.updateForBlock(settings);
+                const auto x = 0.3f * static_cast<float>(std::sin(juce::MathConstants<double>::twoPi * 440.0 * n / 48000.0));
+                float l = 0, r = 0;
+                chorus.processSampleFrame(x, x, l, r);
+                finite = finite && std::isfinite(l) && std::isfinite(r);
+                if (n > 48000) { diff += static_cast<double>(l - x) * (l - x); dry += static_cast<double>(x) * x; }
+                if (n > 48000 && previous < 0.0f && l >= 0.0f) crossings.push_back(n - 1 + previous / (previous - l));
+                previous = l;
+            }
+            changed = std::sqrt(diff / dry);
+            // Period series -> count its oscillations about its own mean.
+            std::vector<double> periods;
+            for (std::size_t k = 1; k < crossings.size(); ++k) periods.push_back(crossings[k] - crossings[k - 1]);
+            double mean = 0.0;
+            for (const auto p : periods) mean += p;
+            mean /= static_cast<double>(periods.size());
+            // Smooth over 8 periods so sample-level jitter does not count.
+            std::vector<double> smoothedSeries;
+            double smoothed = periods[0];
+            for (const auto p : periods) { smoothed += (p - smoothed) * 0.125; smoothedSeries.push_back(smoothed - mean); }
+            double spread = 0.0;
+            for (const auto v : smoothedSeries) spread += v * v;
+            const auto threshold = 0.3 * std::sqrt(spread / static_cast<double>(smoothedSeries.size()));
+            // Schmitt trigger: a cycle counts only once the series has gone
+            // clearly below and then clearly above, so jitter is not a cycle.
+            int swings = 0;
+            auto low = false;
+            for (const auto v : smoothedSeries)
+            {
+                if (v < -threshold) low = true;
+                else if (v > threshold && low) { ++swings; low = false; }
+            }
+            return swings / 5.0;   // per second over the 5 measured seconds
+        };
+        bool finiteI = false, finiteII = false, finiteBoth = false;
+        double changedI = 0, changedII = 0, changedBoth = 0;
+        const auto rateI = wobbleRate(9, finiteI, changedI);
+        const auto rateII = wobbleRate(10, finiteII, changedII);
+        const auto rateBoth = wobbleRate(11, finiteBoth, changedBoth);
+        check("Chorus_JunoModesRunAtTheirOwnRates",
+              finiteI && finiteII && finiteBoth && changedI > 0.01 && changedII > 0.01 && changedBoth > 0.01
+                  // Absolute counts on I and II read high: with dry in the
+                  // output the deep modes' phase rotation adds crossings. The
+                  // ratio is unaffected (spec 0.863 / 0.513 = 1.68).
+                  && std::abs(rateII / rateI - 1.68) < 0.25 && rateBoth > 2.0 * rateII,
+              "wobble cycles/s: I " + juce::String(rateI, 2) + ", II " + juce::String(rateII, 2) + ", I+II " + juce::String(rateBoth, 2));
+    }
+
     using namespace chorustest;
 
     // ---- construction and defaults -----------------------------------------

@@ -656,7 +656,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
                                                       "Chorus Mode",
                                                       juce::StringArray { "DIM 1", "DIM 2", "DIM 3", "DIM 4",
                                                                           "DIM 1+4", "DIM 2+4", "DIM 3+4",
-                                                                          "ENSEMBLE", "CE WARM" },
+                                                                          "ENSEMBLE", "CE WARM", "JUNO I", "JUNO II", "JUNO I+II" },
                                                       1);
 
     // ---- STEREO SPREAD ---------------------------------------------------
