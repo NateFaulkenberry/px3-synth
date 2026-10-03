@@ -112,6 +112,15 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
             idPrefix + ".tuning.semitone", labelPrefix + "Semitone",
             juce::NormalisableRange<float>(-12.0f, 12.0f, 1.0f), 0.0f,
             juce::AudioParameterFloatAttributes().withLabel("st"));
+        // Analog slop: each voice's oscillator wanders on its own, a few cents,
+        // slowly - the drift that makes stacked oscillators and chords breathe.
+        oscSlopParams[static_cast<std::size_t>(oscIndex)] = parameterCatalog.createFloat(
+            idPrefix + ".tuning.slop", labelPrefix + "Slop",
+            juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f,
+            juce::AudioParameterFloatAttributes().withStringFromValueFunction([](float value, int)
+            {
+                return "+/-" + juce::String(value * 12.0f, 1) + " ct";
+            }));
         oscPitchModParams[static_cast<std::size_t>(oscIndex)] = parameterCatalog.createFloat(
             juce::ParameterID(idPrefix + ".pitch.mod", 1),
             labelPrefix + "Pitch Mod",
@@ -770,6 +779,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
         addParameter(oscCoarseParams[static_cast<std::size_t>(oscIndex)]);
         addParameter(oscFineParams[static_cast<std::size_t>(oscIndex)]);
         addParameter(oscSemitoneParams[static_cast<std::size_t>(oscIndex)]);
+        addParameter(oscSlopParams[static_cast<std::size_t>(oscIndex)]);
         addParameter(oscModeParams[static_cast<std::size_t>(oscIndex)]);
         addParameter(oscMacroAParams[static_cast<std::size_t>(oscIndex)]);
         addParameter(oscMacroBParams[static_cast<std::size_t>(oscIndex)]);

@@ -190,6 +190,12 @@ private:
     int sourceRatioRampLength { 1 };
     bool sourceRatiosPrimed { false };
     int controlBlockLength { 512 };
+    // Per-oscillator analog slop: a smoothed random walk in -1..1, advanced once
+    // per control block, with its own generator so voices never share a wander.
+    std::array<float, 3> slopValue { { 0.0f, 0.0f, 0.0f } };
+    std::array<float, 3> slopTarget { { 0.0f, 0.0f, 0.0f } };
+    std::array<int, 3> slopHoldBlocks { { 0, 0, 0 } };
+    std::uint32_t slopRandom { 0x9e3779b9u };
     // The oscillator's soft clip and the voice's, as the one curve they are in
     // series, anti-aliased - one stage per source.
     std::array<px3::dsp::Adaa, kVoiceMixerSourceCount> sourceClips;

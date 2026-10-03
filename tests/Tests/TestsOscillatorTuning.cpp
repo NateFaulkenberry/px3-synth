@@ -80,6 +80,44 @@ const char* nameOf(Source source) { return source == Source::osc ? "Osc" : "Sub"
 void testOscillatorTuning()
 {
     suite("OSCILLATOR TUNING");
+
+    {
+        // SLOP: a slow per-oscillator wander of a few cents, none at zero, and
+        // the same on every fresh render.
+        auto wander = [](float slop, std::vector<float>* keep)
+        {
+            PX3SynthAudioProcessor processor;
+            makePlainPatch(processor);
+            setChoice(processor, "voice.osc1.mode", 0);
+            setParam(processor, "voice.amp.sustain", 1.0f);
+            setParam(processor, "voice.osc1.tuning.slop", slop);
+            const auto capture = render(processor, 48000 * 4, { { 0, true, 69, 0.9f } });
+            if (keep != nullptr) *keep = capture.left;
+            double lowest = 1.0e9, highest = -1.0e9;
+            for (std::size_t start = 24000; start + 4800 <= capture.left.size(); start += 4800)
+            {
+                std::vector<double> crossings;
+                for (std::size_t n = start + 1; n < start + 4800; ++n)
+                {
+                    const auto a = capture.left[n - 1], b = capture.left[n];
+                    if (a < 0.0f && b >= 0.0f) crossings.push_back(static_cast<double>(n - 1) + a / (a - b));
+                }
+                if (crossings.size() < 3) continue;
+                const auto hz = 48000.0 * static_cast<double>(crossings.size() - 1) / (crossings.back() - crossings.front());
+                const auto cents = 1200.0 * std::log2(hz / 440.0);
+                lowest = juce::jmin(lowest, cents);
+                highest = juce::jmax(highest, cents);
+            }
+            return highest - lowest;
+        };
+        std::vector<float> first, second;
+        const auto none = wander(0.0f, nullptr);
+        const auto full = wander(1.0f, &first);
+        wander(1.0f, &second);
+        check("Tuning_SlopWandersAFewCentsAndNoneAtZero", none < 0.5 && full > 3.0 && full < 26.0,
+              "pitch range over 3.5 s: SLOP 0 " + juce::String(none, 2) + " ct, SLOP 1 " + juce::String(full, 2) + " ct");
+        check("Tuning_SlopIsReproducibleInAFreshInstance", first == second, "two fresh renders identical");
+    }
     for (const auto source : { Source::osc, Source::sub })
     {
         const auto measured = measureCents(source, 0.0f, 0.0f, [source](PX3SynthAudioProcessor& processor)

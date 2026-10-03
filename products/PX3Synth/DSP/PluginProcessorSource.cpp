@@ -136,6 +136,11 @@ std::array<OscillatorLayerSettings, kOscillatorSourceCount> PX3SynthAudioProcess
         layer.fineCents = getOscillatorFineParam(oscIndex).convertFrom0to1(
             applyModulationToNormalizedValue(&getOscillatorFineParam(oscIndex),
                                              static_cast<juce::RangedAudioParameter&>(getOscillatorFineParam(oscIndex)).getValue()));
+        if (auto* slop = oscSlopParams[static_cast<std::size_t>(oscIndex)])
+        {
+            layer.slop = clamp01(slop->convertFrom0to1(applyModulationToNormalizedValue(
+                slop, static_cast<juce::RangedAudioParameter&>(*slop).getValue())));
+        }
 
         settings.modeIndex = px3::clampOscillatorModeIndex(getOscillatorModeParam(oscIndex).getIndex());
         settings.macroA = clamp01(getOscillatorMacroAParam(oscIndex).convertFrom0to1(

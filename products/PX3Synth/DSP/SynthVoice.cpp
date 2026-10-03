@@ -100,6 +100,13 @@ void SynthVoice::startNote(int midiNoteNumber, float velocity, juce::Synthesiser
     // global sequence, which carries on across processor instances: the same
     // MIDI into a fresh instance has to render the same audio.
     const auto noteCount = ++notesStarted;
+    // Every note starts its slop from a different place, seeded from this
+    // voice and its own note count (not the cross-instance sequence), so two
+    // voices never wander together and a fresh instance renders the same.
+    slopRandom = (static_cast<std::uint32_t>(voiceIndex + 1) * 2654435761u) ^ (noteCount * 40503u)
+                 ^ static_cast<std::uint32_t>(midiNoteNumber + 1) * 97u;
+    slopValue = { { 0.0f, 0.0f, 0.0f } };
+    slopHoldBlocks = { { 0, 0, 0 } };
     auto hash = static_cast<uint32_t>(voiceIndex + 1) * 747796405u;
     hash ^= noteCount * 2891336453u;
     hash ^= static_cast<uint32_t>(midiNoteNumber + 1) * 277803737u;
@@ -509,11 +516,29 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
     {
         std::array<double, kOscillatorSourceCount> ratios { { 1.0, 1.0, 1.0 } };
         auto changed = false;
+        const auto blockSeconds = static_cast<float>(controlBlockLength) / static_cast<float>(juce::jmax(1.0, getSampleRate()));
+        // About a 0.35 s glide toward a new random point every 0.6-1.6 s.
+        const auto slopGlide = 1.0f - std::exp(-blockSeconds / 0.35f);
         for (int oscIndex = 0; oscIndex < kOscillatorSourceCount; ++oscIndex)
         {
             const auto& layer = oscillatorLayerSettings[static_cast<std::size_t>(oscIndex)];
+            auto slopCents = 0.0f;
+            if (layer.slop > 0.0f)
+            {
+                const auto i = static_cast<std::size_t>(oscIndex);
+                if (--slopHoldBlocks[i] <= 0)
+                {
+                    slopRandom = slopRandom * 1664525u + 1013904223u;
+                    slopTarget[i] = static_cast<float>(slopRandom >> 8) / static_cast<float>(1u << 24) * 2.0f - 1.0f;
+                    slopRandom = slopRandom * 1664525u + 1013904223u;
+                    const auto holdSeconds = 0.6f + static_cast<float>(slopRandom >> 8) / static_cast<float>(1u << 24);
+                    slopHoldBlocks[i] = juce::jmax(1, static_cast<int>(holdSeconds / juce::jmax(1.0e-4f, blockSeconds)));
+                }
+                slopValue[i] += (slopTarget[i] - slopValue[i]) * slopGlide;
+                slopCents = layer.slop * 12.0f * slopValue[i];
+            }
             ratios[static_cast<std::size_t>(oscIndex)] =
-                px3::tuning::pitchRatio(layer.coarseOctaves, layer.fineCents, layer.pitchModSemitones, layer.semitones);
+                px3::tuning::pitchRatio(layer.coarseOctaves, layer.fineCents + slopCents, layer.pitchModSemitones, layer.semitones);
             changed = changed || ratios[static_cast<std::size_t>(oscIndex)] != sourceRatioTarget[static_cast<std::size_t>(oscIndex)];
         }
         if (!sourceRatiosPrimed)

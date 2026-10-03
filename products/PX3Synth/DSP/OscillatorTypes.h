@@ -41,5 +41,8 @@ struct OscillatorLayerSettings
     // Dynamic: what modulation adds through Pitch Mod, never a stored offset.
     // See OscillatorTuning.h for how the three combine.
     float pitchModSemitones { 0.0f };
+    // SLOP: 0..1, the depth of this oscillator's own slow random pitch wander,
+    // independent per voice and per oscillator. 1 wanders about +/-12 cents.
+    float slop { 0.0f };
     OscillatorSettings oscillator;
 };
