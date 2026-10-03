@@ -511,6 +511,7 @@ ReverbSettings PX3SynthAudioProcessor::currentReverbSettings() const
                                                                                                          static_cast<juce::RangedAudioParameter*>(reverbCloudFeedbackParam)->getValue()));
     settings.cloudDiffusion = reverbCloudDiffusionParam->convertFrom0to1(applyModulationToNormalizedValue(reverbCloudDiffusionParam,
                                                                                                            static_cast<juce::RangedAudioParameter*>(reverbCloudDiffusionParam)->getValue()));
+    settings.shimmer = modulatedParameterValue(reverbShimmerParam);
     return settings;
 }
 

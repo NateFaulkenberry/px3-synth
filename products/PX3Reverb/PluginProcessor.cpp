@@ -18,6 +18,7 @@ PX3ReverbAudioProcessor::PX3ReverbAudioProcessor()
     addParameter(widthParam = new juce::AudioParameterFloat("fx.reverb.width", "Reverb Width", unit, 0.86f));
     addParameter(cloudFeedbackParam = new juce::AudioParameterFloat("fx.reverb.cloud.feedback", "Reverb Cloud Feedback", unit, 0.62f));
     addParameter(cloudDiffusionParam = new juce::AudioParameterFloat("fx.reverb.cloud.diffusion", "Reverb Cloud Diffusion", unit, 0.54f));
+    addParameter(shimmerParam = new juce::AudioParameterFloat("fx.reverb.shimmer", "Reverb Shimmer", unit, 0.0f));
     addParameter(algorithmParam = new juce::AudioParameterChoice(
         "fx.reverb.algorithm", "Reverb Mode",
         juce::StringArray { "ROOM", "PLATE", "HALL", "CLOUD" }, 0));
@@ -43,6 +44,7 @@ ReverbSettings PX3ReverbAudioProcessor::settingsForBlock() const
     settings.width = widthParam->get();
     settings.cloudFeedback = cloudFeedbackParam->get();
     settings.cloudDiffusion = cloudDiffusionParam->get();
+    settings.shimmer = shimmerParam->get();
     return settings;
 }
 

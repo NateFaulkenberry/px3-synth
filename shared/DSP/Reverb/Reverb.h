@@ -97,6 +97,18 @@ private:
     std::array<float, 8> hallReadCache { { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f } };
     std::array<float, 8> cloudReadCache { { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f } };
 
+    // SHIMMER: an octave-up delay-line pitch shifter on the CLOUD tail, fed
+    // back into the network's input. Two taps half a window apart, each read
+    // at twice the write speed and Hann-crossfaded, so their weights sum to 1.
+    static constexpr int kShimmerBufferSize = 8192;
+    std::vector<float> shimmerBuffer;
+    int shimmerWrite { 0 };
+    float shimmerPhase { 0.0f };
+    float shimmerReturn { 0.0f };
+    float shimmerLowpass { 0.0f };
+    float shimmerDcX1 { 0.0f }, shimmerDcY1 { 0.0f };
+    float processShimmer(float input) noexcept;
+
     std::array<float, 2> inputDcX1 { { 0.0f, 0.0f } };
     std::array<float, 2> inputDcY1 { { 0.0f, 0.0f } };
     std::array<float, 2> wetDcX1 { { 0.0f, 0.0f } };

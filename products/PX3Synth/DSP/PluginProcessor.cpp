@@ -712,6 +712,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     reverbWidthParam = parameterCatalog.createFloat("fx.reverb.width", "Reverb Width", juce::NormalisableRange<float>(0.0f, 1.0f), 0.86f);
     reverbCloudFeedbackParam = parameterCatalog.createFloat("fx.reverb.cloud.feedback", "Reverb Cloud Feedback", juce::NormalisableRange<float>(0.0f, 1.0f), 0.62f);
     reverbCloudDiffusionParam = parameterCatalog.createFloat("fx.reverb.cloud.diffusion", "Reverb Cloud Diffusion", juce::NormalisableRange<float>(0.0f, 1.0f), 0.54f);
+    reverbShimmerParam = parameterCatalog.createFloat("fx.reverb.shimmer", "Reverb Shimmer", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
     pitchBendRangeParam = parameterCatalog.createInt("performance.pitch.bend.range",
                                                        "Pitch Bend Range",
                                                        1,
@@ -980,6 +981,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     addParameter(reverbWidthParam);
     addParameter(reverbCloudFeedbackParam);
     addParameter(reverbCloudDiffusionParam);
+    addParameter(reverbShimmerParam);
     addParameter(pitchBendRangeParam);
     for (int lfoIndex = 0; lfoIndex < kLfoSourceCount; ++lfoIndex)
     {

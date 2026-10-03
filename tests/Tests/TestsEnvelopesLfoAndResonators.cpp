@@ -1138,6 +1138,68 @@ void testReverb()
 {
     suite("REVERB");
 
+    {
+        // CLOUD SHIMMER: the tail gains energy an octave and two up, and the
+        // loop still decays and stays finite.
+        auto run = [](float shimmer, double& upperRatioDb, double& earlyDb, double& lateDb, bool& finite)
+        {
+            ::Reverb reverb;
+            reverb.prepare(48000.0);
+            ReverbSettings settings;
+            settings.amount = 1.0f;
+            settings.algorithmIndex = 3;
+            settings.decay = 0.6f;
+            settings.shimmer = shimmer;
+            std::vector<float> tail;
+            finite = true;
+            for (int n = 0; n < 48000 * 8; ++n)
+            {
+                if (n % 512 == 0) reverb.updateForBlock(settings, 512);
+                const auto x = n < 9600 ? 0.3f * static_cast<float>(std::sin(juce::MathConstants<double>::twoPi * 300.0 * n / 48000.0)) : 0.0f;
+                float l = x, r = x;
+                reverb.processSampleFrame(l, r, l, r);
+                finite = finite && std::isfinite(l) && std::isfinite(r) && std::abs(l) < 10.0f;
+                if (n >= 9600) tail.push_back(l);
+            }
+            auto band = [&](double hz, std::size_t from, std::size_t count)
+            {
+                double c = 0, sn = 0;
+                for (std::size_t k = 0; k < count; ++k)
+                {
+                    const auto n = from + k;
+                    const auto hann = 0.5 - 0.5 * std::cos(juce::MathConstants<double>::twoPi * k / (count - 1.0));
+                    const auto w = juce::MathConstants<double>::twoPi * hz * n / 48000.0;
+                    c += hann * tail[n] * std::cos(w); sn += hann * tail[n] * std::sin(w);
+                }
+                return c * c + sn * sn;
+            };
+            // Ten 100 ms windows: the reverb's own modulation spreads every
+            // partial over several hertz, which a one-second, 1 Hz-resolution
+            // bin would mostly miss.
+            double upper = 0.0, fundamental = 0.0;
+            for (std::size_t w = 0; w < 10; ++w)
+            {
+                const auto from = static_cast<std::size_t>(24000 + w * 4800);
+                upper += band(600.0, from, 4800) + band(1200.0, from, 4800);
+                fundamental += band(300.0, from, 4800);
+            }
+            upperRatioDb = 10.0 * std::log10((upper + 1e-30) / (fundamental + 1e-30));
+            double e1 = 0, e2 = 0;
+            for (std::size_t n = 0; n < 48000; ++n) e1 += static_cast<double>(tail[n]) * tail[n];
+            for (std::size_t n = tail.size() - 48000; n < tail.size(); ++n) e2 += static_cast<double>(tail[n]) * tail[n];
+            earlyDb = 10.0 * std::log10(e1 + 1e-30);
+            lateDb = 10.0 * std::log10(e2 + 1e-30);
+        };
+        double plainUpper = 0, plainEarly = 0, plainLate = 0, shimUpper = 0, shimEarly = 0, shimLate = 0;
+        bool plainFinite = false, shimFinite = false;
+        run(0.0f, plainUpper, plainEarly, plainLate, plainFinite);
+        run(1.0f, shimUpper, shimEarly, shimLate, shimFinite);
+        check("Reverb_CloudShimmerClimbsAnOctave", shimUpper > plainUpper + 10.0,
+              "600+1200 Hz vs 300 Hz in the tail: off " + juce::String(plainUpper, 1) + " dB, full " + juce::String(shimUpper, 1) + " dB");
+        check("Reverb_CloudShimmerStillDecays", shimFinite && shimLate < shimEarly - 10.0,
+              "first second " + juce::String(shimEarly, 1) + " dB, eighth second " + juce::String(shimLate, 1) + " dB");
+    }
+
     // Bypassing has to empty the delay lines. The amount control fades to zero
     // so nothing is heard while it is off, but the network keeps circulating,
     // and switching it back on releases the tail of whatever was playing when

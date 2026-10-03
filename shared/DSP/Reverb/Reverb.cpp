@@ -357,6 +357,50 @@ void ::Reverb::reset()
 
     allocateFdn(cloudLines, cloudAllpassLines, kCloudScaleMax);
     cloudReadCache.fill(0.0f);
+
+    if (shimmerBuffer.size() != static_cast<std::size_t>(kShimmerBufferSize))
+    {
+        shimmerBuffer.assign(static_cast<std::size_t>(kShimmerBufferSize), 0.0f);
+    }
+    else
+    {
+        std::fill(shimmerBuffer.begin(), shimmerBuffer.end(), 0.0f);
+    }
+    shimmerWrite = 0;
+    shimmerPhase = 0.0f;
+    shimmerReturn = shimmerLowpass = shimmerDcX1 = shimmerDcY1 = 0.0f;
+}
+
+float ::Reverb::processShimmer(float input) noexcept
+{
+    // Window of about 43 ms: long enough to keep the grain rate below pitch,
+    // short enough that the shifted tail stays tight to the original.
+    constexpr int window = 2048;
+    const auto size = static_cast<int>(shimmerBuffer.size());
+    if (size < window + 8) { return 0.0f; }
+    shimmerBuffer[static_cast<std::size_t>(shimmerWrite)] = input;
+
+    // Ratio 2: the read delay shrinks by one sample per sample.
+    shimmerPhase += 1.0f / static_cast<float>(window);
+    if (shimmerPhase >= 1.0f) { shimmerPhase -= 1.0f; }
+
+    auto out = 0.0f;
+    for (int tap = 0; tap < 2; ++tap)
+    {
+        auto p = shimmerPhase + 0.5f * static_cast<float>(tap);
+        if (p >= 1.0f) { p -= 1.0f; }
+        const auto delay = (1.0f - p) * static_cast<float>(window) + 2.0f;
+        auto readPos = static_cast<float>(shimmerWrite) - delay;
+        while (readPos < 0.0f) { readPos += static_cast<float>(size); }
+        const auto i0 = static_cast<int>(readPos);
+        const auto frac = readPos - static_cast<float>(i0);
+        const auto a = shimmerBuffer[static_cast<std::size_t>(i0 % size)];
+        const auto b = shimmerBuffer[static_cast<std::size_t>((i0 + 1) % size)];
+        const auto weight = 0.5f - 0.5f * std::cos(juce::MathConstants<float>::twoPi * p);
+        out += (a + (b - a) * frac) * weight;
+    }
+    shimmerWrite = (shimmerWrite + 1) % size;
+    return out;
 }
 
 void ::Reverb::updateForBlock(const ReverbSettings& settings, int numSamples)
@@ -377,6 +421,7 @@ void ::Reverb::updateForBlock(const ReverbSettings& settings, int numSamples)
     currentSettings.width = clamp01(settings.width);
     currentSettings.cloudFeedback = clamp01(settings.cloudFeedback);
     currentSettings.cloudDiffusion = clamp01(settings.cloudDiffusion);
+    currentSettings.shimmer = clamp01(settings.shimmer);
 
     blockSampleCount = juce::jmax(0, numSamples);
     blockPreEnergy = 0.0;
@@ -624,7 +669,27 @@ void ::Reverb::processCore(float inL,
 
         const auto diffused = processInputDiffusion(0.5f * (inPredelayedL + inPredelayedR), diffusionAmount);
         float lateL = 0.0f, lateR = 0.0f;
-        processFdn8(cloudLines, cloudAllpassLines, cloudReadCache, config, diffused, lateL, lateR);
+        // SHIMMER: last sample's tail, an octave up, back into the network.
+        // Gain at most 1.4 ahead of the network's 0.3 input gain, into a loop below unity, so the
+        // climb decays rather than building.
+        const auto shimmer = currentSettings.shimmer;
+        const auto fdnInput = shimmer > 0.0f ? diffused + shimmerReturn * (1.4f * shimmer) : diffused;
+        processFdn8(cloudLines, cloudAllpassLines, cloudReadCache, config, fdnInput, lateL, lateR);
+        if (shimmer > 0.0f)
+        {
+            const auto shifted = processShimmer(0.5f * (lateL + lateR));
+            // Darken each pass so the climb does not end in fizz, and keep DC
+            // (which pitch shifting a slow drift can produce) out of the loop.
+            shimmerLowpass += (shifted - shimmerLowpass) * 0.35f;
+            const auto hp = shimmerLowpass - shimmerDcX1 + 0.995f * shimmerDcY1;
+            shimmerDcX1 = shimmerLowpass;
+            shimmerDcY1 = hp;
+            shimmerReturn = std::isfinite(hp) ? hp : 0.0f;
+        }
+        else
+        {
+            shimmerReturn = 0.0f;
+        }
 
         const auto early = diffused * 0.22f;
         wetL = lateL + early;

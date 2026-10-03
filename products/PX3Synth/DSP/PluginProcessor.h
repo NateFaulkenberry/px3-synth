@@ -1063,6 +1063,7 @@ private:
     juce::AudioParameterFloat* reverbWidthParam { nullptr };
     juce::AudioParameterFloat* reverbCloudFeedbackParam { nullptr };
     juce::AudioParameterFloat* reverbCloudDiffusionParam { nullptr };
+    juce::AudioParameterFloat* reverbShimmerParam { nullptr };
     juce::AudioParameterInt* pitchBendRangeParam { nullptr };
     std::array<juce::AudioParameterBool*, kLfoSourceCount> lfoEnabledParams { { nullptr, nullptr, nullptr } };
     std::array<juce::AudioParameterFloat*, kLfoSourceCount> lfoFrequencyParams { { nullptr, nullptr, nullptr } };

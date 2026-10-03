@@ -60,6 +60,7 @@ private:
     juce::AudioParameterFloat* widthParam { nullptr };
     juce::AudioParameterFloat* cloudFeedbackParam { nullptr };
     juce::AudioParameterFloat* cloudDiffusionParam { nullptr };
+    juce::AudioParameterFloat* shimmerParam { nullptr };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PX3ReverbAudioProcessor)
 };

@@ -15,4 +15,7 @@ struct ReverbSettings
     float width { 0.86f };
     float cloudFeedback { 0.62f };
     float cloudDiffusion { 0.54f };
+    // CLOUD only: how much of the tail is shifted up an octave and fed back in,
+    // so it climbs as it decays. 0 = off.
+    float shimmer { 0.0f };
 };
