@@ -948,7 +948,7 @@ void PX3SynthAudioProcessorEditor::buildSettingsAndOverlays()
     oscPanelViewport.setSingleStepSizes(16, 24);
     addAndMakeVisible(oscPanelViewport);
     modPanelViewport.setViewedComponent(modPanel.get(), false);
-    modPanelViewport.setScrollBarsShown(true, false);
+    modPanelViewport.setScrollBarsShown(true, true);
     modPanelViewport.setScrollBarThickness(10);
     modPanelViewport.setSingleStepSizes(16, 24);
     addAndMakeVisible(modPanelViewport);
