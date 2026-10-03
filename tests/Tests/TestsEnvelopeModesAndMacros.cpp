@@ -1321,7 +1321,7 @@ void testMacroSystem()
                 {
                     const auto& knob = strip->knob(macro);
                     bound.add(px3::ui::parameterIdOf(knob));
-                    expectedStripIds.add("macro" + juce::String(macro + 1));
+                    expectedStripIds.add("mod.macro" + juce::String(macro + 1) + ".value");
                     insideStrip = insideStrip
                                   && strip->getLocalBounds().contains(knob.getBounds())
                                   && ! knob.getBounds().isEmpty();
@@ -1485,7 +1485,7 @@ void testMacroSystem()
                         // assignment call rather than the interaction.
                         const auto centre = editor->getLocalPoint(
                             slider, slider->getLocalBounds().getCentre());
-                        if (id.isNotEmpty() && ! id.startsWith("macro")
+                        if (id.isNotEmpty() && ! id.startsWith("mod.macro")
                             && ! slider->getBounds().isEmpty()
                             && editor->debugKnobAt(centre) == slider)
                         {
@@ -1662,7 +1662,7 @@ void testMacroSystem()
                                 const auto id = px3::ui::parameterIdOf(*slider);
                                 const auto centre = editor->getLocalPoint(
                                     slider, slider->getLocalBounds().getCentre());
-                                if (id.isNotEmpty() && ! id.startsWith("macro")
+                                if (id.isNotEmpty() && ! id.startsWith("mod.macro")
                                     && ! slider->getBounds().isEmpty()
                                     && ! processor.isMacroDestination(0, id)
                                     && editor->debugKnobAt(centre) == slider)
@@ -1853,7 +1853,7 @@ void testMacroSystem()
         juce::StringArray expectedNames;
         for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
         {
-            expectedIds.add("macro" + juce::String(macro + 1));
+            expectedIds.add("mod.macro" + juce::String(macro + 1) + ".value");
             expectedNames.add("MACRO " + juce::String(macro + 1));
         }
 
@@ -3270,7 +3270,7 @@ void testMacroSystem()
                             if (auto* knob = dynamic_cast<juce::Slider*>(child))
                             {
                                 const auto id = px3::ui::parameterIdOf(*knob);
-                                if (id.isNotEmpty() && ! id.startsWith("macro"))
+                                if (id.isNotEmpty() && ! id.startsWith("mod.macro"))
                                 {
                                     assignable.addIfNotAlreadyThere(id);
                                 }

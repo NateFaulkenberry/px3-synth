@@ -160,8 +160,20 @@ void testEcosystem()
                   && catalog.find("ampAttack") == nullptr && catalog.find("ampEnvEnabled") == nullptr
                   && catalog.find("filter1Cutoff") == nullptr && catalog.find("filterRouting") == nullptr);
 
+        check("ParameterCatalog_MacroIdsAndLevelRoutesHaveNoLegacyAliases",
+              catalog.find("mod.macro1.value") != nullptr && catalog.find("macro1") == nullptr
+                  && ! processor.setLfoAssignmentByParameterId(0, "osc1Level", false)
+                  && ! processor.setEnvelopeAssignmentByParameterId(0, "subOscLevel", false)
+                  && processor.setLfoAssignmentByParameterId(0, "mix.osc1.level", false));
+        processor.setLfoAssignmentIndex(0, 0, false);
+
         const auto* lfoSource = catalog.find("mod.lfo1.frequency");
         const auto* envSource = catalog.find("mod.env3.amount");
+        check("ParameterCatalog_DeclaresModulationCapabilitiesAndSourceControls",
+              lfoSource != nullptr && lfoSource->modulationDestination && lfoSource->sourceControl
+                  && envSource != nullptr && ! envSource->modulationDestination
+                  && catalog.find("voice.filter1.cutoff")->modulationDestination
+                  && ! catalog.find("voice.filter1.enabled")->modulationDestination);
         check("ParameterCatalog_ModulationSourcesUseUniformCanonicalIds",
               lfoSource != nullptr && lfoSource->groupPath == "MODULATION / LFO 1"
                   && envSource != nullptr && envSource->groupPath == "MODULATION / ENV 3"

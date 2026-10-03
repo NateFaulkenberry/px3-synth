@@ -126,8 +126,8 @@ private:
     juce::ValueTree migratePresetTreeIfNeeded(const juce::ValueTree& presetTree,
                                               juce::String& error) const;
 
-    void collectAssetsForState(juce::ValueTree& pluginState,
-                               juce::ValueTree& assetsNode) const;
+    bool collectAssetsForState(juce::ValueTree& pluginState,
+                               juce::ValueTree& assetsNode, juce::String& error) const;
 
     bool materializeEmbeddedAssets(juce::ValueTree& pluginState,
                                    const juce::ValueTree& assetsNode,

@@ -38,6 +38,8 @@ struct ParameterCatalogEntry
     bool automatable { false };
     bool meta { false };
     bool ranged { false };
+    bool modulationDestination { false };
+    bool sourceControl { false };
     juce::AudioProcessorParameter* parameter { nullptr };
     const ParameterDefinition* definition { nullptr };
 };

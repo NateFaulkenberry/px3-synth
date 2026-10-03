@@ -1,4 +1,5 @@
 #include "TestSupport.h"
+#include "WavetableLibrary.h"
 
 // testPresets, testIntegration, testFxChain
 
@@ -92,7 +93,7 @@ void applyUnusualConfiguration(PX3SynthAudioProcessor& processor)
                  -0.63f + 0.44f * static_cast<float>(envIndex));
     }
     processor.setEnvelopeAssignmentByParameterId(0, "voice.filter1.cutoff", false);
-    processor.setEnvelopeAssignmentByParameterId(1, "osc1Level", false);
+    processor.setEnvelopeAssignmentByParameterId(1, "mix.osc1.level", false);
     processor.setEnvelopeAssignmentByParameterId(2, "voice.filter2.resonance", false);
 
     for (int lfoIndex = 0; lfoIndex < 3; ++lfoIndex)
@@ -458,6 +459,68 @@ void testPresets()
         }
     }
 
+    {
+        PX3SynthAudioProcessor processor;
+        juce::String error;
+        const auto name = "px3-package-" + juce::Uuid().toString();
+        px3::FrameSpectrum frame;
+        frame.amplitude = { 0.0f, 0.75f, 0.25f };
+        frame.phase = { 0.0f, 0.0f, 0.4f };
+        const auto imported = processor.importWavetable(0, name, { frame }, error);
+        processor.setUserWavetableName(1, name);
+        juce::MemoryBlock original;
+        px3::WavetableLibrary::fileForName(name).loadFileAsData(original);
+        const auto hash = juce::SHA256(original).toHexString();
+        const auto hashedFile = px3::WavetableLibrary::fileForName(hash);
+        const auto hashAlreadyExisted = hashedFile.existsAsFile();
+        const auto presetFile = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                                    .getChildFile(name + ".px3preset");
+        PresetManager manager(processor);
+        const PresetManager::PresetMetadata metadata { "Portable Table", "TEST", "component tests", {} };
+        const auto saved = imported && manager.dumpCurrentStateToPresetFile(presetFile, metadata, true, false, error);
+        juce::MemoryBlock firstSave;
+        juce::MemoryBlock secondSave;
+        presetFile.loadFileAsData(firstSave);
+        const auto savedAgain = manager.dumpCurrentStateToPresetFile(presetFile, metadata, true, false, error);
+        presetFile.loadFileAsData(secondSave);
+        check("Preset_PackageWritesAreDeterministic", saved && savedAgain && firstSave == secondSave, error);
+        juce::ZipFile package(presetFile);
+        check("Preset_WavetableResourcesAreDeduplicatedByContentHash",
+              saved && package.getNumEntries() == 3
+                  && package.getIndexOfFileName("assets/" + hash + ".px3wt") >= 0);
+        px3::WavetableLibrary::remove(name);
+        PX3SynthAudioProcessor restored;
+        PresetManager targetManager(restored);
+        const auto loaded = targetManager.loadPresetFile(presetFile, error);
+        check("Preset_CustomWavetableSurvivesRemovalOfTheOriginalLibraryFile",
+              loaded && restored.getUserWavetableName(0) == hash
+                  && restored.getUserWavetableName(1) == hash
+                  && restored.getMissingWavetableName(0).isEmpty()
+                  && px3::WavetableLibrary::load(hash) != nullptr, error);
+        juce::ZipFile::Builder corrupt;
+        auto damaged = original;
+        if (damaged.getSize() > 0) { static_cast<char*>(damaged.getData())[0] = 'X'; }
+        const juce::Time timestamp(1980, 0, 1, 0, 0, 0, 0, true);
+        for (int index = 0; index < package.getNumEntries(); ++index)
+        {
+            const auto path = package.getEntry(index)->filename;
+            corrupt.addEntry(path.startsWith("assets/") ? new juce::MemoryInputStream(damaged, true)
+                                                        : package.createStreamForEntry(index), 6, path, timestamp);
+        }
+        const auto corruptFile = presetFile.getSiblingFile(name + "-corrupt.px3preset");
+        {
+            juce::FileOutputStream output(corruptFile);
+            corrupt.writeToStream(output, nullptr);
+        }
+        const auto before = restored.createParameterStateTree().toXmlString();
+        check("Preset_CorruptEmbeddedWavetableIsRejectedWithoutStateMutation",
+              ! targetManager.loadPresetFile(corruptFile, error)
+                  && restored.createParameterStateTree().toXmlString() == before);
+        if (! hashAlreadyExisted) { hashedFile.deleteFile(); }
+        presetFile.deleteFile();
+        corruptFile.deleteFile();
+    }
+
     // Preset FILE round trip through PresetManager, into a temporary directory
     // so the user's own preset library is never touched.
     {
@@ -481,7 +544,10 @@ void testPresets()
         int serializedBytes = 0;
         const auto saved = manager.dumpCurrentStateToPresetFile(presetFile, metadata, true, true,
                                                                 error, &serializedBytes);
-        check("Preset_SaveWritesAPresetFile", saved && presetFile.existsAsFile(),
+          juce::ZipFile package(presetFile);
+          check("Preset_PackageHasManifestAndPatchEntries",
+              saved && package.getIndexOfFileName("manifest.json") >= 0 && package.getIndexOfFileName("patch.xml") >= 0);
+          check("Preset_SaveWritesAPresetFile", saved && presetFile.existsAsFile(),
               saved ? juce::String(serializedBytes) + " bytes" : "error: " + error);
 
         if (saved)
@@ -982,7 +1048,7 @@ void testIntegration()
                   p.setLfoAssignmentByParameterId(1, "voice.osc1.tuning.cents", false);
                   p.setLfoAssignmentByParameterId(2, "mix.osc1.pan", false);
                   p.setEnvelopeAssignmentByParameterId(0, "voice.filter1.resonance", false);
-                  p.setEnvelopeAssignmentByParameterId(1, "osc1Level", false);
+                  p.setEnvelopeAssignmentByParameterId(1, "mix.osc1.level", false);
                   p.setEnvelopeAssignmentByParameterId(2, "voice.filter2.cutoff", false);
               } },
             { "AllFxAtMaximum", [](PX3SynthAudioProcessor& p)

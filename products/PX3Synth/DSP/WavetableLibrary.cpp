@@ -1,4 +1,5 @@
 #include "WavetableLibrary.h"
+#include <cmath>
 
 namespace px3
 {
@@ -26,6 +27,40 @@ juce::File WavetableLibrary::userDirectory()
         .getChildFile("Wavetables");
 }
 
+juce::File WavetableLibrary::fileForName(const juce::String& name)
+{
+    return userDirectory().getChildFile(sanitise(name) + kFileExtension);
+}
+
+bool WavetableLibrary::validatePayload(const juce::MemoryBlock& data, juce::String& error)
+{
+    juce::MemoryInputStream stream(data, false);
+    char magic[6] {};
+    if (stream.read(magic, 5) != 5 || juce::String(magic) != kMagic || stream.readInt() != kFormatVersion)
+    {
+        error = "Unsupported wavetable resource format.";
+        return false;
+    }
+    const auto frames = stream.readInt();
+    const auto harmonics = stream.readInt();
+    if (frames < 1 || frames > Wavetable::kMaxFrameCount || harmonics < 1 || harmonics > Wavetable::kFrameSize
+        || data.getSize() != 17 + static_cast<std::size_t>(frames) * static_cast<std::size_t>(harmonics) * 8)
+    {
+        error = "Wavetable resource dimensions or payload length are invalid.";
+        return false;
+    }
+    while (! stream.isExhausted())
+    {
+        if (! std::isfinite(stream.readFloat()))
+        {
+            error = "Wavetable resource contains non-finite spectral values.";
+            return false;
+        }
+    }
+    error.clear();
+    return true;
+}
+
 bool WavetableLibrary::save(const juce::String& name,
                             const std::vector<FrameSpectrum>& frames,
                             juce::String& error)
@@ -43,7 +78,7 @@ bool WavetableLibrary::save(const juce::String& name,
         return false;
     }
 
-    const auto file = directory.getChildFile(sanitise(name) + kFileExtension);
+    const auto file = fileForName(name);
     juce::TemporaryFile temporary(file);
 
     {
@@ -117,7 +152,7 @@ juce::StringArray WavetableLibrary::userTableNames()
 
 std::shared_ptr<const Wavetable> WavetableLibrary::load(const juce::String& name)
 {
-    const auto file = userDirectory().getChildFile(sanitise(name) + kFileExtension);
+    const auto file = fileForName(name);
     if (! file.existsAsFile())
     {
         return nullptr;
@@ -176,7 +211,7 @@ std::shared_ptr<const Wavetable> WavetableLibrary::load(const juce::String& name
 
 bool WavetableLibrary::remove(const juce::String& name)
 {
-    const auto file = userDirectory().getChildFile(sanitise(name) + kFileExtension);
+    const auto file = fileForName(name);
     return file.existsAsFile() && file.deleteFile();
 }
 

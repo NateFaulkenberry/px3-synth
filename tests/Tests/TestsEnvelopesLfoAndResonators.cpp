@@ -392,7 +392,7 @@ void testModEnvelopes()
             setParam(processor, "mod.env2.decay", 0.005f);
             setParam(processor, "mod.env2.sustain", 1.0f);
             setParam(processor, "mod.env2.amount", amount);
-            processor.setEnvelopeAssignmentByParameterId(1, "osc1Level", false);
+            processor.setEnvelopeAssignmentByParameterId(1, "mix.osc1.level", false);
             return render(processor, 40000, { { 2000, true, 57, 0.9f } }).rmsOver(20000, 38000);
         };
         const auto neutral = renderWithEnvToLevel(0.0f, true);
@@ -405,7 +405,7 @@ void testModEnvelopes()
     }
 
     // The source-level modulation destinations are CANONICAL IDs, not the
-    // parameters that share their names. "subOscLevel" and "oscNLevel" as
+    // parameters that share their names. "mix.sub.level" and "oscNLevel" as
     // destinations route to the corresponding mixer channel level, which is the
     // only gain stage in the source path. These pin that routing so it survives
     // any future cleanup of the like-named parameters.
@@ -422,7 +422,7 @@ void testModEnvelopes()
             setParam(processor, "mod.env2.decay", 0.005f);
             setParam(processor, "mod.env2.sustain", 1.0f);
             setParam(processor, "mod.env2.amount", amount);
-            const auto assigned = processor.setEnvelopeAssignmentByParameterId(1, "subOscLevel", false);
+            const auto assigned = processor.setEnvelopeAssignmentByParameterId(1, "mix.sub.level", false);
             juce::ignoreUnused(assigned);
             return render(processor, 40000, { { 2000, true, 57, 0.9f } }).rmsOver(20000, 38000);
         };
@@ -438,8 +438,8 @@ void testModEnvelopes()
         // restore it and it has to still modulate afterwards.
         PX3SynthAudioProcessor source;
         makePlainPatch(source);
-        source.setEnvelopeAssignmentByParameterId(1, "osc1Level", false);
-        source.setLfoAssignmentByParameterId(0, "subOscLevel", false);
+        source.setEnvelopeAssignmentByParameterId(1, "mix.osc1.level", false);
+        source.setLfoAssignmentByParameterId(0, "mix.sub.level", false);
         const auto envAssignment = source.getEnvelopeAssignmentParameterId(1);
         const auto lfoAssignment = source.getLfoAssignmentParameterId(0);
 
@@ -451,8 +451,8 @@ void testModEnvelopes()
         check("Preset_SourceLevelModulationAssignmentsSurviveRoundTrip",
               restored.getEnvelopeAssignmentParameterId(1).equalsIgnoreCase(envAssignment)
                   && restored.getLfoAssignmentParameterId(0).equalsIgnoreCase(lfoAssignment)
-                  && envAssignment.equalsIgnoreCase("osc1Level")
-                  && lfoAssignment.equalsIgnoreCase("subOscLevel"),
+                  && envAssignment.equalsIgnoreCase("mix.osc1.level")
+                  && lfoAssignment.equalsIgnoreCase("mix.sub.level"),
               "env2 -> " + restored.getEnvelopeAssignmentParameterId(1)
                   + ", lfo1 -> " + restored.getLfoAssignmentParameterId(0));
     }
@@ -513,7 +513,7 @@ void testModEnvelopes()
             setParam(processor, "mod.env3.enabled", enabled ? 1.0f : 0.0f);
             setParam(processor, "mod.env3.sustain", 1.0f);
             setParam(processor, "mod.env3.amount", 1.0f);
-            processor.setEnvelopeAssignmentByParameterId(2, "osc1Level", false);
+            processor.setEnvelopeAssignmentByParameterId(2, "mix.osc1.level", false);
             return render(processor, 40000, { { 2000, true, 57, 0.9f } }).rmsOver(20000, 38000);
         };
         check("Env3_DisabledDoesNotModulateItsDestination",

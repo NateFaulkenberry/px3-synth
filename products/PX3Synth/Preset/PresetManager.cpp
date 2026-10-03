@@ -2,6 +2,7 @@
 
 #include "FactoryPresets.h"
 #include "PluginProcessorInternals.h"
+#include "WavetableLibrary.h"
 
 #include <algorithm>
 #include <limits>
@@ -892,7 +893,41 @@ bool PresetManager::readPresetFile(const juce::File& file,
         return false;
     }
 
-    std::unique_ptr<juce::XmlElement> xml(juce::XmlDocument::parse(file));
+    juce::ZipFile package(file);
+    if (package.getNumEntries() < 2 || package.getNumEntries() > 5)
+    {
+        error = "Preset package must contain a manifest and patch document.";
+        return false;
+    }
+    const auto readEntry = [&package](const char* name, juce::String& output)
+    {
+        const auto index = package.getIndexOfFileName(name);
+        const auto* entry = package.getEntry(index);
+        if (entry == nullptr || entry->isSymbolicLink || entry->uncompressedSize <= 0
+            || entry->uncompressedSize > 16 * 1024 * 1024) { return false; }
+        std::unique_ptr<juce::InputStream> stream(package.createStreamForEntry(index));
+        if (stream == nullptr) { return false; }
+        output = stream->readEntireStreamAsString();
+        return output.getNumBytesAsUTF8() == entry->uncompressedSize;
+    };
+    juce::String manifestText;
+    juce::String patchText;
+    if (! readEntry("manifest.json", manifestText) || ! readEntry("patch.xml", patchText))
+    {
+        error = "Preset package entries are missing, truncated or too large.";
+        return false;
+    }
+    const auto manifest = juce::JSON::parse(manifestText);
+    if (! manifest.isObject() || manifest.getProperty("format", {}).toString() != "PX3_PRESET_PACKAGE"
+        || static_cast<int>(manifest.getProperty("schemaVersion", 0)) != 1
+        || manifest.getProperty("patch", {}).toString() != "patch.xml"
+        || manifest.getProperty("patchSha256", {}).toString()
+             != juce::SHA256(patchText.toRawUTF8(), static_cast<std::size_t>(patchText.getNumBytesAsUTF8())).toHexString())
+    {
+        error = "Preset package manifest or patch hash is invalid.";
+        return false;
+    }
+    std::unique_ptr<juce::XmlElement> xml(juce::XmlDocument::parse(patchText));
     if (xml == nullptr)
     {
         error = "Failed to parse preset XML: " + file.getFileName();
@@ -904,6 +939,58 @@ bool PresetManager::readPresetFile(const juce::File& file,
     {
         error = "Invalid preset format (missing PX3_PRESET root).";
         return false;
+    }
+    const auto resources = manifest.getProperty("resources", {});
+    const auto* resourceList = resources.getArray();
+    auto assets = tree.getChildWithName(kAssetsId);
+    if (resourceList == nullptr || resourceList->size() != assets.getNumChildren()
+        || package.getNumEntries() != resourceList->size() + 2)
+    {
+        error = "Preset resource manifest does not match its package entries.";
+        return false;
+    }
+    juce::StringArray seenHashes;
+    for (const auto& resource : *resourceList)
+    {
+        const auto hash = resource.getProperty("sha256", {}).toString();
+        const auto path = resource.getProperty("path", {}).toString();
+        const auto index = package.getIndexOfFileName(path);
+        const auto* entry = package.getEntry(index);
+        if (! resource.isObject() || hash.length() != 64 || ! hash.containsOnly("0123456789abcdef")
+            || seenHashes.contains(hash) || path != "assets/" + hash + ".px3wt"
+            || entry == nullptr || entry->isSymbolicLink || entry->uncompressedSize <= 0
+            || entry->uncompressedSize > 16 * 1024 * 1024
+            || entry->uncompressedSize != static_cast<juce::int64>(resource.getProperty("size", 0)))
+        {
+            error = "Preset wavetable resource descriptor is invalid.";
+            return false;
+        }
+        std::unique_ptr<juce::InputStream> stream(package.createStreamForEntry(index));
+        juce::MemoryBlock payload;
+        if (stream == nullptr || stream->readIntoMemoryBlock(payload) != entry->uncompressedSize
+            || juce::SHA256(payload).toHexString() != hash
+            || ! px3::WavetableLibrary::validatePayload(payload, error))
+        {
+            error = "Preset wavetable resource is corrupt: " + hash;
+            return false;
+        }
+        auto matched = false;
+        for (int assetIndex = 0; assetIndex < assets.getNumChildren(); ++assetIndex)
+        {
+            auto asset = assets.getChild(assetIndex);
+            if (asset.getType() == juce::Identifier("WAVETABLE") && asset.getProperty("sha256").toString() == hash)
+            {
+                asset.setProperty("data", juce::var(payload), nullptr);
+                matched = true;
+                break;
+            }
+        }
+        if (! matched)
+        {
+            error = "Preset patch references an unknown wavetable resource.";
+            return false;
+        }
+        seenHashes.add(hash);
     }
 
     auto migrated = migratePresetTreeIfNeeded(tree, error);
@@ -949,13 +1036,54 @@ bool PresetManager::writePresetFile(const juce::File& file,
     // Atomic-style write: serialize to a temporary file first, then swap. This
     // reduces risk of half-written presets when failures occur.
     juce::TemporaryFile temp(file);
-    if (auto xml = presetTree.createXml())
+    auto patchTree = presetTree.createCopy();
+    auto assets = patchTree.getChildWithName(kAssetsId);
+    juce::Array<juce::var> resources;
+    juce::ZipFile::Builder package;
+    const juce::Time timestamp(1980, 0, 1, 0, 0, 0, 0, true);
+    for (int index = 0; index < assets.getNumChildren(); ++index)
     {
-        if (!xml->writeTo(temp.getFile()))
+        auto asset = assets.getChild(index);
+        const auto hash = asset.getProperty("sha256").toString();
+        const auto value = asset.getProperty("data");
+        const auto* data = value.getBinaryData();
+        if (data == nullptr || hash != juce::SHA256(*data).toHexString()
+            || ! px3::WavetableLibrary::validatePayload(*data, error))
+        {
+            error = "Cannot package a missing or invalid wavetable resource.";
+            return false;
+        }
+        const auto path = "assets/" + hash + ".px3wt";
+        auto* resource = new juce::DynamicObject();
+        resource->setProperty("path", path);
+        resource->setProperty("sha256", hash);
+        resource->setProperty("size", static_cast<juce::int64>(data->getSize()));
+        resources.add(juce::var(resource));
+        package.addEntry(new juce::MemoryInputStream(*data, true), 6, path, timestamp);
+        asset.removeProperty("data", nullptr);
+    }
+    if (auto xml = patchTree.createXml())
+    {
+        const auto patch = xml->toString();
+        auto* manifestObject = new juce::DynamicObject();
+        manifestObject->setProperty("format", "PX3_PRESET_PACKAGE");
+        manifestObject->setProperty("schemaVersion", 1);
+        manifestObject->setProperty("patch", "patch.xml");
+        manifestObject->setProperty("patchSha256", juce::SHA256(
+            patch.toRawUTF8(), static_cast<std::size_t>(patch.getNumBytesAsUTF8())).toHexString());
+        manifestObject->setProperty("resources", juce::var(resources));
+        const auto manifest = juce::JSON::toString(juce::var(manifestObject), true);
+        package.addEntry(new juce::MemoryInputStream(manifest.toRawUTF8(),
+                            static_cast<std::size_t>(manifest.getNumBytesAsUTF8()), true), 6, "manifest.json", timestamp);
+        package.addEntry(new juce::MemoryInputStream(patch.toRawUTF8(),
+                            static_cast<std::size_t>(patch.getNumBytesAsUTF8()), true), 6, "patch.xml", timestamp);
+        juce::FileOutputStream output(temp.getFile());
+        if (output.failedToOpen() || ! package.writeToStream(output, nullptr))
         {
             error = "Failed to write preset file: " + temp.getFile().getFullPathName();
             return false;
         }
+        output.flush();
     }
     else
     {
@@ -996,7 +1124,7 @@ juce::ValueTree PresetManager::buildPresetTreeFromCurrentState(const PresetMetad
     preset.setProperty("isFactory", asFactory, nullptr);
 
     juce::ValueTree assets(kAssetsId);
-    collectAssetsForState(pluginState, assets);
+    if (! collectAssetsForState(pluginState, assets, error)) { return {}; }
 
     preset.addChild(pluginState, -1, nullptr);
     preset.addChild(assets, -1, nullptr);
@@ -1073,17 +1201,97 @@ juce::ValueTree PresetManager::migratePresetTreeIfNeeded(const juce::ValueTree& 
     return presetTree.createCopy();
 }
 
-void PresetManager::collectAssetsForState(juce::ValueTree& pluginState,
-                                          juce::ValueTree& assetsNode) const
+bool PresetManager::collectAssetsForState(juce::ValueTree& pluginState,
+                                         juce::ValueTree& assetsNode, juce::String& error) const
 {
-    juce::ignoreUnused(pluginState, assetsNode);
+    auto tables = pluginState.getChildWithName(px3::processor_internal::kUserWavetablesId);
+    juce::StringArray hashes;
+    for (int index = 0; index < tables.getNumChildren(); ++index)
+    {
+        auto table = tables.getChild(index);
+        const auto name = table.getProperty(px3::processor_internal::kUserWavetableNameId).toString();
+        juce::MemoryBlock payload;
+        const auto file = px3::WavetableLibrary::fileForName(name);
+        if (file.getSize() > 16 * 1024 * 1024 || ! file.loadFileAsData(payload)
+            || ! px3::WavetableLibrary::validatePayload(payload, error))
+        {
+            error = "Cannot package referenced wavetable: " + name;
+            return false;
+        }
+        const auto hash = juce::SHA256(payload).toHexString();
+        table.setProperty("sha256", hash, nullptr);
+        if (! hashes.contains(hash))
+        {
+            juce::ValueTree asset("WAVETABLE");
+            asset.setProperty("name", name, nullptr);
+            asset.setProperty("sha256", hash, nullptr);
+            asset.setProperty("data", juce::var(payload), nullptr);
+            assetsNode.addChild(asset, -1, nullptr);
+            hashes.add(hash);
+        }
+    }
+    error.clear();
+    return true;
 }
 
 bool PresetManager::materializeEmbeddedAssets(juce::ValueTree& pluginState,
                                               const juce::ValueTree& assetsNode,
                                               juce::String& error) const
 {
-    juce::ignoreUnused(pluginState, assetsNode, error);
+    struct Resource { juce::String hash; juce::MemoryBlock payload; };
+    std::vector<Resource> resources;
+    for (int index = 0; index < assetsNode.getNumChildren(); ++index)
+    {
+        const auto asset = assetsNode.getChild(index);
+        const auto value = asset.getProperty("data");
+        const auto* data = value.getBinaryData();
+        const auto hash = asset.getProperty("sha256").toString();
+        if (data == nullptr || juce::SHA256(*data).toHexString() != hash
+            || ! px3::WavetableLibrary::validatePayload(*data, error))
+        {
+            error = "Embedded wavetable data is invalid.";
+            return false;
+        }
+        resources.push_back({ hash, *data });
+    }
+    auto tables = pluginState.getChildWithName(px3::processor_internal::kUserWavetablesId);
+    for (int index = 0; index < tables.getNumChildren(); ++index)
+    {
+        const auto hash = tables.getChild(index).getProperty("sha256").toString();
+        if (std::none_of(resources.begin(), resources.end(), [&hash](const auto& resource) { return resource.hash == hash; }))
+        {
+            error = "Referenced wavetable is missing from the preset package.";
+            return false;
+        }
+    }
+    if (! resources.empty())
+    {
+        const auto directory = px3::WavetableLibrary::userDirectory();
+        if (! directory.isDirectory() && ! directory.createDirectory())
+        {
+            error = "Cannot create wavetable resource directory.";
+            return false;
+        }
+    }
+    for (const auto& resource : resources)
+    {
+        const auto target = px3::WavetableLibrary::fileForName(resource.hash);
+        juce::MemoryBlock existing;
+        if (target.loadFileAsData(existing) && juce::SHA256(existing).toHexString() == resource.hash) { continue; }
+        juce::TemporaryFile temporary(target);
+        if (! temporary.getFile().replaceWithData(resource.payload.getData(), resource.payload.getSize())
+            || ! temporary.overwriteTargetFileWithTemporary())
+        {
+            error = "Cannot materialize wavetable resource: " + resource.hash;
+            return false;
+        }
+    }
+    for (int index = 0; index < tables.getNumChildren(); ++index)
+    {
+        auto table = tables.getChild(index);
+        table.setProperty(px3::processor_internal::kUserWavetableNameId, table.getProperty("sha256"), nullptr);
+    }
+    error.clear();
     return true;
 }
 

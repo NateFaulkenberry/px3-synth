@@ -20,6 +20,8 @@ class WavetableLibrary
 {
 public:
     static juce::File userDirectory();
+    static juce::File fileForName(const juce::String& name);
+    static bool validatePayload(const juce::MemoryBlock& data, juce::String& error);
 
     // Message thread. Overwrites a table of the same name.
     static bool save(const juce::String& name,

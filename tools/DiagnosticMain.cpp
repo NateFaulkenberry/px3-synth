@@ -371,7 +371,7 @@ void applyPatch(PX3SynthAudioProcessor& processor, const PatchOptions& patch)
     {
         processor.setEnvelopeAssignmentByParameterId(0, "voice.filter1.cutoff", false);
         processor.setEnvelopeAssignmentByParameterId(1, "voice.osc1.macro.a", false);
-        processor.setEnvelopeAssignmentByParameterId(2, "osc1Level", false);
+        processor.setEnvelopeAssignmentByParameterId(2, "mix.osc1.level", false);
     }
 
     for (int lfoIndex = 0; lfoIndex < 3; ++lfoIndex)
@@ -388,7 +388,7 @@ void applyPatch(PX3SynthAudioProcessor& processor, const PatchOptions& patch)
     if (patch.lfoModulation)
     {
         processor.setLfoAssignmentByParameterId(0, "voice.filter1.cutoff", false);
-        processor.setLfoAssignmentByParameterId(1, "osc1Level", false);
+        processor.setLfoAssignmentByParameterId(1, "mix.osc1.level", false);
     }
     if (patch.pitchModulation)
     {

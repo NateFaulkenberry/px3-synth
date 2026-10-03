@@ -56,7 +56,7 @@ std::vector<ParameterCatalog::GroupSegment> ParameterCatalog::groupPathForId(con
         const auto module = key.substring(4).upToFirstOccurrenceOf(".", false, false);
         return path("modulation", "MODULATION", module, module.substring(0, 3).toUpperCase() + " " + module.substring(3));
     }
-    if (key.startsWith("macro"))
+    if (key.startsWith("mod.macro"))
     {
         return path("modulation", "MODULATION", "macros", "MACROS");
     }
@@ -239,6 +239,13 @@ void ParameterCatalog::add(juce::AudioProcessorParameter* parameter)
         entry.maximum = entry.definition->range.end;
         entry.interval = entry.definition->range.interval;
         entry.defaultValue = entry.definition->defaultValue;
+        const auto& key = entry.id;
+        entry.sourceControl = (key.startsWith("mod.lfo") && (key.endsWith(".frequency") || key.endsWith(".ramp.time")))
+            || (key.startsWith("mod.env") && (key.endsWith(".attack") || key.endsWith(".decay")
+                                          || key.endsWith(".sustain") || key.endsWith(".release")));
+        entry.modulationDestination = entry.definition->kind == ParameterKind::continuous
+            && (entry.sourceControl || (! key.startsWith("mod.") && ! key.startsWith("voice.amp.")
+                                       && key != "pitchBendRange"));
     }
     catalogEntries.push_back(std::move(entry));
 }

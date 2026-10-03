@@ -1092,42 +1092,16 @@ void PX3SynthAudioProcessor::buildLfoAssignableTargets()
     lfoAssignableTargets.push_back({ "none", "None", nullptr, 0.0f });
     lfoAssignmentDisplayNames.add("None");
 
-    // Source levels are exposed to modulation under stable canonical IDs that
-    // are deliberately NOT the IDs of the mixer parameters they drive. Presets
-    // store an assignment by name, so these names are part of the saved format
-    // and must not be renamed to follow the mixer parameter IDs.
-    const auto addCanonicalTarget = [this](const juce::String& canonicalId,
-                                           const juce::String& displayName,
-                                           juce::RangedAudioParameter& runtimeParam)
+    for (const auto& entry : parameterCatalog.entries())
     {
-        lfoAssignableTargets.push_back({ canonicalId, displayName, &runtimeParam,
-                                         lfoDepthForParameterId(canonicalId) });
-        lfoAssignmentDisplayNames.add(displayName);
-    };
-
-    addCanonicalTarget("subOscLevel", "Sub Osc Level", getMixerLevelParam(mixerSub));
-    addCanonicalTarget("osc1Level", "Osc 1 Level", getMixerLevelParam(mixerOsc1));
-    addCanonicalTarget("osc2Level", "Osc 2 Level", getMixerLevelParam(mixerOsc2));
-    addCanonicalTarget("osc3Level", "Osc 3 Level", getMixerLevelParam(mixerOsc3));
-
-    const auto shouldExclude = [](const juce::String& id)
-    {
-        // Exclude controls that define modulation behavior itself, rather than
-        // being destinations of modulation.
-        return id.startsWith("mod.routes.") || id.startsWith("mod.lfo") || id.startsWith("mod.env")
-            || id.startsWith("voice.amp.") || id.equalsIgnoreCase("pitchBendRange");
-    };
-
-    for (auto* parameter : getParameters())
-    {
-        auto* floatParam = dynamic_cast<juce::AudioParameterFloat*>(parameter);
+        auto* floatParam = dynamic_cast<juce::AudioParameterFloat*>(entry.parameter);
         if (floatParam == nullptr)
         {
             continue;
         }
 
         const auto id = floatParam->getParameterID();
-        if (shouldExclude(id))
+        if (! entry.modulationDestination || entry.sourceControl)
         {
             continue;
         }
@@ -1226,7 +1200,7 @@ void PX3SynthAudioProcessor::setFxProcessingOrderWithReason(const px3::FxOrder& 
 
 juce::String PX3SynthAudioProcessor::macroParameterId(int macroIndex)
 {
-    return "macro" + juce::String(juce::jlimit(0, kMacroCount - 1, macroIndex) + 1);
+    return "mod.macro" + juce::String(juce::jlimit(0, kMacroCount - 1, macroIndex) + 1) + ".value";
 }
 
 juce::String PX3SynthAudioProcessor::macroDisplayName(int macroIndex)
@@ -1354,16 +1328,7 @@ int PX3SynthAudioProcessor::getMacroMaskForParameter(const juce::String& paramet
 bool PX3SynthAudioProcessor::isGraphDestination(const juce::String& id) const
 {
     const auto* entry = parameterCatalog.find(id);
-    const auto* target = entry != nullptr ? entry->parameter : nullptr;
-    if (target != nullptr && dynamic_cast<const juce::AudioParameterFloat*>(target) != nullptr
-        && ((id.startsWith("mod.lfo") && (id.endsWith(".frequency") || id.endsWith(".ramp.time")))
-            || (id.startsWith("mod.env") && (id.endsWith(".attack") || id.endsWith(".decay")
-                                          || id.endsWith(".sustain") || id.endsWith(".release")))))
-    {
-        return true;
-    }
-    return target != nullptr && std::any_of(lfoAssignableTargets.begin(), lfoAssignableTargets.end(),
-        [target](const auto& candidate) { return candidate.parameter == target; });
+    return entry != nullptr && entry->modulationDestination;
 }
 
 bool PX3SynthAudioProcessor::setGraphRoute(int slot, const GraphRouteConfiguration& route, juce::String& error)

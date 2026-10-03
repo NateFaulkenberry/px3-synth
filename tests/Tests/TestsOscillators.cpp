@@ -1507,7 +1507,7 @@ void testWavetable()
             { "voice.osc1.macro.a", "osc macro" },
             { "voice.osc1.tuning.cents", "osc fine tune" },
             { "voice.filter1.cutoff", "filter cutoff" },
-            { "osc1Level", "osc level" },
+            { "mix.osc1.level", "osc level" },
         };
 
         juce::StringArray clampedAway;
@@ -2686,8 +2686,8 @@ void testOscillators()
     // to 1.0 in the voice and therefore inert while still being host-visible
     // and saved into every preset; they were removed rather than wired in,
     // because wiring them in would have introduced a second gain stage. The
-    // like-named MODULATION destinations are unaffected - they are canonical
-    // IDs routed to the mixer params, covered by the ENV/LFO destination tests.
+    // retired MODULATION names are absent too; routes use the mixer parameter
+    // IDs directly, covered by the ENV/LFO destination tests.
     {
         PX3SynthAudioProcessor processor;
         juce::StringArray offenders;

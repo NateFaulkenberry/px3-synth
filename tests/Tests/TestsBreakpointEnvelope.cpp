@@ -1253,7 +1253,9 @@ void testBreakpointEnvelope()
             juce::String writtenName, writtenAuthor, writtenCategory;
             if (wrote)
             {
-                if (auto xml = juce::XmlDocument::parse(dumpFile))
+                juce::ZipFile package(dumpFile);
+                std::unique_ptr<juce::InputStream> patch(package.createStreamForEntry(package.getIndexOfFileName("patch.xml")));
+                if (auto xml = patch != nullptr ? juce::XmlDocument::parse(patch->readEntireStreamAsString()) : nullptr)
                 {
                     const auto tree = juce::ValueTree::fromXml(*xml);
                     writtenName = tree.getProperty("name").toString();
