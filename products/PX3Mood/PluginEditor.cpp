@@ -1,4 +1,5 @@
 #include "PluginEditor.h"
+#include "MoodCaptions.h"
 
 #include "FxCardEditor.h"
 
@@ -118,6 +119,17 @@ PX3MoodAudioProcessorEditor::PX3MoodAudioProcessorEditor(PX3MoodAudioProcessor& 
     enabledButton.setSectionName("Mood");
 
     addAndMakeVisible(panel);
+
+    // The same mode-dependent captions the Synth shows.
+    const auto captions = [this]
+    {
+        px3::ui::moodCaptions::applyAll(processor.wetMode().getIndex(), processor.loopMode().getIndex(),
+                                        wetTimeLabel, wetTimeKnob, wetModifyLabel, wetModifyKnob,
+                                        loopModifyLabel, loopModifyKnob);
+    };
+    wetModeBox.onChange = captions;
+    loopModeBox.onChange = captions;
+    captions();
 
     enabledButton.onStateChange = [this] { panel.setActive(processor.enabled().get()); };
     panel.setActive(processor.enabled().get());

@@ -16,6 +16,7 @@
 #include "DoomCardLayout.h"
 #include "LucyCardLayout.h"
 #include "FxCardDeclarations.h"
+#include "MoodCaptions.h"
 #include "UIConfig.h"
 #include "PluginProcessorInternals.h"
 
@@ -63,35 +64,12 @@ void PX3SynthAudioProcessorEditor::refreshFxBypassUI()
         fxPanel->setDelayAlgorithm(audioProcessor.getDelayAlgorithmParam().getIndex());
     }
 
-    // MOOD's two MODIFY knobs and the wet TIME mean different things in each
-    // mode, so their captions and tooltips follow the mode instead of reading
-    // "WET MOD" / "LOOP MOD" everywhere (docs/MOOD_DSP_DESIGN.md section 5).
-    {
-        struct Meaning { const char* caption; const char* tip; };
-        static constexpr Meaning wetTime[] = {
-            { "DECAY", "REVERB: how long the wet tail lasts" },
-            { "TIME", "DELAY: echo time" },
-            { "LAG", "SLIP: how far behind the slipped voices trail" } };
-        static constexpr Meaning wetModify[] = {
-            { "SMEAR", "REVERB: diffusion - how smeared the tail is" },
-            { "REPEATS", "DELAY: feedback, up to infinite at the top" },
-            { "PITCH", "SLIP: pitch of the slipped voices, +/-24 semitones in steps" } };
-        static constexpr Meaning loopModify[] = {
-            { "SENS", "ENV: trigger sensitivity - higher catches quieter playing" },
-            { "SPEED", "TAPE: playback speed, eight musical rates from 1/2x to 4x (and reversed)" },
-            { "WALK", "STRETCH: grain drift, frozen at noon and walking either way" } };
-        const auto wet = juce::jlimit(0, 2, audioProcessor.getMoodWetModeParam().getIndex());
-        const auto loop = juce::jlimit(0, 2, audioProcessor.getMoodLoopModeParam().getIndex());
-        const auto apply = [](juce::Label& label, juce::Slider& knob, const Meaning& meaning)
-        {
-            if (label.getText() != meaning.caption) { label.setText(meaning.caption, juce::dontSendNotification); }
-            label.setTooltip(meaning.tip);
-            knob.setTooltip(meaning.tip);
-        };
-        apply(moodWetTimeLabel, moodWetTimeKnob, wetTime[wet]);
-        apply(moodWetModifyLabel, moodWetModifyKnob, wetModify[wet]);
-        apply(moodLoopModifyLabel, moodLoopModifyKnob, loopModify[loop]);
-    }
+    // MOOD's mode-dependent captions (MoodCaptions.h, shared with PX3 Mood).
+    px3::ui::moodCaptions::applyAll(audioProcessor.getMoodWetModeParam().getIndex(),
+                                    audioProcessor.getMoodLoopModeParam().getIndex(),
+                                    moodWetTimeLabel, moodWetTimeKnob,
+                                    moodWetModifyLabel, moodWetModifyKnob,
+                                    moodLoopModifyLabel, moodLoopModifyKnob);
 
     // Cards that own their controls grey themselves out; the panel is told
     // separately so the signal-flow node dims with them.

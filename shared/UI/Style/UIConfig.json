@@ -1499,32 +1499,32 @@
             }
           },
           "row1": {
-            "height": 86,
+            "height": "15%",
             "gap": 1,
             "justifyContent": "space-evenly",
             "alignContent": "flex-end"
           },
           "row2": {
-            "height": 60,
+            "height": "14%",
             "gap": 10,
             "paddingTop": 14
           },
           "row3": {
-            "height": "21%",
+            "height": "17%",
             "gap": 5,
             "justifyContent": "space-between"
           },
           "row4": {
-            "height": "21%",
+            "height": "17%",
             "gap": 5,
             "justifyContent": "space-between"
           },
           "row5": {
-            "height": "21%",
+            "height": "17%",
             "gap": 5
           },
           "row6": {
-            "height": "19%",
+            "height": "20%",
             "gap": 2,
             "alignContent": "flex-end"
           }
@@ -1621,31 +1621,31 @@
             }
           },
           "row1": {
-            "height": 42,
+            "height": "13%",
             "gap": 0,
             "justifyContent": "space-evenly"
           },
           "row2": {
-            "height": 58,
+            "height": "14%",
             "gap": 10,
             "paddingTop": 12
           },
           "row3": {
-            "height": 58,
+            "height": "13%",
             "gap": 10
           },
           "row4": {
-            "height": "23%",
+            "height": "19%",
             "gap": 5,
             "justifyContent": "space-between"
           },
           "row5": {
-            "height": "23%",
+            "height": "19%",
             "gap": 5,
             "justifyContent": "space-between"
           },
           "row6": {
-            "height": "26%",
+            "height": "22%",
             "gap": 2,
             "alignContent": "flex-end"
           }
@@ -1680,7 +1680,7 @@
         "labelOutline": "#BA9DED",
         "labelOutlineOpacity": 0.45,
         "labelColour": "#DED0F7",
-        "knobSize": 46,
+        "knobSize": 38,
         "featureKnobSize": 88,
         "choiceWidth": 110,
         "toggleWidth": 104,
