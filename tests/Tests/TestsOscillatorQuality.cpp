@@ -877,6 +877,34 @@ void testOscillatorQuality()
                   "first 30 ms high-band energy: CLICK 0 " + fmt(none, 1) + " dB, CLICK 1 " + fmt(full, 1) + " dB");
         }
 
+        // DETUNE changes width, not loudness. A level travel slope of 0.42 used
+        // to pull full DETUNE down another 3.7 dB on top of the stack's own loss.
+        {
+            auto level = [&](float detune)
+            {
+                UnitSetup saw;
+                saw.mode = static_cast<int>(Mode::superSaw);
+                saw.a = detune;
+                const auto x = renderUnit(saw, 220.0, fs, 96000, 4800);
+                double e = 0.0;
+                for (const auto v : x) e += v * v;
+                return 10.0 * std::log10(e / static_cast<double>(x.size()));
+            };
+            juce::String curve;
+            double lowest = 1.0e9, highest = -1.0e9, ends[2] {};
+            for (const auto detune : { 0.0f, 0.25f, 0.5f, 0.75f, 1.0f })
+            {
+                const auto l = level(detune);
+                if (detune == 0.0f) ends[0] = l;
+                if (detune == 1.0f) ends[1] = l;
+                lowest = juce::jmin(lowest, l);
+                highest = juce::jmax(highest, l);
+                curve << fmt(detune, 2) << ":" << fmt(l, 1) << " ";
+            }
+            check("OscQuality_SuperSawDetuneKeepsItsLevel", highest - lowest < 3.5 && std::abs(ends[1] - ends[0]) < 2.0,
+                  "level by DETUNE " + curve + "dB");
+        }
+
         UnitSetup quiet;
         quiet.mode = static_cast<int>(Mode::rob);
         quiet.c = 0.0f;

@@ -36,7 +36,7 @@ constexpr std::array<float, px3::oscillatorModeCount> kModeTrim {
 // louder as well as brighter.
 constexpr std::array<float, px3::oscillatorModeCount> kModeTravelSlope {
     0.00f, 0.08f, 0.10f, 0.06f, 0.16f,
-    0.14f, 0.42f, 0.18f, 0.20f, 0.14f,
+    0.14f, 0.00f, 0.18f, 0.20f, 0.14f,   // SUPER SAW 0: DETUNE widens, it does not get louder
     0.20f, 0.38f, 0.46f, 0.14f,
     0.34f, 0.24f, 0.34f, 0.20f, 0.40f
 };
@@ -405,7 +405,7 @@ void OscillatorUnit::updateDerivedCurves()
     const auto c = oscillatorSettings.macroC;
     auto& d = target;
 
-    // SUPER SAW: SPREAD sets both how far apart the saws sit and how far they drift.
+    // SUPER SAW: DETUNE sets both how far apart the saws sit and how far they drift.
     {
         const auto spread = std::pow(a, 1.65f);
         d.superSawWidth = std::pow(a, 1.2f);
@@ -851,7 +851,7 @@ double OscillatorUnit::renderSuperSaw(const RenderContext& context)
     }
 
     // Independent phases and drift keep the saws uncorrelated at any detune, so
-    // one fixed scale holds the level steady across SPREAD.
+    // one fixed scale holds the level steady across DETUNE.
     return sum * (1.0 / 7.0) * (0.84 + 0.10 * static_cast<double>(width));
 }
 

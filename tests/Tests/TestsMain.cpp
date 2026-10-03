@@ -216,6 +216,69 @@ void measureDoomInSynth()
     }
 }
 
+// Supersaw polyphony at DETUNE 0 and 1: output level over time, and whether
+// every note of the chord is still sounding (Goertzel at each fundamental,
+// relative to the strongest), for chords of 1, 4, 8 and 16 notes.
+void measureSupersawPolyphony()
+{
+    std::printf("\nSUPERSAW POLYPHONY  (osc1 SUPER SAW, others off, 48 kHz / 512)\n");
+    for (const auto detune : { 0.0f, 1.0f })
+    {
+        for (const auto notes : { 1, 4, 8, 16 })
+        {
+            PX3SynthAudioProcessor processor;
+            processor.setPlayConfigDetails(0, 2, 48000.0, 512);
+            processor.prepareToPlay(48000.0, 512);
+            for (auto* param : processor.getParameters())
+            {
+                if (auto* r = dynamic_cast<juce::RangedAudioParameter*>(param))
+                {
+                    if (r->paramID == "voice.osc1.mode") r->setValueNotifyingHost(r->convertTo0to1(6.0f));
+                    if (r->paramID == "voice.osc1.macro.a") r->setValueNotifyingHost(detune);
+                    if (r->paramID == "voice.amp.sustain") r->setValueNotifyingHost(1.0f);
+                }
+            }
+            std::vector<int> pitches;
+            for (int i = 0; i < notes; ++i) pitches.push_back(36 + i * 3);
+            juce::AudioBuffer<float> buffer(2, 512);
+            std::vector<float> mono;
+            std::vector<double> windowRms;
+            double win = 0.0; int winCount = 0;
+            for (int block = 0; block < 940; ++block)
+            {
+                juce::MidiBuffer midi;
+                if (block == 2) for (const auto p : pitches) midi.addEvent(juce::MidiMessage::noteOn(1, p, 0.9f), 0);
+                buffer.clear();
+                processor.processBlock(buffer, midi);
+                for (int n = 0; n < 512; ++n)
+                {
+                    const auto v = 0.5f * (buffer.getSample(0, n) + buffer.getSample(1, n));
+                    if (block >= 470) mono.push_back(v);
+                    win += static_cast<double>(v) * v; ++winCount;
+                }
+                if (block % 94 == 93) { windowRms.push_back(10.0 * std::log10(win / winCount + 1e-30)); win = 0; winCount = 0; }
+            }
+            double strongest = 0.0, weakest = 1e30;
+            for (const auto p : pitches)
+            {
+                const auto hz = 440.0 * std::pow(2.0, (p - 69) / 12.0);
+                double c = 0, sn = 0;
+                for (std::size_t n = 0; n < mono.size(); ++n)
+                {
+                    const auto w = juce::MathConstants<double>::twoPi * hz * static_cast<double>(n) / 48000.0;
+                    c += mono[n] * std::cos(w); sn += mono[n] * std::sin(w);
+                }
+                const auto power = c * c + sn * sn;
+                strongest = juce::jmax(strongest, power); weakest = juce::jmin(weakest, power);
+            }
+            juce::String trend;
+            for (const auto r : windowRms) trend << juce::String(r, 1) << " ";
+            std::printf("  DETUNE %.0f  %2d notes  weakest note %6.1f dB vs strongest   rms per 1 s: %s\n",
+                        detune, notes, 10.0 * std::log10(weakest / strongest), trend.toRawUTF8());
+        }
+    }
+}
+
 void scanDoomLucyArtifacts()
 {
     using namespace artifactscan;
@@ -2034,6 +2097,12 @@ int main(int argc, char* argv[])
                         file.getFileNameWithoutExtension().toRawUTF8());
         }
         std::printf("\n  %d preset files\n\n", files.size());
+        return 0;
+    }
+
+    if (filter == "supersawpoly")
+    {
+        measureSupersawPolyphony();
         return 0;
     }
 

@@ -633,7 +633,7 @@ void OscillatorComponent::applyModeUi()
         { "", "", "", 0, false },
         { "COLOR", "", "", 1, false },
         { "COLOR", "", "", 1, false },
-        { "SPREAD", "", "", 1, false },
+        { "DETUNE", "", "", 1, false },
         { "WIDTH", "", "", 1, false },
         // WAVETABLE shows no macro. It used to borrow macroA as its POSITION
         // knob, back when the mode was a single swept sine; the scan is its own

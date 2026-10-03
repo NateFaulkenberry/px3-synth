@@ -195,7 +195,7 @@ modes these are the difference between a usable sound and an interesting one.
 |---|---|---|---|
 | SINE / SAW / SQUARE / TRIANGLE | — | — | — |
 | NOISE / PINK NOISE | COLOR | — | — |
-| SUPER SAW | SPREAD | — | — |
+| SUPER SAW | DETUNE | — | — |
 | PWM | WIDTH | — | — |
 | WAVETABLE | — (POSITION has its own knob) | — | — |
 | ADDITIVE | TILT | ODD/EVEN | ROLL |
@@ -216,7 +216,7 @@ ratios stay harmonic and musical; values between them turn metallic and
 bell-like. INDEX sets how much modulation is applied, heard as brightness and
 harmonic density.
 
-**SUPER SAW** — SPREAD sets how far apart the stacked saws sit, along with their
+**SUPER SAW** — DETUNE sets how far apart the stacked saws sit, along with their
 drift. Low settings give one fat saw; high settings give the classic wide sound.
 
 **FORMANT** — a **VOWEL** menu appears, selecting the A/E/I/O/U profile. MORPH
