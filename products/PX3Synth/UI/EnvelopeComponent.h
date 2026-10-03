@@ -230,6 +230,7 @@ private:
     // is what keeps the drawn graph and the draggable graph on one rectangle.
     int graphRowIndex() const;
     bool compactLayout { false };
+    bool modeApplied { false };
     juce::Rectangle<int> compactGraph;
     void layoutCompact();
     // The display row: the compact graph, or CardInner's graph row.

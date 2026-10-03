@@ -499,6 +499,11 @@ void EnvelopeComponent::setEnvelopeMode(px3::BreakpointEnvelope::Mode mode)
 {
     if (adsrOnly) { mode = px3::BreakpointEnvelope::Mode::adsr; }
 
+    // The 30 Hz refresh calls this with the processor's mode every tick; an
+    // unchanged mode must not re-lay-out and repaint the whole card.
+    if (modeApplied && mode == envelopeMode) { return; }
+    modeApplied = true;
+
     envelopeMode = mode;
     modeBox.setSelectedId(mode == px3::BreakpointEnvelope::Mode::breakpoint ? 2 : 1,
                           juce::dontSendNotification);
