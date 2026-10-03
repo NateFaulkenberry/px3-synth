@@ -139,6 +139,9 @@ struct InstrumentSceneNode
     // > 0: the final box is the largest rect of this width/height ratio that
     // fits the slot, centred. Knobs use 1.
     float aspect { 0.0f };
+    // A flex/grid container whose children are all hidden normally collapses;
+    // this keeps its box (a card row that is empty in some modes).
+    bool keepEmpty { false };
 
     bool isContainer() const noexcept { return layout != InstrumentSceneLayoutMode::none; }
 };

@@ -1,4 +1,5 @@
 #include "SubOscComponent.h"
+#include "SceneBinding.h"
 
 #include "BypassButton.h"
 #include "CardInner.h"
@@ -30,6 +31,10 @@ SubOscComponent::SubOscComponent(juce::ToggleButton& enabledButtonIn,
     }
     addAndMakeVisible(waveformBox);
     addAndMakeVisible(waveformLabel);
+
+    // Paints nothing and takes no clicks: it only carries the wave table's box.
+    graphSlot.setInterceptsMouseClicks(false, false);
+    addAndMakeVisible(graphSlot);
 }
 
 void SubOscComponent::setAccentColour(juce::Colour accentIn)
@@ -114,6 +119,12 @@ void SubOscComponent::resized()
     }
 
 
+    if (sceneManaged)
+    {
+        px3::ui::requestSceneLayout(*this);
+        return;
+    }
+
     inner.setStylePath("cards.subOsc.cardInner");
     inner.setConfig(uiConfig);
     inner.setRowCount(3);
@@ -184,7 +195,7 @@ void SubOscComponent::mouseUp(const juce::MouseEvent& event)
     // that explained itself on hover would be noise.
     // The wave graph is a display, not a switch: it shows no pointer and it
     // takes no click, so the two agree.
-    if (inner.rowContent(2).contains(event.getPosition()))
+    if (graphRow().contains(event.getPosition()))
     {
         return;
     }
@@ -195,11 +206,16 @@ void SubOscComponent::mouseUp(const juce::MouseEvent& event)
     }
 }
 
+juce::Rectangle<int> SubOscComponent::graphRow() const
+{
+    return sceneManaged ? graphSlot.getBounds() : inner.rowContent(2);
+}
+
 void SubOscComponent::mouseMove(const juce::MouseEvent& event)
 {
     // The wave graph is a display, not a control, so it does not take the
     // pointer that marks the rest of the card as clickable.
-    setMouseCursor(inner.rowContent(2).contains(event.getPosition())
+    setMouseCursor(graphRow().contains(event.getPosition())
                        ? juce::MouseCursor::NormalCursor
                        : juce::MouseCursor::PointingHandCursor);
 }
@@ -233,7 +249,7 @@ void SubOscComponent::paint(juce::Graphics& g)
     // The wave table occupies row 3. It used to be found by replaying the same
     // removeFromTop sequence resized() used, which meant two copies of one
     // layout that had to be kept in step by hand.
-    auto graph = inner.rowContent(2).toFloat();
+    auto graph = graphRow().toFloat();
 
     if (graph.getWidth() < 40.0f || graph.getHeight() < 20.0f)
     {

@@ -183,6 +183,7 @@ std::vector<Property> propertiesFor(const InstrumentSceneDocument& doc, int inde
         props.push_back(enumProperty("alignItems", { LayoutAlign::start, LayoutAlign::center, LayoutAlign::end, LayoutAlign::stretch }, &N::alignItems));
         props.push_back(floatProperty("gapX", &N::gapX));
         props.push_back(floatProperty("gapY", &N::gapY));
+        props.push_back(boolProperty("keepEmpty", &N::keepEmpty));
     }
     if (n.layout != InstrumentSceneLayoutMode::none || ! doc.childrenOf(index).empty())
     {

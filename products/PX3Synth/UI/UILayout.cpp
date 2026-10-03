@@ -86,7 +86,7 @@ const juce::StringArray& nodeKeys()
         "layout", "direction", "wrap", "gap", "gapX", "gapY", "padding", "alignItems", "justify",
         "columns", "rows", "position", "x", "y", "width", "height", "basis", "grow", "shrink",
         "minWidth", "minHeight", "maxWidth", "maxHeight", "margin", "alignSelf", "column", "row",
-        "columnSpan", "rowSpan", "aspect", "note"
+        "columnSpan", "rowSpan", "aspect", "keepEmpty", "note"
     };
     return keys;
 }
@@ -199,7 +199,8 @@ bool readNode(const juce::var& value, InstrumentSceneNode& node, juce::String& e
         return fail("label/binding/style must be strings");
     }
     if (! integer("order", node.order)) { return fail("order must be an integer"); }
-    if (! boolean("visible", node.visible) || ! boolean("locked", node.locked) || ! boolean("wrap", node.wrap))
+    if (! boolean("visible", node.visible) || ! boolean("locked", node.locked) || ! boolean("wrap", node.wrap)
+        || ! boolean("keepEmpty", node.keepEmpty))
     {
         return fail("visible/locked/wrap must be booleans");
     }
@@ -305,6 +306,7 @@ juce::var writeNode(const InstrumentSceneNode& n)
     if (n.columnSpan != d.columnSpan) { o->setProperty("columnSpan", n.columnSpan); }
     if (n.rowSpan != d.rowSpan) { o->setProperty("rowSpan", n.rowSpan); }
     if (n.aspect != d.aspect) { o->setProperty("aspect", num(n.aspect)); }
+    if (n.keepEmpty != d.keepEmpty) { o->setProperty("keepEmpty", n.keepEmpty); }
     return juce::var(o);
 }
 
@@ -796,7 +798,7 @@ void InstrumentSceneDocument::resolve(juce::Rectangle<float> rootBounds) const
         const auto i = static_cast<std::size_t>(*it);
         const auto& n = nodes[i];
         auto on = n.visible && runtimeHidden.count(n.id) == 0;
-        if (on && n.isContainer() && ! children[i].empty())
+        if (on && n.isContainer() && ! n.keepEmpty && ! children[i].empty())
         {
             on = std::any_of(children[i].begin(), children[i].end(),
                              [this](int c) { return shown[static_cast<std::size_t>(c)] != 0; });

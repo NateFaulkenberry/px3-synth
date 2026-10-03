@@ -315,6 +315,82 @@ void PX3SynthAudioProcessorEditor::bindSceneComponents()
         {
             if (auto* card = oscPanel->getCard(i)) { b.bind(cards[i], *card); }
         }
+
+        // Every control inside the oscillator cards. Mode-dependent controls
+        // follow their component's visibility, so a hidden knob's cell closes.
+        const auto knob = [&b](const juce::String& cell, juce::Component& label, juce::Component& control,
+                               juce::Component& value)
+        {
+            b.bind(cell + ".label", label, V::followsComponent);
+            b.bind(cell + ".knob", control, V::followsComponent);
+            b.bind(cell + ".value", value, V::followsComponent);
+        };
+        const auto stretch = [&b](const juce::String& cell, juce::Component& label, juce::Component& control)
+        {
+            b.bind(cell + ".label", label, V::followsComponent);
+            b.bind(cell + ".box", control, V::followsComponent);
+        };
+        const auto tuning = [&knob](const juce::String& card, TuningControls& t)
+        {
+            knob(card + ".coarse", t.coarseLabel, t.coarseKnob, t.coarseValue);
+            knob(card + ".semi", t.semitoneLabel, t.semitoneKnob, t.semitoneValue);
+            knob(card + ".fine", t.fineLabel, t.fineKnob, t.fineValue);
+        };
+
+        if (auto* sub = oscPanel->getSubCard())
+        {
+            sub->setSceneManaged(true);
+            b.bind("osc.sub.power", subOscEnabledButton);
+            stretch("osc.sub.wave", subOscWaveformLabel, subOscWaveformBox);
+            tuning("osc.sub", subTuning);
+            b.bind("osc.sub.graph", sub->getGraphSlot());
+        }
+
+        struct OscControls
+        {
+            juce::Component& power;
+            juce::Component& modeLabel;
+            juce::Component& mode;
+            juce::Component& vowelLabel;
+            juce::Component& vowel;
+            std::array<juce::Component*, 3> macroLabels, macros, macroValues;
+        };
+        const std::array<OscControls, 3> oscs { {
+            { osc1EnabledButton, osc1ModeLabel, osc1ModeBox, osc1VowelLabel, osc1VowelBox,
+              { &osc1MacroALabel, &osc1MacroBLabel, &osc1MacroCLabel },
+              { &osc1MacroAKnob, &osc1MacroBKnob, &osc1MacroCKnob },
+              { &osc1MacroAValueLabel, &osc1MacroBValueLabel, &osc1MacroCValueLabel } },
+            { osc2EnabledButton, osc2ModeLabel, osc2ModeBox, osc2VowelLabel, osc2VowelBox,
+              { &osc2MacroALabel, &osc2MacroBLabel, &osc2MacroCLabel },
+              { &osc2MacroAKnob, &osc2MacroBKnob, &osc2MacroCKnob },
+              { &osc2MacroAValueLabel, &osc2MacroBValueLabel, &osc2MacroCValueLabel } },
+            { osc3EnabledButton, osc3ModeLabel, osc3ModeBox, osc3VowelLabel, osc3VowelBox,
+              { &osc3MacroALabel, &osc3MacroBLabel, &osc3MacroCLabel },
+              { &osc3MacroAKnob, &osc3MacroBKnob, &osc3MacroCKnob },
+              { &osc3MacroAValueLabel, &osc3MacroBValueLabel, &osc3MacroCValueLabel } },
+        } };
+        for (int i = 0; i < 3; ++i)
+        {
+            auto* card = oscPanel->getOscillatorCard(i);
+            if (card == nullptr) { continue; }
+            const auto& o = oscs[static_cast<std::size_t>(i)];
+            const auto id = "osc." + juce::String(i + 1);
+            card->setSceneManaged(true);
+            b.bind(id + ".power", o.power);
+            stretch(id + ".mode", o.modeLabel, o.mode);
+            stretch(id + ".vowel", o.vowelLabel, o.vowel);
+            tuning(id, oscTuning[static_cast<std::size_t>(i)]);
+            stretch(id + ".table", oscWtTableLabels[static_cast<std::size_t>(i)], oscWtTableBoxes[static_cast<std::size_t>(i)]);
+            knob(id + ".position", oscWtPositionLabels[static_cast<std::size_t>(i)],
+                 oscWtPositionKnobs[static_cast<std::size_t>(i)], oscWtPositionValues[static_cast<std::size_t>(i)]);
+            const char* macroNames[] { ".macroA", ".macroB", ".macroC" };
+            for (int m = 0; m < 3; ++m)
+            {
+                knob(id + macroNames[m], *o.macroLabels[static_cast<std::size_t>(m)], *o.macros[static_cast<std::size_t>(m)],
+                     *o.macroValues[static_cast<std::size_t>(m)]);
+            }
+            b.bind(id + ".graph", card->getWavetableGraph());
+        }
     }
     if (fltPanel != nullptr)
     {
