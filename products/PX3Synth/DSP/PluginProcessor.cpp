@@ -1231,19 +1231,19 @@ void PX3SynthAudioProcessor::updateBusInsertSettings(int bus)
             target.type = px3::EqBandType::bell;
         }
 
-        target.frequencyHz = p.bandFreq[b]->get();
-        target.gainDb = p.bandGain[b]->get();
-        target.q = p.bandQ[b]->get();
+        target.frequencyHz = modulatedParameterValue(p.bandFreq[b]);
+        target.gainDb = modulatedParameterValue(p.bandGain[b]);
+        target.q = modulatedParameterValue(p.bandQ[b]);
     }
 
     px3::CompressorSettings comp;
     comp.enabled = p.compEnabled->get();
-    comp.inputDb = p.compInput->get();
-    comp.outputDb = p.compOutput->get();
-    comp.attack = p.compAttack->get();
-    comp.release = p.compRelease->get();
+    comp.inputDb = modulatedParameterValue(p.compInput);
+    comp.outputDb = modulatedParameterValue(p.compOutput);
+    comp.attack = modulatedParameterValue(p.compAttack);
+    comp.release = modulatedParameterValue(p.compRelease);
     comp.ratio = static_cast<px3::CompRatio>(juce::jlimit(0, 4, p.compRatio->getIndex()));
-    comp.mix = p.compMix->get();
+    comp.mix = modulatedParameterValue(p.compMix);
     comp.stereoLink = p.compLink->get();
     comp.meterMode = static_cast<px3::CompMeterMode>(juce::jlimit(0, 2, p.compMeterMode->getIndex()));
 

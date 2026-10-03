@@ -495,6 +495,7 @@ void testPresets()
         check("Preset_CustomWavetableSurvivesRemovalOfTheOriginalLibraryFile",
               loaded && restored.getUserWavetableName(0) == hash
                   && restored.getUserWavetableName(1) == hash
+                  && restored.getUserWavetableDisplayName(0) == name
                   && restored.getMissingWavetableName(0).isEmpty()
                   && px3::WavetableLibrary::load(hash) != nullptr, error);
         juce::ZipFile::Builder corrupt;

@@ -338,6 +338,7 @@ public:
     // and the user library does not. Empty means "use the factory choice".
     void setUserWavetableName(int oscIndex, const juce::String& name);
     juce::String getUserWavetableName(int oscIndex) const;
+    juce::String getUserWavetableDisplayName(int oscIndex) const;
 
     // Imports frames, saves them to the user library and selects them. Message
     // thread - it builds, allocates and writes a file.
@@ -830,6 +831,7 @@ private:
                                     const juce::String& parameterId,
                                     bool notifyHost,
                                     const juce::String& sourceName);
+    float modulatedParameterValue(juce::AudioParameterFloat* parameter) const;
     float applyModulationToNormalizedValue(juce::RangedAudioParameter* parameter,
                                            float baseNormalized,
                                            float* outBaseNormalized = nullptr,
@@ -1075,6 +1077,7 @@ private:
     // nothing has been built yet.
     std::array<int, kOscillatorSourceCount> loadedWavetableIndex { { -1, -1, -1 } };
     std::array<juce::String, kOscillatorSourceCount> userWavetableNames;
+    std::array<juce::String, kOscillatorSourceCount> userWavetableDisplayNames;
     std::array<juce::String, kOscillatorSourceCount> missingWavetableNames;
 
     // AMP ENV at 0, ENV 1..3 after it. Each instance owns its own; nothing is

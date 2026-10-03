@@ -6,7 +6,6 @@
 #include "MixerControls.h"
 
 #include <array>
-#include <memory>
 
 // One oscillator's static tuning controls: Coarse Tune in octaves and Fine Tune
 // in cents, each with its caption and a readout in its own units.
@@ -26,9 +25,8 @@ struct TuningControls
     PanKnob semitoneKnob;
     px3::ui::ChipLabel semitoneLabel;
     juce::Label semitoneValue;
-    std::unique_ptr<juce::SliderParameterAttachment> semitoneAttachment;
 
-    void bindSemitone(juce::AudioParameterFloat& parameter)
+    void configureSemitoneReadout()
     {
         semitoneKnob.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
         semitoneKnob.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
@@ -46,7 +44,6 @@ struct TuningControls
             const auto value = juce::roundToInt(semitoneKnob.getValue());
             semitoneValue.setText((value > 0 ? "+" : "") + juce::String(value) + " st", juce::dontSendNotification);
         };
-        semitoneAttachment = std::make_unique<juce::SliderParameterAttachment>(parameter, semitoneKnob, nullptr);
         semitoneKnob.onValueChange();
     }
 

@@ -247,7 +247,7 @@ double modeOvertonesDb(int mode, float macro)
 // filter settle, read the amplitude out. No coefficient arithmetic - if the
 // implementation is wrong then its coefficients are wrong too, and a test
 // written from the same maths would agree with it.
-double filterGainDbAt(int mode, float cutoff, float q, double hz)
+double filterGainDbAt(int mode, float cutoff, float q, double hz, float amplitude = 1.0f)
 {
     VoiceFilter filter;
     filter.prepare(kSampleRate);
@@ -269,7 +269,7 @@ double filterGainDbAt(int mode, float cutoff, float q, double hz)
     double sumIn = 0.0;
     for (int i = 0; i < total; ++i)
     {
-        const auto x = static_cast<float>(std::sin(juce::MathConstants<double>::twoPi * hz * i / kSampleRate));
+        const auto x = amplitude * static_cast<float>(std::sin(juce::MathConstants<double>::twoPi * hz * i / kSampleRate));
         const auto y = filter.processSample(x);
         if (i >= measureFrom)
         {
@@ -2693,6 +2693,85 @@ void testBusInserts()
 void testFilters()
 {
     suite("FILTERS");
+    {
+        const auto renderEq = [](bool macro)
+        {
+            PX3SynthAudioProcessor processor;
+            makePlainPatch(processor);
+            setParam(processor, "mix.dry.insert.eq.enabled", 1.0f);
+            setParam(processor, "mix.dry.insert.eq.frequency.2", 440.0f);
+            if (macro)
+            {
+                processor.toggleMacroDestination(0, "mix.dry.insert.eq.gain.2");
+                processor.setMacroDestinationDepth(0, "mix.dry.insert.eq.gain.2", 0.25f);
+                processor.getMacroParam(0).setValueNotifyingHost(1.0f);
+            }
+            return render(processor, 48000, { { 0, true, 69, 0.8f } }).rmsOver(12000, 48000);
+        };
+        const auto base = renderEq(false);
+        const auto boosted = renderEq(true);
+        check("BusEq_MacroModulationReachesTheAudioSettings", boosted > base * 1.5,
+              "RMS " + fmt(base, 5) + " -> " + fmt(boosted, 5));
+    }
+    {
+        auto responseMatches = true;
+        auto stable = true;
+        for (const auto mode : { px3::FilterMode::stateVariable12, px3::FilterMode::stateVariable24 })
+        {
+            for (const auto frequency : { 400.0, 1000.0, 4000.0 })
+            {
+                const auto coefficients = px3::makeFilterCoefficients(static_cast<int>(mode), kSampleRate, 1000.0f, 0.707f);
+                const auto drawn = px3::filterMagnitudeDb(coefficients, frequency, kSampleRate);
+                const auto measured = filterGainDbAt(static_cast<int>(mode), 1000.0f, 0.707f, frequency);
+                responseMatches = responseMatches && std::abs(drawn - measured) < 0.1;
+            }
+            VoiceFilter filter;
+            filter.prepare(kSampleRate);
+            FilterSettings settings;
+            settings.modeIndex = static_cast<int>(mode);
+            filter.setCurrentSettingsImmediate(settings);
+            for (int sample = 0; sample < 48000; ++sample)
+            {
+                settings.cutoffHz = sample % 200 < 100 ? 80.0f : 18000.0f;
+                settings.resonanceQ = 2.2f;
+                filter.setTargetSettings(settings);
+                stable = stable && std::isfinite(filter.processSample(std::sin(static_cast<float>(sample) * 0.06f) * 0.1f));
+            }
+        }
+        check("Filter_TptBackendsMatchTheDisplayedFrequencyResponse", responseMatches);
+        check("Filter_TptBackendsRemainFiniteUnderRapidCutoffSweeps", stable);
+    }
+    {
+        auto responseMatches = true;
+        auto stable = true;
+        auto worstError = 0.0;
+        for (const auto mode : { px3::FilterMode::ladder12, px3::FilterMode::ladder24 })
+        {
+            for (const auto frequency : { 100.0, 400.0, 1000.0, 4000.0 })
+            {
+                const auto coefficients = px3::makeFilterCoefficients(static_cast<int>(mode), kSampleRate, 1000.0f, 0.8f);
+                const auto drawn = px3::filterMagnitudeDb(coefficients, frequency, kSampleRate);
+                const auto measured = filterGainDbAt(static_cast<int>(mode), 1000.0f, 0.8f, frequency, 0.001f);
+                worstError = juce::jmax(worstError, std::abs(drawn - measured));
+                responseMatches = responseMatches && std::abs(drawn - measured) < 0.15;
+            }
+            VoiceFilter filter;
+            filter.prepare(kSampleRate);
+            FilterSettings settings;
+            settings.modeIndex = static_cast<int>(mode);
+            filter.setCurrentSettingsImmediate(settings);
+            for (int sample = 0; sample < 48000; ++sample)
+            {
+                settings.cutoffHz = sample % 500 < 250 ? 80.0f : 18000.0f;
+                settings.resonanceQ = 2.2f;
+                filter.setTargetSettings(settings);
+                const auto output = filter.processSample(std::sin(static_cast<float>(sample) * 0.04f) * 0.2f);
+                stable = stable && std::isfinite(output) && std::abs(output) < 8.0f;
+            }
+        }
+        check("Filter_LadderSmallSignalPlotMatchesMeasuredAudio", responseMatches, fmt(worstError, 4) + " dB worst error");
+        check("Filter_LadderBackendsRemainBoundedUnderResonantSweeps", stable);
+    }
 
     // A mode labelled 12 dB has to be 12 dB, and one labelled 24 has to be 24.
     {

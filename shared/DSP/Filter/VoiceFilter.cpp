@@ -17,6 +17,13 @@ void VoiceFilter::prepare(double newSampleRate)
     bypassBlendStep = 1.0f / static_cast<float>(juce::jmax(1.0, sampleRate * bypassBlendSeconds));
 
     comb.prepare(sampleRate);
+    const juce::dsp::ProcessSpec spec { sampleRate, 1, 1 };
+    ladder.prepare(spec);
+    ladder.setDrive(1.0f);
+    stateVariableA.prepare(spec);
+    stateVariableB.prepare(spec);
+    stateVariableA.setType(juce::dsp::StateVariableTPTFilterType::lowpass);
+    stateVariableB.setType(juce::dsp::StateVariableTPTFilterType::lowpass);
 
     reset();
     setCurrentSettingsImmediate(currentSettings);
@@ -26,6 +33,9 @@ void VoiceFilter::reset()
 {
     stageA.reset();
     stageB.reset();
+    ladder.reset();
+    stateVariableA.reset();
+    stateVariableB.reset();
     comb.reset();
     filterUpdateCounter = 0;
     modeChangePending = false;
@@ -61,6 +71,7 @@ void VoiceFilter::setCurrentSettingsImmediate(const FilterSettings& settings)
     applyFilter(currentSettings.cutoffHz,
                 currentSettings.resonanceQ,
                 currentSettings.modeIndex);
+    ladder.reset();
     filterUpdateCounter = 0;
     // A note start must not fade its filter in.
     bypassBlend = targetSettings.enabled ? 1.0f : 0.0f;
@@ -89,6 +100,9 @@ float VoiceFilter::processSampleActive(float inputSample)
             currentSettings.resonanceQ = targetSettings.resonanceQ;
             stageA.reset();
             stageB.reset();
+            ladder.reset();
+            stateVariableA.reset();
+            stateVariableB.reset();
             comb.reset();
             applyFilter(currentSettings.cutoffHz, currentSettings.resonanceQ, currentSettings.modeIndex);
             filterUpdateCounter = 0;
@@ -122,8 +136,15 @@ float VoiceFilter::processSampleActive(float inputSample)
                 currentSettings.modeIndex);
     }
 
-    auto output = stageA.processSample(inputSample);
-    if (mode == px3::FilterMode::lp24 || mode == px3::FilterMode::hp24)
+    const auto stateVariable = mode == px3::FilterMode::stateVariable12 || mode == px3::FilterMode::stateVariable24;
+    const auto ladderMode = mode == px3::FilterMode::ladder12 || mode == px3::FilterMode::ladder24;
+    auto output = ladderMode ? ladder.next(inputSample)
+                            : stateVariable ? stateVariableA.processSample(0, inputSample) : stageA.processSample(inputSample);
+    if (mode == px3::FilterMode::stateVariable24)
+    {
+        output = stateVariableB.processSample(0, output);
+    }
+    else if (mode == px3::FilterMode::lp24 || mode == px3::FilterMode::hp24)
     {
         output = stageB.processSample(output);
     }
@@ -137,6 +158,24 @@ void VoiceFilter::applyFilter(float cutoffHz, float resonanceQ, int modeIndex)
 {
     if (sampleRate <= 0.0)
     {
+        return;
+    }
+    const auto mode = static_cast<px3::FilterMode>(px3::clampFilterModeIndex(modeIndex));
+    if (mode == px3::FilterMode::ladder12 || mode == px3::FilterMode::ladder24)
+    {
+        ladder.setMode(mode == px3::FilterMode::ladder12 ? juce::dsp::LadderFilterMode::LPF12 : juce::dsp::LadderFilterMode::LPF24);
+        ladder.setCutoffFrequencyHz(juce::jlimit(20.0f, static_cast<float>(sampleRate * 0.49), cutoffHz));
+        ladder.setResonance(px3::ladderResonanceFromQ(resonanceQ));
+        return;
+    }
+    if (mode == px3::FilterMode::stateVariable12 || mode == px3::FilterMode::stateVariable24)
+    {
+        const auto cutoff = juce::jlimit(20.0f, static_cast<float>(sampleRate * 0.49), cutoffHz);
+        const auto q = juce::jlimit(0.20f, 10.0f, resonanceQ);
+        stateVariableA.setCutoffFrequency(cutoff);
+        stateVariableB.setCutoffFrequency(cutoff);
+        stateVariableA.setResonance(mode == px3::FilterMode::stateVariable24 ? px3::kFourPoleFlatQ : q);
+        stateVariableB.setResonance(px3::fourPoleResonantQ(q));
         return;
     }
 

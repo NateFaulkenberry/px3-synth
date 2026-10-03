@@ -90,6 +90,7 @@ private:
     std::vector<std::unique_ptr<juce::AudioProcessorParameterGroup>> rootGroups;
     std::vector<ParameterCatalogEntry> catalogEntries;
     std::vector<std::unique_ptr<ParameterDefinition>> definitions;
+    juce::String schemaFingerprint;
     bool attached { false };
 };
 }

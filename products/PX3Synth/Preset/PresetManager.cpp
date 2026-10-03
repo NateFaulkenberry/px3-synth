@@ -908,7 +908,7 @@ bool PresetManager::readPresetFile(const juce::File& file,
         std::unique_ptr<juce::InputStream> stream(package.createStreamForEntry(index));
         if (stream == nullptr) { return false; }
         output = stream->readEntireStreamAsString();
-        return output.getNumBytesAsUTF8() == entry->uncompressedSize;
+        return output.getNumBytesAsUTF8() == static_cast<std::size_t>(entry->uncompressedSize);
     };
     juce::String manifestText;
     juce::String patchText;
@@ -967,7 +967,7 @@ bool PresetManager::readPresetFile(const juce::File& file,
         }
         std::unique_ptr<juce::InputStream> stream(package.createStreamForEntry(index));
         juce::MemoryBlock payload;
-        if (stream == nullptr || stream->readIntoMemoryBlock(payload) != entry->uncompressedSize
+        if (stream == nullptr || stream->readIntoMemoryBlock(payload) != static_cast<std::size_t>(entry->uncompressedSize)
             || juce::SHA256(payload).toHexString() != hash
             || ! px3::WavetableLibrary::validatePayload(payload, error))
         {
@@ -1223,7 +1223,7 @@ bool PresetManager::collectAssetsForState(juce::ValueTree& pluginState,
         if (! hashes.contains(hash))
         {
             juce::ValueTree asset("WAVETABLE");
-            asset.setProperty("name", name, nullptr);
+            asset.setProperty("name", table.getProperty("displayName", name), nullptr);
             asset.setProperty("sha256", hash, nullptr);
             asset.setProperty("data", juce::var(payload), nullptr);
             assetsNode.addChild(asset, -1, nullptr);

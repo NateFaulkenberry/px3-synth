@@ -209,6 +209,12 @@ void testEcosystem()
                   && std::abs(static_cast<float>(coarseState.getProperty("value"))
                               - coarse->parameter->getValue()) < 1.0e-6f,
               stateError);
+          auto mismatchedSchema = parameterState.createCopy();
+          mismatchedSchema.setProperty("schemaFingerprint", "different-choice-contract", nullptr);
+          std::vector<px3::synth::ParameterCatalog::StateValue> mismatchValues;
+          juce::String mismatchError;
+          check("ParameterCatalog_RejectsChangedChoiceOrRangeContractsBeforeApply",
+              ! catalog.readStateValues(mismatchedSchema, mismatchValues, mismatchError) && mismatchValues.empty());
 
         const auto rejectsMalformed = [&catalog, &parameterState](const juce::String& id,
                                                                    juce::var badValue)

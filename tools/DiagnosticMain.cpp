@@ -2303,7 +2303,7 @@ int main(int argc, char* argv[])
         std::printf("  the audio thread must not allocate; measured with a replaced global new\n\n");
 
         auto measure = [](const char* label, bool filtersOn, bool sweepCutoff,
-                          int voiceCount = 3, bool releaseVoices = false, bool fxOn = false)
+                          int voiceCount = 3, bool releaseVoices = false, bool fxOn = false, int filterMode = 0)
         {
             px3::diag::resetNoteStartSequence();
             PX3SynthAudioProcessor processor;
@@ -2346,6 +2346,11 @@ int main(int argc, char* argv[])
             setParameter(processor, "voice.filter2.enabled", filtersOn ? 1.0f : 0.0f);
             setParameter(processor, "voice.filter1.cutoff", 1200.0f);
             setParameter(processor, "voice.filter2.cutoff", 3000.0f);
+            for (int filter = 0; filter < kFilterInstanceCount; ++filter)
+            {
+                auto& type = processor.getFilterTypeParam(filter);
+                type.setValueNotifyingHost(type.convertTo0to1(static_cast<float>(filterMode)));
+            }
             processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
             processor.prepareToPlay(kSampleRate, kBlockSize);
 
@@ -2456,6 +2461,10 @@ int main(int argc, char* argv[])
         if (measure("48 voices RELEASING (past prune budget)", true, false, 48, true) != 0) ++failures;
         if (measure("48 voices RELEASING + full FX chain", true, false, 48, true, true) != 0) ++failures;
         if (measure("48 voices + all 8 FX + analog console", true, true, 48, true, true) != 0) ++failures;
+        if (measure("16 voices TPT24 + cutoff sweep", true, true, 16, false, false,
+                static_cast<int>(px3::FilterMode::stateVariable24)) != 0) ++failures;
+        if (measure("16 voices Ladder24 + cutoff sweep", true, true, 16, false, false,
+                static_cast<int>(px3::FilterMode::ladder24)) != 0) ++failures;
 
         std::printf("\n  %lld failure(s)\n", failures);
         return static_cast<int>(failures);

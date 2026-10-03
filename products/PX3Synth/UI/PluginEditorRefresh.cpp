@@ -110,7 +110,7 @@ void PX3SynthAudioProcessorEditor::rebuildWavetableMenu(int oscIndex)
 
     // Whatever is actually loaded, which after a preset load is not
     // necessarily what was selected a moment ago.
-    const auto userName = audioProcessor.getUserWavetableName(idx);
+    const auto userName = audioProcessor.getUserWavetableDisplayName(idx);
     if (userName.isNotEmpty())
     {
         const auto found = userTables.indexOf(userName);

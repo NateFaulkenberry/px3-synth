@@ -5,6 +5,7 @@
 #include "FilterMode.h"
 
 #include <array>
+#include <complex>
 
 namespace px3
 {
@@ -26,7 +27,15 @@ struct FilterBiquadPair
     std::array<float, 6> stageA { { 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f } };
     std::array<float, 6> stageB { { 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f } };
     bool usesStageB { false };
+    int ladderPoles { 0 };
+    float ladderCutoff { 1000.0f };
+    float ladderResonance { 0.0f };
 };
+
+inline float ladderResonanceFromQ(float resonanceQ)
+{
+    return juce::jmap(juce::jlimit(0.2f, 2.2f, resonanceQ), 0.2f, 2.2f, 0.0f, 0.95f);
+}
 
 // A 4-pole filter is two biquads in series, and building both at the user's Q
 // multiplies their peaks - at Q 10 the 24 dB modes resonated at +40 dB where
@@ -67,9 +76,11 @@ inline FilterBiquadPair makeFilterCoefficients(int modeIndex,
     switch (static_cast<FilterMode>(clampFilterModeIndex(modeIndex)))
     {
         case FilterMode::lp12:
+        case FilterMode::stateVariable12:
             pair.stageA = Array::makeLowPass(sampleRate, cutoff, q);
             break;
         case FilterMode::lp24:
+        case FilterMode::stateVariable24:
             pair.stageA = Array::makeLowPass(sampleRate, cutoff, kFourPoleFlatQ);
             pair.stageB = Array::makeLowPass(sampleRate, cutoff, fourPoleResonantQ(q));
             pair.usesStageB = true;
@@ -91,6 +102,12 @@ inline FilterBiquadPair makeFilterCoefficients(int modeIndex,
         case FilterMode::allPass:
             pair.stageA = Array::makeAllPass(sampleRate, cutoff, q);
             break;
+        case FilterMode::ladder12:
+        case FilterMode::ladder24:
+            pair.ladderPoles = modeIndex == static_cast<int>(FilterMode::ladder12) ? 2 : 4;
+            pair.ladderCutoff = cutoff;
+            pair.ladderResonance = ladderResonanceFromQ(q);
+            break;
         case FilterMode::comb:
         default:
             break;
@@ -109,6 +126,20 @@ inline float filterMagnitudeDb(const FilterBiquadPair& pair, double frequencyHz,
     }
 
     const auto hz = juce::jlimit(1.0, sampleRate * 0.5 - 1.0, frequencyHz);
+    if (pair.ladderPoles > 0)
+    {
+        const auto delayed = std::polar(1.0, -juce::MathConstants<double>::twoPi * hz / sampleRate);
+        const auto pole = std::exp(-juce::MathConstants<double>::twoPi * pair.ladderCutoff / sampleRate);
+        const auto gain = 1.0 - pole;
+        const auto section = gain * (0.76923076923 + 0.23076923076 * delayed) / (1.0 - pole * delayed);
+        const auto feedback = 4.0 * (0.1 + 0.9 * pair.ladderResonance);
+        const auto lookupStep = 5.0 / 127.0;
+        const auto smallSignalGain = 1.0006 * std::tanh(lookupStep) / lookupStep;
+        const auto closedLoop = 1.0 + feedback * smallSignalGain * std::pow(section, 4) * delayed;
+        const auto response = 1.2 * smallSignalGain * (1.0 + 0.5 * feedback)
+                            * std::pow(section, pair.ladderPoles) / closedLoop;
+        return juce::Decibels::gainToDecibels(static_cast<float>(std::abs(response)), -96.0f);
+    }
 
     juce::dsp::IIR::Coefficients<float> a { pair.stageA[0], pair.stageA[1], pair.stageA[2],
                                             pair.stageA[3], pair.stageA[4], pair.stageA[5] };

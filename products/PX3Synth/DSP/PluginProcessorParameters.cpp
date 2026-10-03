@@ -35,6 +35,13 @@ float foldIntoUnitRange(float value)
 }
 } // namespace
 
+float PX3SynthAudioProcessor::modulatedParameterValue(juce::AudioParameterFloat* parameter) const
+{
+    if (parameter == nullptr) { return 0.0f; }
+    return parameter->convertFrom0to1(applyModulationToNormalizedValue(
+        parameter, static_cast<juce::RangedAudioParameter*>(parameter)->getValue()));
+}
+
 float PX3SynthAudioProcessor::applyModulationToNormalizedValue(juce::RangedAudioParameter* parameter,
                                                                float baseNormalized,
                                                                float* outBaseNormalized,
@@ -569,6 +576,7 @@ void PX3SynthAudioProcessor::setUserWavetableName(int oscIndex, const juce::Stri
 {
     const auto idx = static_cast<std::size_t>(juce::jlimit(0, kOscillatorSourceCount - 1, oscIndex));
     userWavetableNames[idx] = name;
+    userWavetableDisplayNames[idx] = name;
     missingWavetableNames[idx].clear();
     refreshWavetableSelections();
 }
@@ -577,6 +585,12 @@ juce::String PX3SynthAudioProcessor::getUserWavetableName(int oscIndex) const
 {
     return userWavetableNames[static_cast<std::size_t>(
         juce::jlimit(0, kOscillatorSourceCount - 1, oscIndex))];
+}
+
+juce::String PX3SynthAudioProcessor::getUserWavetableDisplayName(int oscIndex) const
+{
+    const auto index = static_cast<std::size_t>(juce::jlimit(0, kOscillatorSourceCount - 1, oscIndex));
+    return userWavetableDisplayNames[index].isNotEmpty() ? userWavetableDisplayNames[index] : userWavetableNames[index];
 }
 
 juce::String PX3SynthAudioProcessor::getMissingWavetableName(int oscIndex) const

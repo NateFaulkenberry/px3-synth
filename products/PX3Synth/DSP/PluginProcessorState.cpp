@@ -148,6 +148,7 @@ juce::ValueTree PX3SynthAudioProcessor::createParameterStateTree() const
             juce::ValueTree entry(kUserWavetableNameId);
             entry.setProperty(kUserWavetableOscId, osc, nullptr);
             entry.setProperty(kUserWavetableNameId, name, nullptr);
+            entry.setProperty("displayName", getUserWavetableDisplayName(osc), nullptr);
             userWavetables.addChild(entry, -1, nullptr);
         }
         state.addChild(userWavetables, -1, nullptr);
@@ -676,6 +677,7 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
     for (int osc = 0; osc < kOscillatorSourceCount; ++osc)
     {
         userWavetableNames[static_cast<std::size_t>(osc)].clear();
+        userWavetableDisplayNames[static_cast<std::size_t>(osc)].clear();
         missingWavetableNames[static_cast<std::size_t>(osc)].clear();
     }
 
@@ -687,6 +689,8 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
                                           static_cast<int>(entry.getProperty(kUserWavetableOscId, 0)));
             userWavetableNames[static_cast<std::size_t>(osc)] =
                 entry.getProperty(kUserWavetableNameId).toString();
+            userWavetableDisplayNames[static_cast<std::size_t>(osc)] = entry.getProperty(
+                "displayName", userWavetableNames[static_cast<std::size_t>(osc)]).toString();
         }
     }
 

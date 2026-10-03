@@ -52,11 +52,19 @@ public:
     }
 
 private:
+    class Ladder final : public juce::dsp::LadderFilter<float>
+    {
+    public:
+        float next(float input) noexcept { updateSmoothers(); return processSample(input, 0); }
+    };
+    Ladder ladder;
     float processSampleActive(float inputSample);
     void applyFilter(float cutoffHz, float resonanceQ, int modeIndex);
 
     juce::dsp::IIR::Filter<float> stageA;
     juce::dsp::IIR::Filter<float> stageB;
+    juce::dsp::StateVariableTPTFilter<float> stateVariableA;
+    juce::dsp::StateVariableTPTFilter<float> stateVariableB;
     // The comb is a different kind of filter, not another biquad response, so
     // it gets its own unit rather than being forced through the IIR stages.
     px3::CombResonator comb;

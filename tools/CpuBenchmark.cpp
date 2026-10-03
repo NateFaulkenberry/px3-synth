@@ -711,6 +711,34 @@ int main(int argc, char* argv[])
         filter = argv[1];
     }
 
+    if (filter == "filters")
+    {
+        std::printf("\nPX3 FILTER CPU MATRIX  %.0f Hz, %d samples\n", kSampleRate, kBlockSize);
+        const auto choices = px3::filterModeChoices();
+        for (const auto mode : { px3::FilterMode::lp12, px3::FilterMode::lp24, px3::FilterMode::stateVariable12,
+                                px3::FilterMode::stateVariable24, px3::FilterMode::ladder12, px3::FilterMode::ladder24 })
+        {
+            for (const auto voices : { 1, 16, 64 })
+            {
+                Scenario scenario {};
+                scenario.name = "filter matrix";
+                scenario.voices = voices;
+                scenario.filters = true;
+                const auto timing = measure(scenario, [mode](PX3SynthAudioProcessor& processor)
+                {
+                    for (int index = 0; index < kFilterInstanceCount; ++index)
+                    {
+                        auto& type = processor.getFilterTypeParam(index);
+                        type.setValueNotifyingHost(type.convertTo0to1(static_cast<float>(mode)));
+                    }
+                }, 120, 3);
+                std::printf("  %-10s %2d voices: median %8.1f us, p99 %8.1f us\n",
+                            choices[static_cast<int>(mode)].toRawUTF8(), voices, timing.medianMicros, timing.p99Micros);
+            }
+        }
+        return 0;
+    }
+
     if (filter == "osc")
     {
         return runOscillatorMatrix();

@@ -178,7 +178,11 @@ void PX3SynthAudioProcessorEditor::buildParameterKnobs()
         KnobBinding { &oscTuning[0].fineKnob, &oscTuning[0].fineLabel, nullptr },
         KnobBinding { &oscTuning[1].fineKnob, &oscTuning[1].fineLabel, nullptr },
         KnobBinding { &oscTuning[2].fineKnob, &oscTuning[2].fineLabel, nullptr },
-        KnobBinding { &subTuning.fineKnob, &subTuning.fineLabel, nullptr }
+        KnobBinding { &subTuning.fineKnob, &subTuning.fineLabel, nullptr },
+        KnobBinding { &oscTuning[0].semitoneKnob, &oscTuning[0].semitoneLabel, nullptr },
+        KnobBinding { &oscTuning[1].semitoneKnob, &oscTuning[1].semitoneLabel, nullptr },
+        KnobBinding { &oscTuning[2].semitoneKnob, &oscTuning[2].semitoneLabel, nullptr },
+        KnobBinding { &subTuning.semitoneKnob, &subTuning.semitoneLabel, nullptr }
     };
 
     configureKnob(knobBindings[0], "PARAM A", audioProcessor.getOscillatorMacroAParam(0));
@@ -266,9 +270,11 @@ void PX3SynthAudioProcessorEditor::buildParameterKnobs()
     configureKnob(knobBindings[27], "FINE", audioProcessor.getSubOscFineParam());
     for (int oscillator = 0; oscillator < kOscillatorSourceCount; ++oscillator)
     {
-        oscTuning[static_cast<std::size_t>(oscillator)].bindSemitone(audioProcessor.getOscillatorSemitoneParam(oscillator));
+        configureKnob(knobBindings[static_cast<std::size_t>(28 + oscillator)], "SEMI", audioProcessor.getOscillatorSemitoneParam(oscillator));
+        oscTuning[static_cast<std::size_t>(oscillator)].configureSemitoneReadout();
     }
-    subTuning.bindSemitone(audioProcessor.getSubOscSemitoneParam());
+    configureKnob(knobBindings[31], "SEMI", audioProcessor.getSubOscSemitoneParam());
+    subTuning.configureSemitoneReadout();
     // The caption is gone from the layout, so the name lives on the knob.
     gainKnob.setTooltip("Master gain");
     gainLabel.setVisible(false);

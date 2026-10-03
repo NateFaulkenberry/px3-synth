@@ -263,6 +263,21 @@ void ParameterCatalog::attachTo(juce::AudioProcessor& processor)
         processor.addParameterGroup(std::move(group));
     }
     rootGroups.clear();
+    juce::Array<juce::var> schema;
+    for (const auto& entry : catalogEntries)
+    {
+        juce::Array<juce::var> choices;
+        if (entry.definition != nullptr)
+        {
+            for (const auto& choice : entry.definition->choices) { choices.add(choice); }
+        }
+        const auto kind = entry.definition != nullptr ? static_cast<int>(entry.definition->kind) : -1;
+        const auto skew = entry.definition != nullptr ? entry.definition->range.skew : 1.0f;
+        schema.add(juce::var(juce::Array<juce::var> {
+            entry.id, kind, entry.minimum, entry.maximum, entry.interval, entry.defaultValue, skew, juce::var(choices) }));
+    }
+    const auto text = juce::JSON::toString(juce::var(schema), true);
+    schemaFingerprint = juce::SHA256(text.toRawUTF8(), static_cast<std::size_t>(text.getNumBytesAsUTF8())).toHexString();
     attached = true;
 }
 
@@ -278,6 +293,7 @@ const ParameterCatalogEntry* ParameterCatalog::find(const juce::String& id) cons
 juce::ValueTree ParameterCatalog::createStateTree() const
 {
     juce::ValueTree root("PARAMETERS");
+    root.setProperty("schemaFingerprint", schemaFingerprint, nullptr);
     std::map<juce::String, juce::ValueTree> groupsByPath;
     for (const auto& entry : catalogEntries)
     {
@@ -351,6 +367,11 @@ bool ParameterCatalog::readStateValues(const juce::ValueTree& state,
     if (state.getType() != juce::Identifier("PARAMETERS"))
     {
         error = "Grouped parameter state is missing or invalid.";
+        return false;
+    }
+    if (schemaFingerprint.isEmpty() || state.getProperty("schemaFingerprint").toString() != schemaFingerprint)
+    {
+        error = "Parameter schema does not match this PX3 generation.";
         return false;
     }
 
