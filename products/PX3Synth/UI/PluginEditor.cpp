@@ -233,6 +233,9 @@ PX3SynthAudioProcessorEditor::~PX3SynthAudioProcessorEditor()
     oscPanel.reset();
     modPanelViewport.setViewedComponent(nullptr, false);
     modPanel.reset();
+    modRoutingPanel.reset();
+    modPatchBar.reset();
+    modDragController.reset();
     ampPanel.reset();
     fltPanel.reset();
     fxPanel.reset();
@@ -249,6 +252,7 @@ PX3SynthAudioProcessorEditor::~PX3SynthAudioProcessorEditor()
         }
     }
 
+    for (auto& tuning : oscTuning) { tuning.slopKnob.setLookAndFeel(nullptr); }
     vibeAmountKnob.setLookAndFeel(nullptr);
     isaacTextureKnob.setLookAndFeel(nullptr);
     delayTimeKnob.setLookAndFeel(nullptr);

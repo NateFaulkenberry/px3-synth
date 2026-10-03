@@ -4907,7 +4907,9 @@ void testBreakpointEnvelope()
                 {
                     theirs.add(cards[i]->debugAdsrKnobName(k));
                 }
-                if (theirs != namesFor(*cards[i]))
+                // A narrow card (the MOD page beside the routing panel) uses the
+                // short captions too, so either complete set is right.
+                if (theirs != namesFor(*cards[i]) && theirs != faceplateNames)
                 {
                     without.add("card " + juce::String(static_cast<int>(i)) + " offers "
                                 + (theirs.isEmpty() ? juce::String("nothing")

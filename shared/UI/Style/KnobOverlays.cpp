@@ -14,6 +14,49 @@ void drawKnobOverlays(juce::Graphics& g,
     const auto center = bounds.getCentre();
     const auto radius = juce::jmin(bounds.getWidth(), bounds.getHeight()) * 0.5f;
 
+    // ---- Modulation rings ----------------------------------------------------
+    //
+    // One arc per route, outside the knob, in the source's colour: the range
+    // the route can sweep the control across. Stacked outwards, at most three.
+    if (const auto* rings = slider.getProperties()[px3::knob_properties::modRings].getArray();
+        rings != nullptr && ! renderGrayscale)
+    {
+        const auto rotary = slider.getRotaryParameters();
+        const auto span = rotary.endAngleRadians - rotary.startAngleRadians;
+        const auto count = juce::jmin(3, rings->size() / 3);
+        const auto stroke = radius > 20.0f ? 2.2f : 1.6f;
+        for (int i = 0; i < count; ++i)
+        {
+            const auto colour = juce::Colour(static_cast<juce::uint32>(static_cast<juce::int64>((*rings)[i * 3])));
+            const auto lo = static_cast<float>(static_cast<double>((*rings)[i * 3 + 1]));
+            const auto hi = static_cast<float>(static_cast<double>((*rings)[i * 3 + 2]));
+            const auto ringRadius = radius + 2.4f + static_cast<float>(i) * (stroke + 0.8f);
+            juce::Path track;
+            track.addCentredArc(center.x, center.y, ringRadius, ringRadius, 0.0f,
+                                rotary.startAngleRadians, rotary.endAngleRadians, true);
+            g.setColour(colour.withAlpha(0.16f));
+            g.strokePath(track, juce::PathStrokeType(stroke * 0.6f));
+            const auto a0 = rotary.startAngleRadians + span * juce::jlimit(0.0f, 1.0f, lo);
+            const auto a1 = rotary.startAngleRadians + span * juce::jlimit(0.0f, 1.0f, juce::jmax(hi, lo + 0.004f));
+            juce::Path arc;
+            arc.addCentredArc(center.x, center.y, ringRadius, ringRadius, 0.0f, a0, a1, true);
+            g.setColour(colour);
+            g.strokePath(arc, juce::PathStrokeType(stroke, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        }
+        // A small jack-coloured dot at the lower left says "patched" even when
+        // the depth is too small for the arc to read.
+        if (count > 0)
+        {
+            const auto colour = juce::Colour(static_cast<juce::uint32>(static_cast<juce::int64>((*rings)[0])));
+            const auto dot = juce::Rectangle<float>(5.0f, 5.0f).withCentre(
+                { center.x - radius * 0.86f, center.y + radius * 0.86f });
+            g.setColour(juce::Colours::black.withAlpha(0.6f));
+            g.fillEllipse(dot.expanded(1.0f));
+            g.setColour(colour);
+            g.fillEllipse(dot);
+        }
+    }
+
     // ---- MIDI mapping ------------------------------------------------------
     //
     // Drawn here so every knob in the synth gets it from one place, whichever

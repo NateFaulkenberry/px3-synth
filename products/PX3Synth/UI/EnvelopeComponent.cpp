@@ -396,21 +396,50 @@ void EnvelopeComponent::resized()
         auto flex = inner.rowFlex(1);
         const auto gap = inner.rowGap(1);
         const auto row = inner.rowContent(1);
+        const auto extras = loopButton != nullptr && keyKnob != nullptr;
+        const auto cellHeight = static_cast<float>(juce::jmax(1, row.getHeight()));
 
-        flex.items.add(juce::FlexItem(84.0f, static_cast<float>(juce::jmax(1, row.getHeight())))
-                           .withMargin(gap));
+        // LOOP | AMOUNT | KEY when the card has them; AMOUNT alone otherwise.
+        if (extras) { flex.items.add(juce::FlexItem(84.0f, cellHeight).withMargin(gap)); }
+        flex.items.add(juce::FlexItem(84.0f, cellHeight).withMargin(gap));
+        if (extras) { flex.items.add(juce::FlexItem(84.0f, cellHeight).withMargin(gap)); }
         flex.performLayout(row.toFloat());
+        const auto cell = [&flex](int i) { return flex.items.getReference(i).currentBounds.toNearestInt(); };
 
         // Same label height, readout height and cap as the LFO knobs, so the
         // two card families read as one family.
-        px3::ui::layoutLabelledControl(flex.items.getReference(0).currentBounds.toNearestInt(),
+        px3::ui::layoutLabelledControl(cell(extras ? 1 : 0),
                                        { amountLabel, amountKnob, amountValueLabel,
                                          ControlShape::square, 16, 20, 84 },
                                        inner.rowControl(1));
+        if (extras)
+        {
+            loopButton->setBounds(juce::Rectangle<int>(juce::jmin(64, cell(0).getWidth()), 22)
+                                      .withCentre(cell(0).getCentre()));
+            px3::ui::layoutLabelledControl(cell(2),
+                                           { keyLabel, keyKnob, keyValueLabel,
+                                             ControlShape::square, 16, 20, 84 },
+                                           inner.rowControl(1));
+        }
     }
 
     // Row 3 is the ADSR graph. computeGeometry() reads its bounds, which is
     // what keeps the drawing and the mouse hit-testing in agreement.
+}
+
+void EnvelopeComponent::setLoopAndKeyControls(juce::Button* loop, juce::Slider* key,
+                                              juce::Label* keyLabelIn, juce::Label* keyValue)
+{
+    loopButton = loop;
+    keyKnob = key;
+    keyLabel = keyLabelIn;
+    keyValueLabel = keyValue;
+    for (auto* component : { static_cast<juce::Component*>(loopButton), static_cast<juce::Component*>(keyKnob),
+                             static_cast<juce::Component*>(keyLabel), static_cast<juce::Component*>(keyValueLabel) })
+    {
+        if (component != nullptr) { addAndMakeVisible(*component); }
+    }
+    resized();
 }
 
 void EnvelopeComponent::setAdsrKnobsVisible(bool shouldShow)
@@ -659,6 +688,18 @@ void EnvelopeComponent::layoutAdsrKnobs()
     }
     const auto cellHeight = static_cast<float>(juce::jmax(1, content.getHeight()));
     const auto cellWidth = static_cast<float>(juce::jmax(1, content.getWidth() / 4));
+
+    // "SUSTAIN" and "RELEASE" do not fit a narrow cell; the hardware captions do.
+    {
+        constexpr const char* fullNames[] { "ATTACK", "DECAY", "SUSTAIN", "RELEASE" };
+        constexpr const char* compactNames[] { "ATK", "DEC", "SUS", "REL" };
+        const auto compact = hardwareFaceplate || cellWidth < 70.0f;
+        for (int i = 0; i < 4; ++i)
+        {
+            adsrKnobs[static_cast<std::size_t>(i)].label.setText(compact ? compactNames[i] : fullNames[i],
+                                                                 juce::dontSendNotification);
+        }
+    }
 
     for (int i = 0; i < 4; ++i)
     {

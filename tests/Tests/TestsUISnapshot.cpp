@@ -46,9 +46,25 @@ int runUISnapshot(const juce::String& outDir, int width, int height)
     if (editor == nullptr) { return 1; }
 
     editor->setSize(width, height);
+    // PX3_SNAPSHOT_ROUTES=1 patches a few routes first, so the MOD page, the
+    // patch bar and the knob rings have something to show.
+    if (juce::SystemStats::getEnvironmentVariable("PX3_SNAPSHOT_ROUTES", {}).isNotEmpty())
+    {
+        juce::String error;
+        processor.setGraphRoute(0, { 0, "voice.filter1.cutoff" }, error);
+        processor.getGraphRouteDepthParam(0).setValueNotifyingHost(processor.getGraphRouteDepthParam(0).convertTo0to1(0.6f));
+        processor.setGraphRoute(1, { 3, "voice.osc1.tuning.cents" }, error);
+        processor.getGraphRouteDepthParam(1).setValueNotifyingHost(processor.getGraphRouteDepthParam(1).convertTo0to1(0.4f));
+        processor.setGraphRoute(2, { 1, "voice.filter1.cutoff" }, error);
+        processor.getGraphRouteDepthParam(2).setValueNotifyingHost(processor.getGraphRouteDepthParam(2).convertTo0to1(-0.3f));
+        processor.setGraphRoute(3, { 6, "voice.filter2.resonance" }, error);
+        processor.getGraphRouteDepthParam(3).setValueNotifyingHost(processor.getGraphRouteDepthParam(3).convertTo0to1(0.8f));
+    }
     for (int section = 0; section <= 6; ++section)
     {
+        editor->debugTimerTick();
         editor->debugSelectSection(section);
+        editor->debugRefreshModRouting();
         const auto image = editor->createComponentSnapshot(editor->getLocalBounds());
         auto png = dir.getChildFile("section" + juce::String(section) + ".png");
         png.deleteFile();

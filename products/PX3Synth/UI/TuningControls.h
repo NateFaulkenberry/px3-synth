@@ -26,6 +26,38 @@ struct TuningControls
     px3::ui::ChipLabel semitoneLabel;
     juce::Label semitoneValue;
 
+    // SLOP (voice.oscN.tuning.slop): the per-voice analog drift, 0..+-12 ct.
+    // Oscillators 1-3 only, so it is not part of components(): the sub card
+    // shares this struct and has no slop.
+    juce::Slider slopKnob;
+    px3::ui::ChipLabel slopLabel;
+    juce::Label slopValue;
+
+    void configureSlop(juce::LookAndFeel& look)
+    {
+        slopKnob.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+        slopKnob.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+        slopKnob.setLookAndFeel(&look);
+        slopKnob.setDoubleClickReturnValue(true, 0.0);
+        slopKnob.setTooltip("Slop: each voice drifts on its own, up to 12 cents");
+        slopLabel.setText("SLOP", juce::dontSendNotification);
+        slopLabel.setJustificationType(juce::Justification::centred);
+        slopLabel.setColour(juce::Label::textColourId, juce::Colour(0xffe8e8e8));
+        slopLabel.setFont(juce::FontOptions(11.0f));
+        slopLabel.setInterceptsMouseClicks(false, false);
+        slopValue.setJustificationType(juce::Justification::centred);
+        slopValue.setColour(juce::Label::textColourId, juce::Colour(0xffdadada));
+        slopValue.setFont(juce::FontOptions(11.0f));
+        slopValue.setInterceptsMouseClicks(false, false);
+        slopKnob.onValueChange = [this]
+        {
+            const auto cents = slopKnob.getValue() * 12.0;
+            slopValue.setText(cents < 0.05 ? juce::String("0 ct") : juce::String::charToString(0x00b1) + juce::String(cents, 1) + " ct",
+                              juce::dontSendNotification);
+        };
+        slopKnob.onValueChange();
+    }
+
     void configureSemitoneReadout()
     {
         semitoneKnob.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);

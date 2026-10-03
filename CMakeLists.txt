@@ -132,6 +132,8 @@ set(PX3_SYNTH_SOURCES
         products/PX3Synth/UI/SettingsPanel.cpp
         products/PX3Synth/UI/OscPanel.cpp
         products/PX3Synth/UI/ModPanel.cpp
+        products/PX3Synth/UI/ModRouting.cpp
+        products/PX3Synth/UI/PluginEditorModRouting.cpp
         products/PX3Synth/UI/AmpEnvelopeComponent.cpp
         products/PX3Synth/UI/AmpPanel.cpp
         products/PX3Synth/UI/FltPanel.cpp

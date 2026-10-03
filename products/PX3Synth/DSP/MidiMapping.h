@@ -64,6 +64,10 @@ inline const juce::Identifier midiSelected { "px3MidiSelected" };
 // systems cannot end up drawing over each other.
 inline const juce::Identifier macroMask { "px3MacroMask" };
 inline const juce::Identifier macroAssignable { "px3MacroAssignable" };
+
+// Modulation routes into this knob, drawn as rings outside it: an array of
+// [argb, lo, hi] triplets, the normalised range each route sweeps.
+inline const juce::Identifier modRings { "px3ModRings" };
 } // namespace knob_properties
 
 } // namespace px3

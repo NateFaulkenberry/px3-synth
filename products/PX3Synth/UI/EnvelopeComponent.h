@@ -47,6 +47,11 @@ public:
 
     // The parent panel content box: reference for percentage dimensions.
     void setPanelContentBounds(juce::Rectangle<int> panelContent);
+
+    // ENV 1-3 only: the LOOP switch and the KEY (key tracking) knob, placed
+    // either side of AMOUNT. The owner keeps them; the card adds and lays them.
+    void setLoopAndKeyControls(juce::Button* loop, juce::Slider* key,
+                               juce::Label* keyLabel, juce::Label* keyValue);
     void refreshFromParameters();
 
     // For the layout tests: the frame paint() draws, and where the editor
@@ -231,6 +236,10 @@ private:
     void layoutModeSelector();
 
     juce::Slider* amountKnob { nullptr };
+    juce::Button* loopButton { nullptr };
+    juce::Slider* keyKnob { nullptr };
+    juce::Label* keyLabel { nullptr };
+    juce::Label* keyValueLabel { nullptr };
     juce::Label* amountLabel { nullptr };
     juce::Label* amountValueLabel { nullptr };
     juce::Colour baseAmountValueTextColour;

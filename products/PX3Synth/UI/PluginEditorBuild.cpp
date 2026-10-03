@@ -875,6 +875,12 @@ void PX3SynthAudioProcessorEditor::buildPanels()
                                           kGroupAccents[1]);
     fltPanel->attachRouting(audioProcessor.getFilterRoutingParam(),
                             audioProcessor.getFilterParallelBalanceParam());
+    fltPanel->attachKeyTracking(
+        { audioProcessor.findRangedParameterById("voice.filter1.keytrack"),
+          audioProcessor.findRangedParameterById("voice.filter2.keytrack") },
+        { audioProcessor.findRangedParameterById("voice.filter1.keytrack.key"),
+          audioProcessor.findRangedParameterById("voice.filter2.keytrack.key") },
+        &knobLookAndFeel);
     fxPanel = std::make_unique<FxPanel>(robBypassButton,
                                         vibeAmountKnob,
                                         vibeAmountLabel,
@@ -946,6 +952,7 @@ void PX3SynthAudioProcessorEditor::buildSettingsAndOverlays()
     modPanelViewport.setScrollBarThickness(10);
     modPanelViewport.setSingleStepSizes(16, 24);
     addAndMakeVisible(modPanelViewport);
+    buildModRouting();
     addAndMakeVisible(*ampPanel);
     addAndMakeVisible(*fltPanel);
     addAndMakeVisible(*fxPanel);
@@ -985,6 +992,24 @@ void PX3SynthAudioProcessorEditor::buildSettingsAndOverlays()
         if (binding.parameter != nullptr && binding.slider != nullptr)
         {
             attachSlider(*binding.parameter, *binding.slider);
+        }
+    }
+
+    // SLOP beside FINE on oscillators 1-3 (scene: osc.N.slop).
+    for (int osc = 0; osc < 3; ++osc)
+    {
+        auto& tuning = oscTuning[static_cast<std::size_t>(osc)];
+        auto* slop = audioProcessor.findRangedParameterById("voice.osc" + juce::String(osc + 1) + ".tuning.slop");
+        auto* card = oscPanel != nullptr ? oscPanel->getOscillatorCard(osc) : nullptr;
+        if (slop == nullptr || card == nullptr) { continue; }
+        tuning.configureSlop(knobLookAndFeel);
+        px3::ui::attachParameterKnob(*slop, tuning.slopKnob, sliderAttachments);
+        tuning.slopKnob.onValueChange();
+        for (auto* component : { static_cast<juce::Component*>(&tuning.slopKnob),
+                                 static_cast<juce::Component*>(&tuning.slopLabel),
+                                 static_cast<juce::Component*>(&tuning.slopValue) })
+        {
+            card->addAndMakeVisible(*component);
         }
     }
 

@@ -221,6 +221,19 @@ void PX3SynthAudioProcessorEditor::refreshMidiMappingUI()
             }
         }
 
+        // The route rings: compared before writing, so a knob repaints only
+        // when its routing or a depth actually changed.
+        {
+            const auto rings = modRingsFor(parameterId);
+            const auto& shownRings = slider->getProperties()[px3::knob_properties::modRings];
+            if (! (rings == shownRings))
+            {
+                if (rings.isVoid()) { slider->getProperties().remove(px3::knob_properties::modRings); }
+                else { slider->getProperties().set(px3::knob_properties::modRings, rings); }
+                slider->repaint();
+            }
+        }
+
         // Only on a change: a repaint per knob per frame for a picture that
         // has not moved is how a UI ends up costing more than the synth.
         const auto shownCc = static_cast<int>(
