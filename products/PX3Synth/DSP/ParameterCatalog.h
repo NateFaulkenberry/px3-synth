@@ -13,6 +13,8 @@ struct ParameterCatalogEntry
     juce::String name;
     juce::String unit;
     juce::String groupPath;
+    std::vector<juce::String> groupIds;
+    std::vector<juce::String> groupNames;
     juce::String formattedDefault;
     float minimum { 0.0f };
     float maximum { 0.0f };
@@ -27,11 +29,22 @@ struct ParameterCatalogEntry
 class ParameterCatalog final
 {
 public:
+    struct StateValue
+    {
+        juce::AudioProcessorParameter* parameter { nullptr };
+        float normalizedValue { 0.0f };
+    };
+
     void add(juce::AudioProcessorParameter* parameter);
     void attachTo(juce::AudioProcessor& processor);
 
     const std::vector<ParameterCatalogEntry>& entries() const noexcept { return catalogEntries; }
     const ParameterCatalogEntry* find(const juce::String& id) const noexcept;
+    juce::ValueTree createStateTree() const;
+    juce::ValueTree findStateEntry(const juce::ValueTree& state, const juce::String& id) const;
+    bool readStateValues(const juce::ValueTree& state,
+                         std::vector<StateValue>& values,
+                         juce::String& error) const;
 
 private:
     struct GroupSegment

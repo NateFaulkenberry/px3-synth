@@ -1,6 +1,7 @@
 #include "PresetManager.h"
 
 #include "FactoryPresets.h"
+#include "PluginProcessorInternals.h"
 
 #include <algorithm>
 #include <limits>
@@ -92,6 +93,7 @@ std::vector<juce::String> PresetManager::getAllCategories() const
     {
         return a.equalsIgnoreCase(b);
     }), categories.end());
+
 
     return categories;
 }
@@ -508,168 +510,80 @@ juce::ValueTree PresetManager::initPresetTree(juce::String& error) const
         return {};
     }
 
-    // Canonical INIT payload captured from /INIT.px3preset in the repository.
-    // These normalized values define the shipped first-run factory INIT state.
-    state.setProperty("stateVersion", 7, nullptr);
-    state.setProperty("osc1Enabled", 1.0f, nullptr);
-    state.setProperty("osc1Level", 1.0f, nullptr);
-    state.setProperty("osc1Coarse", 0.5f, nullptr);
-    state.setProperty("osc1Fine", 0.5f, nullptr);
-    state.setProperty("osc1Mode", 0.0f, nullptr);
-    state.setProperty("osc1MacroA", 0.5f, nullptr);
-    state.setProperty("osc1MacroB", 0.5f, nullptr);
-    state.setProperty("osc1MacroC", 0.5f, nullptr);
-    state.setProperty("osc1Vowel", 0.0f, nullptr);
-    state.setProperty("osc1H1", 1.0f, nullptr);
-    state.setProperty("osc1H2", 0.699999988079071f, nullptr);
-    state.setProperty("osc1H3", 0.449999988079071f, nullptr);
-    state.setProperty("osc1H4", 0.300000011920929f, nullptr);
-    state.setProperty("osc1H5", 0.2000000029802322f, nullptr);
-    state.setProperty("osc1H6", 0.1400000005960464f, nullptr);
-    state.setProperty("osc1H7", 0.1000000014901161f, nullptr);
-    state.setProperty("osc1H8", 0.07000000029802322f, nullptr);
-    state.setProperty("osc2Enabled", 0.0f, nullptr);
-    state.setProperty("osc2Level", 1.0f, nullptr);
-    state.setProperty("osc2Coarse", 0.5f, nullptr);
-    state.setProperty("osc2Fine", 0.5f, nullptr);
-    state.setProperty("osc2Mode", 0.0f, nullptr);
-    state.setProperty("osc2MacroA", 0.5f, nullptr);
-    state.setProperty("osc2MacroB", 0.5f, nullptr);
-    state.setProperty("osc2MacroC", 0.5f, nullptr);
-    state.setProperty("osc2Vowel", 0.0f, nullptr);
-    state.setProperty("osc2H1", 1.0f, nullptr);
-    state.setProperty("osc2H2", 0.699999988079071f, nullptr);
-    state.setProperty("osc2H3", 0.449999988079071f, nullptr);
-    state.setProperty("osc2H4", 0.300000011920929f, nullptr);
-    state.setProperty("osc2H5", 0.2000000029802322f, nullptr);
-    state.setProperty("osc2H6", 0.1400000005960464f, nullptr);
-    state.setProperty("osc2H7", 0.1000000014901161f, nullptr);
-    state.setProperty("osc2H8", 0.07000000029802322f, nullptr);
-    state.setProperty("osc3Enabled", 0.0f, nullptr);
-    state.setProperty("osc3Level", 1.0f, nullptr);
-    state.setProperty("osc3Coarse", 0.5f, nullptr);
-    state.setProperty("osc3Fine", 0.5f, nullptr);
-    state.setProperty("osc3Mode", 0.0f, nullptr);
-    state.setProperty("osc3MacroA", 0.5f, nullptr);
-    state.setProperty("osc3MacroB", 0.5f, nullptr);
-    state.setProperty("osc3MacroC", 0.5f, nullptr);
-    state.setProperty("osc3Vowel", 0.0f, nullptr);
-    state.setProperty("osc3H1", 1.0f, nullptr);
-    state.setProperty("osc3H2", 0.699999988079071f, nullptr);
-    state.setProperty("osc3H3", 0.449999988079071f, nullptr);
-    state.setProperty("osc3H4", 0.300000011920929f, nullptr);
-    state.setProperty("osc3H5", 0.2000000029802322f, nullptr);
-    state.setProperty("osc3H6", 0.1400000005960464f, nullptr);
-    state.setProperty("osc3H7", 0.1000000014901161f, nullptr);
-    state.setProperty("osc3H8", 0.07000000029802322f, nullptr);
-    state.setProperty("filter1Cutoff", 0.2481092661619186f, nullptr);
-    state.setProperty("filter1Resonance", 0.282051295042038f, nullptr);
-    state.setProperty("filter1Type", 0.0f, nullptr);
-    state.setProperty("ampAttack", 0.044675063341856f, nullptr);
-    state.setProperty("ampDecay", 0.1328198909759521f, nullptr);
-    state.setProperty("ampSustain", 0.800000011920929f, nullptr);
-    state.setProperty("ampRelease", 0.09388426691293716f, nullptr);
-    state.setProperty("masterGain", 0.6000000238418579f, nullptr);
-    state.setProperty("vibeAmount", 0.6022812128067017f, nullptr);
-    state.setProperty("vibeEnabled", 0.0f, nullptr);
-    state.setProperty("vibeType", 0.6000000238418579f, nullptr);
-    state.setProperty("delayAmount", 0.3621250092983246f, nullptr);
-    state.setProperty("granularSyncDivision", 0.0f, nullptr);
-    state.setProperty("granularMode", 0.3333333432674408f, nullptr);
-    state.setProperty("delayAlgorithm", 0.3333333432674408f, nullptr);
-    state.setProperty("delayEnabled", 0.0f, nullptr);
-    state.setProperty("delayTime", 0.3499999940395355f, nullptr);
-    state.setProperty("delayFeedback", 0.3799999952316284f, nullptr);
-    state.setProperty("reverbAmount", 0.4072031378746033f, nullptr);
-    state.setProperty("reverbEnabled", 0.0f, nullptr);
+    // INIT starts from catalog defaults, never from the patch that happened to
+    // be active while the browser opened.
+    state.removeAllProperties(nullptr);
+    while (state.getNumChildren() > 0)
+    {
+        state.removeChild(0, nullptr);
+    }
+    state.setProperty("stateVersion", px3::processor_internal::kCurrentStateVersion, nullptr);
+    auto parameters = state.getChildWithName("PARAMETERS");
+    parameters = processor.getParameterCatalog().createStateTree();
+    for (const auto& entry : processor.getParameterCatalog().entries())
+    {
+        auto parameterState = processor.getParameterCatalog().findStateEntry(parameters, entry.id);
+        const auto* ranged = dynamic_cast<const juce::RangedAudioParameter*>(entry.parameter);
+        if (parameterState.isValid() && ranged != nullptr)
+        {
+            parameterState.setProperty("value", ranged->getDefaultValue(), nullptr);
+        }
+    }
+    for (const auto* id : { "vibeEnabled", "delayEnabled", "reverbEnabled", "moodEnabled",
+                            "doomEnabled", "lucyEnabled", "chorusEnabled", "spreadEnabled" })
+    {
+        auto parameterState = processor.getParameterCatalog().findStateEntry(parameters, id);
+        if (parameterState.isValid()) { parameterState.setProperty("value", 0.0f, nullptr); }
+    }
+    state.addChild(parameters, -1, nullptr);
 
-    // Every effect OFF in INIT, written out for all eight. A state leaves any
-    // parameter it does not name where it was, so an effect left out of INIT
-    // stayed on if the patch before it had turned it on.
-    state.setProperty("moodEnabled", 0.0f, nullptr);
-    state.setProperty("doomEnabled", 0.0f, nullptr);
-    state.setProperty("lucyEnabled", 0.0f, nullptr);
-    state.setProperty("chorusEnabled", 0.0f, nullptr);
-    state.setProperty("spreadEnabled", 0.0f, nullptr);
-    state.setProperty("reverbAlgorithm", 0.0f, nullptr);
-    state.setProperty("reverbSize", 0.5199999809265137f, nullptr);
-    state.setProperty("reverbDecay", 0.4799999892711639f, nullptr);
-    state.setProperty("reverbDamping", 0.4600000083446503f, nullptr);
-    state.setProperty("reverbPreDelay", 0.07999999821186066f, nullptr);
-    state.setProperty("reverbModDepth", 0.239999994635582f, nullptr);
-    state.setProperty("reverbModRate", 0.1800000071525574f, nullptr);
-    state.setProperty("reverbWidth", 0.8600000143051147f, nullptr);
-    state.setProperty("reverbCloudFeedback", 0.6200000047683716f, nullptr);
-    state.setProperty("reverbCloudDiffusion", 0.5400000214576721f, nullptr);
-    state.setProperty("pitchBendRange", 0.04347826167941093f, nullptr);
-    state.setProperty("lfoFrequency", 0.3851140737533569f, nullptr);
-    state.setProperty("moduleOrderRevision", 2, nullptr);
-
-    const juce::Identifier moduleOrderId("MODULE_ORDER");
-    const juce::Identifier moduleEntryId("MODULE");
-    const juce::Identifier moduleIdProperty("id");
-    if (auto existingOrder = state.getChildWithName(moduleOrderId); existingOrder.isValid())
+    juce::ValueTree moduleOrder("MODULE_ORDER");
+    for (const auto stage : px3::kDefaultFxOrder)
     {
-        state.removeChild(existingOrder, nullptr);
-    }
-    juce::ValueTree moduleOrder(moduleOrderId);
-    {
-        juce::ValueTree module(moduleEntryId);
-        module.setProperty(moduleIdProperty, "harmonicDrive", nullptr);
-        moduleOrder.addChild(module, -1, nullptr);
-    }
-    {
-        juce::ValueTree module(moduleEntryId);
-        module.setProperty(moduleIdProperty, "delay", nullptr);
-        moduleOrder.addChild(module, -1, nullptr);
-    }
-    {
-        juce::ValueTree module(moduleEntryId);
-        module.setProperty(moduleIdProperty, "reverb", nullptr);
+        juce::ValueTree module("MODULE");
+        module.setProperty("id", px3::processor_internal::moduleIdForStage(stage), nullptr);
         moduleOrder.addChild(module, -1, nullptr);
     }
     state.addChild(moduleOrder, -1, nullptr);
+    state.setProperty("moduleOrderRevision", 0, nullptr);
 
-    const juce::Identifier lfoStateId("LFO");
-    if (auto existingLfo = state.getChildWithName(lfoStateId); existingLfo.isValid())
+    juce::ValueTree lfoSources("LFO_SOURCES");
+    for (int index = 0; index < PX3SynthAudioProcessor::kLfoSourceCount; ++index)
     {
-        state.removeChild(existingLfo, nullptr);
+        juce::ValueTree source("SOURCE");
+        source.setProperty("index", index, nullptr);
+        source.setProperty("assignment", "none", nullptr);
+        lfoSources.addChild(source, -1, nullptr);
     }
-    juce::ValueTree lfoState(lfoStateId);
-    lfoState.setProperty("frequency", 0.8406999707221985f, nullptr);
-    lfoState.setProperty("assignment", "filter1Cutoff", nullptr);
-    state.addChild(lfoState, -1, nullptr);
+    state.addChild(lfoSources, -1, nullptr);
 
-    const juce::Identifier vibeStateId("VIBE");
-    if (auto existingVibe = state.getChildWithName(vibeStateId); existingVibe.isValid())
+    juce::ValueTree envelopeSources("ENVELOPE_SOURCES");
+    for (int index = 0; index < PX3SynthAudioProcessor::kEnvelopeSourceCount; ++index)
     {
-        state.removeChild(existingVibe, nullptr);
+        juce::ValueTree source("SOURCE");
+        source.setProperty("index", index, nullptr);
+        source.setProperty("assignment", "none", nullptr);
+        envelopeSources.addChild(source, -1, nullptr);
     }
-    juce::ValueTree vibeState(vibeStateId);
-    // Bypassed, to agree with vibeEnabled above. This block is restored AFTER
-    // the parameters, so "bypass false" here switched VIBE back on.
+    state.addChild(envelopeSources, -1, nullptr);
+
+    juce::ValueTree vibeState("VIBE");
     vibeState.setProperty("bypass", true, nullptr);
     vibeState.setProperty("seed", 1337, nullptr);
     state.addChild(vibeState, -1, nullptr);
-
     return tree;
 }
 
 bool PresetManager::loadInitState(juce::String& error)
 {
     const auto tree = initPresetTree(error);
-    if (! tree.isValid())
-    {
-        return false;
-    }
-
+    if (! tree.isValid()) { return false; }
     const auto state = tree.getChildWithName(kPluginStateId);
     if (! state.isValid())
     {
         error = "The INIT state has no plugin state node.";
         return false;
     }
-
     return processor.applyParameterStateTree(state, &error, false);
 }
 
@@ -887,12 +801,21 @@ bool PresetManager::ensureFactoryPresetLibrary(juce::String& error)
     for (const auto& def : defs)
     {
         auto state = baseState.createCopy();
+        auto parameters = state.getChildWithName("PARAMETERS");
         for (const auto& [id, value] : def.params)
         {
             const auto normalised = normalisedFor(id, value);
             if (normalised >= 0.0f)
             {
-                state.setProperty(id, normalised, nullptr);
+                auto parameterState = processor.getParameterCatalog().findStateEntry(parameters, id);
+                if (parameterState.isValid())
+                {
+                    parameterState.setProperty("value", normalised, nullptr);
+                }
+                else
+                {
+                    unknownIds.addIfNotAlreadyThere(id);
+                }
             }
         }
 
@@ -1111,99 +1034,43 @@ bool PresetManager::applyPresetTree(const juce::ValueTree& presetTree, juce::Str
 juce::ValueTree PresetManager::migratePresetTreeIfNeeded(const juce::ValueTree& presetTree,
                                                          juce::String& error) const
 {
-    // Migration keeps older presets loadable while preserving strict rejection
-    // of unknown future schema versions.
-    auto migrated = presetTree.createCopy();
-
-    const auto version = static_cast<int>(migrated.getProperty("presetVersion", 1));
-    if (version > currentPresetFormatVersion)
+    if (presetTree.getType() != kPresetRootId)
     {
-        error = "Preset format version is newer than this plugin build.";
+        error = "Invalid preset tree.";
         return {};
     }
 
-    if (version < 1)
+    const auto version = static_cast<int>(presetTree.getProperty("presetVersion", 0));
+    if (version != currentPresetFormatVersion)
     {
         error = "Unsupported preset format version.";
         return {};
     }
 
-    if (!migrated.hasProperty("name"))
+    const auto state = presetTree.getChildWithName(kPluginStateId);
+    if (!state.isValid()
+        || static_cast<int>(state.getProperty("stateVersion", 0))
+               != px3::processor_internal::kCurrentStateVersion)
     {
-        migrated.setProperty("name", "Unnamed", nullptr);
+        error = "Preset contains an unsupported PX3 state schema.";
+        return {};
     }
 
-    if (!migrated.hasProperty("category"))
+    std::vector<px3::synth::ParameterCatalog::StateValue> values;
+    if (! processor.getParameterCatalog().readStateValues(
+            state.getChildWithName("PARAMETERS"), values, error))
     {
-        migrated.setProperty("category", "UNCATEGORIZED", nullptr);
+        return {};
     }
 
-    if (!migrated.getChildWithName(kAssetsId).isValid())
+    if (!presetTree.getChildWithName(kAssetsId).isValid())
     {
-        migrated.addChild(juce::ValueTree(kAssetsId), -1, nullptr);
+        error = "Preset is missing its resource manifest.";
+        return {};
     }
 
-    auto state = migrated.getChildWithName(kPluginStateId);
-    if (state.isValid())
-    {
-        if (state.hasProperty("topMenuView"))
-        {
-            state.removeProperty("topMenuView", nullptr);
-        }
-
-        // Fill missing parameters/children from the current processor defaults
-        // so older presets remain complete as new parameters are introduced.
-        const auto defaultState = processor.createPresetStateTree();
-        if (defaultState.isValid())
-        {
-            for (int i = 0; i < defaultState.getNumProperties(); ++i)
-            {
-                const auto propertyName = defaultState.getPropertyName(i);
-                if (!state.hasProperty(propertyName))
-                {
-                    state.setProperty(propertyName, defaultState.getProperty(propertyName), nullptr);
-                }
-            }
-
-            if (defaultState.hasProperty("stateVersion"))
-            {
-                state.setProperty("stateVersion", defaultState.getProperty("stateVersion"), nullptr);
-            }
-
-            const auto ensureChildState = [&state, &defaultState](const juce::Identifier& childId)
-            {
-                const auto defaultChild = defaultState.getChildWithName(childId);
-                if (!defaultChild.isValid())
-                {
-                    return;
-                }
-
-                auto targetChild = state.getChildWithName(childId);
-                if (!targetChild.isValid())
-                {
-                    state.addChild(defaultChild.createCopy(), -1, nullptr);
-                    return;
-                }
-
-                for (int i = 0; i < defaultChild.getNumProperties(); ++i)
-                {
-                    const auto propertyName = defaultChild.getPropertyName(i);
-                    if (!targetChild.hasProperty(propertyName))
-                    {
-                        targetChild.setProperty(propertyName, defaultChild.getProperty(propertyName), nullptr);
-                    }
-                }
-            };
-
-            ensureChildState(juce::Identifier("MODULE_ORDER"));
-            ensureChildState(juce::Identifier("LFO"));
-            ensureChildState(juce::Identifier("VIBE"));
-        }
-    }
-
-    migrated.setProperty("presetVersion", currentPresetFormatVersion, nullptr);
-
-    return migrated;
+    error.clear();
+    return presetTree.createCopy();
 }
 
 void PresetManager::collectAssetsForState(juce::ValueTree& pluginState,

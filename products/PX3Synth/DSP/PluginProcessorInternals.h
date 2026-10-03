@@ -30,12 +30,9 @@ inline float channelFaderMaxGain()
     return juce::Decibels::decibelsToGain(-kSourceHeadroomDb);
 }
 
-// 12: envelope times widened to 40 s and LFO waveforms gained two ramps.
-// Both change what a stored NORMALISED value means, so anything older is
-// migrated on load - see migrateStoredNormalisedValue.
-// 13: SEPARATE FX OUTPUT. Older states load it OFF, which is what puts the
-// FX back on outputs 1/2 for every session saved while the split was implicit.
-inline constexpr int kCurrentStateVersion = 13;
+// 0.8 starts a grouped parameter-state schema. No 0.7 parameter-property
+// reader or migration is retained.
+inline constexpr int kCurrentStateVersion = 1;
 
 inline const juce::Identifier kStateTypeId("PX3_STATE");
 inline const juce::Identifier kStateVersionId("stateVersion");

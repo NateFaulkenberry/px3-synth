@@ -107,6 +107,11 @@ void testEcosystem()
         const auto& catalog = processor.getParameterCatalog();
         const auto* coarse = catalog.find("osc1Coarse");
         const auto groups = processor.getParameterTree().getSubgroups(false);
+        const auto parameterState = catalog.createStateTree();
+        const auto coarseState = catalog.findStateEntry(parameterState, "osc1Coarse");
+        std::vector<px3::synth::ParameterCatalog::StateValue> stateValues;
+        juce::String stateError;
+        const auto stateValid = catalog.readStateValues(parameterState, stateValues, stateError);
         auto hasVoiceGroup = false;
         auto hasModulationGroup = false;
         auto hasEffectsGroup = false;
@@ -127,6 +132,71 @@ void testEcosystem()
                   && hasVoiceGroup && hasModulationGroup && hasEffectsGroup && hasMixerGroup,
               juce::String(static_cast<int>(catalog.entries().size())) + " catalog entries / "
                   + juce::String(processor.getParameters().size()) + " host parameters");
+
+        check("ParameterCatalog_SerializesCompleteGroupedNormalizedState",
+              stateValid && stateValues.size() == catalog.entries().size()
+                  && coarseState.isValid() && coarseState.getParent().getProperty("id").toString() == "osc1"
+                  && std::abs(static_cast<float>(coarseState.getProperty("value"))
+                              - coarse->parameter->getValue()) < 1.0e-6f,
+              stateError);
+
+        const auto rejectsMalformed = [&catalog, &parameterState](const juce::String& id,
+                                                                   juce::var badValue)
+        {
+            auto malformed = parameterState.createCopy();
+            auto entry = catalog.findStateEntry(malformed, id);
+            if (! entry.isValid()) { return false; }
+            entry.setProperty("value", badValue, nullptr);
+            std::vector<px3::synth::ParameterCatalog::StateValue> parsed;
+            juce::String error;
+            return ! catalog.readStateValues(malformed, parsed, error) && parsed.empty();
+        };
+        check("ParameterCatalog_RejectsNaNAndInfinity",
+              rejectsMalformed("osc1Coarse", std::numeric_limits<double>::quiet_NaN())
+                  && rejectsMalformed("osc1Fine", std::numeric_limits<double>::infinity()));
+        check("ParameterCatalog_RejectsOutOfRangeAndWrongType",
+              rejectsMalformed("osc1Coarse", -0.1)
+                  && rejectsMalformed("osc1Fine", "not a number"));
+
+        auto unknownState = parameterState.createCopy();
+        auto unknownGroup = juce::ValueTree("GROUP");
+        unknownGroup.setProperty("id", "rogue", nullptr);
+        unknownGroup.setProperty("name", "ROGUE", nullptr);
+        auto unknownParameter = juce::ValueTree("PARAMETER");
+        unknownParameter.setProperty("id", "unknown.parameter", nullptr);
+        unknownParameter.setProperty("value", 0.5, nullptr);
+        unknownGroup.addChild(unknownParameter, -1, nullptr);
+        unknownState.addChild(unknownGroup, -1, nullptr);
+        std::vector<px3::synth::ParameterCatalog::StateValue> unknownValues;
+        check("ParameterCatalog_RejectsUnknownGroupedParameter",
+              ! catalog.readStateValues(unknownState, unknownValues, stateError)
+                  && unknownValues.empty(),
+              stateError);
+
+        PX3SynthAudioProcessor source;
+        setParam(source, "env1Attack", 12.5f);
+        const auto stateTree = source.createParameterStateTree();
+        PX3SynthAudioProcessor treeRestored;
+        const auto treeApplied = treeRestored.applyParameterStateTree(stateTree, &stateError);
+        check("ParameterCatalog_GroupedStateAppliesWithoutXmlRoundTrip",
+              treeApplied && std::abs(getParamValue(treeRestored, "env1Attack") - 12.5f) < 0.01f,
+              stateError);
+
+        juce::MemoryBlock stateBytes;
+        source.getStateInformation(stateBytes);
+        const auto stateXml = juce::AudioProcessor::getXmlFromBinary(
+            stateBytes.getData(), static_cast<int>(stateBytes.getSize()));
+        const auto parsedState = stateXml != nullptr ? juce::ValueTree::fromXml(*stateXml) : juce::ValueTree();
+        PX3SynthAudioProcessor xmlRestored;
+        juce::String xmlError;
+        const auto xmlApplied = parsedState.isValid() && xmlRestored.applyParameterStateTree(parsedState, &xmlError);
+        check("ParameterCatalog_GroupedStateSurvivesXmlParseAndDirectApply",
+              xmlApplied && std::abs(getParamValue(xmlRestored, "env1Attack") - 12.5f) < 0.01f,
+              parsedState.getType().toString() + (xmlError.isEmpty() ? juce::String() : ": " + xmlError));
+        PX3SynthAudioProcessor binaryRestored;
+        binaryRestored.setStateInformation(stateBytes.getData(), static_cast<int>(stateBytes.getSize()));
+        check("ParameterCatalog_GroupedStateSurvivesHostBinaryRoundTrip",
+              std::abs(getParamValue(binaryRestored, "env1Attack") - 12.5f) < 0.01f);
     }
 
     // ---- one source of truth for the version --------------------------------

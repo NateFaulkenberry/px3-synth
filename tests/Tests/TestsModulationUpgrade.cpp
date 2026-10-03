@@ -1,9 +1,6 @@
 #include "TestSupport.h"
 
-// testModulationUpgrade - 0.7.5's modulation and filter routing work:
-// envelope times to 40 s, timed ramps, key sync, the full-range modulation
-// rule, the pitch-mod destinations, series/parallel filter routing, and the
-// state migration that keeps sessions saved before any of it sounding the same.
+// testModulationUpgrade - current 0.8 modulation/routing behavior and state schema.
 
 namespace px3tests
 {
@@ -56,17 +53,6 @@ int upgradeChoiceIndex(juce::AudioProcessor& processor, const juce::String& id)
         return choice->getIndex();
     }
     return -1;
-}
-
-// Loads a tree the way a host hands a session back.
-void loadUpgradeTree(PX3SynthAudioProcessor& target, const juce::ValueTree& tree)
-{
-    if (auto xml = tree.createXml())
-    {
-        juce::MemoryBlock block;
-        juce::AudioProcessor::copyXmlToBinary(*xml, block);
-        target.setStateInformation(block.getData(), static_cast<int>(block.getSize()));
-    }
 }
 
 //==============================================================================
@@ -201,54 +187,24 @@ void testEnvelopeTimesUpgrade()
 //==============================================================================
 void testStateUpgrade()
 {
-    // A version-11 session stored envelope times and LFO waveforms normalised
-    // under the OLD ranges. They have to come back as the same seconds and the
-    // same shape.
+    // The 0.8 state reader accepts only schema v1. Unsupported major/legacy
+    // roots are rejected atomically rather than adapted to the grouped schema.
     {
         PX3SynthAudioProcessor source;
-        auto tree = source.createParameterStateTree();
-        tree.setProperty("stateVersion", 11, nullptr);
-
-        const juce::NormalisableRange<float> oldAttack(0.0f, 3.0f, 0.001f, 0.45f);
-        const juce::NormalisableRange<float> oldDecay(0.0f, 4.0f, 0.001f, 0.45f);
-        const juce::NormalisableRange<float> oldRelease(0.0f, 5.0f, 0.001f, 0.45f);
-        tree.setProperty("ampAttack", oldAttack.convertTo0to1(0.250f), nullptr);
-        tree.setProperty("ampRelease", oldRelease.convertTo0to1(1.100f), nullptr);
-        tree.setProperty("env2Decay", oldDecay.convertTo0to1(2.000f), nullptr);
-        tree.setProperty("env3Release", oldRelease.convertTo0to1(5.000f), nullptr);
-        tree.setProperty("lfoWaveform", 1.0f, nullptr);          // SQUARE, last of four
-        tree.setProperty("lfo2Waveform", 1.0f / 3.0f, nullptr);  // TRIANGLE
-
-        // The LFO source children carry the waveform as an INDEX and would
-        // restore it on their own, hiding whether the parameter path migrates.
-        for (int i = tree.getNumChildren(); --i >= 0;)
+        for (const auto version : { 0, 11, 12, 13 })
         {
-            if (tree.getChild(i).getType().toString().containsIgnoreCase("lfo"))
-            {
-                tree.removeChild(i, nullptr);
-            }
+            auto tree = source.createParameterStateTree();
+            tree.setProperty("stateVersion", version, nullptr);
+            PX3SynthAudioProcessor target;
+            setParam(target, "ampAttack", 1.75f);
+            const auto before = getParamValue(target, "ampAttack");
+            juce::String error;
+            const auto accepted = target.applyParameterStateTree(tree, &error);
+            check(("StateSchema_RejectsUnsupportedVersion_" + juce::String(version)).toRawUTF8(),
+                  ! accepted && nearly(getParamValue(target, "ampAttack"), before, 1.0e-6)
+                      && error.containsIgnoreCase("Unsupported"),
+                  error);
         }
-
-        PX3SynthAudioProcessor target;
-        loadUpgradeTree(target, tree);
-
-        const auto attack = getParamValue(target, "ampAttack");
-        const auto release = getParamValue(target, "ampRelease");
-        const auto decay = getParamValue(target, "env2Decay");
-        const auto longRelease = getParamValue(target, "env3Release");
-        const auto timesKept = std::abs(attack - 0.250f) < 0.003f && std::abs(release - 1.100f) < 0.003f
-                            && std::abs(decay - 2.000f) < 0.003f && std::abs(longRelease - 5.000f) < 0.003f;
-
-        check("StateUpgrade_OldEnvelopeTimesKeepTheirSeconds", timesKept,
-              "amp attack " + fmt(attack, 3) + " s (was 0.250), amp release " + fmt(release, 3)
-                  + " s (was 1.100), env 2 decay " + fmt(decay, 3) + " s (was 2.000), env 3 release "
-                  + fmt(longRelease, 3) + " s (was 5.000)");
-
-        const auto square = upgradeChoiceIndex(target, "lfoWaveform");
-        const auto triangle = upgradeChoiceIndex(target, "lfo2Waveform");
-        check("StateUpgrade_OldLfoWaveformsKeepTheirShape", square == 3 && triangle == 1,
-              "SQUARE came back as " + px3::lfoWaveformChoices()[juce::jmax(0, square)]
-                  + ", TRIANGLE as " + px3::lfoWaveformChoices()[juce::jmax(0, triangle)]);
     }
 
     // A current state is NOT migrated: a 25 s release stays 25 s.
@@ -285,41 +241,6 @@ void testStateUpgrade()
                   + fmt(getParamValue(target, "filterParallelBalance"), 3));
     }
 
-    // A session from before the new controls existed means their defaults,
-    // whatever the instance it is loaded into was set to.
-    {
-        PX3SynthAudioProcessor source;
-        auto tree = source.createParameterStateTree();
-        tree.setProperty("stateVersion", 11, nullptr);
-        for (const auto* id : { "filterRouting", "filterParallelBalance",
-                                "lfoRampTime", "lfo2RampTime", "lfo3RampTime",
-                                "lfoKeySync", "lfo2KeySync", "lfo3KeySync",
-                                "osc1PitchMod", "osc2PitchMod", "osc3PitchMod", "subOscPitchMod" })
-        {
-            tree.removeProperty(id, nullptr);
-        }
-
-        PX3SynthAudioProcessor target;
-        setChoice(target, "filterRouting", 1);
-        setParam(target, "filterParallelBalance", 0.9f);
-        setParam(target, "lfoKeySync", 1.0f);
-        setParam(target, "lfoRampTime", 30.0f);
-        setParam(target, "osc1PitchMod", 12.0f);
-        loadUpgradeTree(target, tree);
-
-        const auto ok = upgradeChoiceIndex(target, "filterRouting") == 0
-                     && std::abs(getParamValue(target, "filterParallelBalance") - 0.5f) < 1.0e-3f
-                     && getParamValue(target, "lfoKeySync") < 0.5f
-                     && std::abs(getParamValue(target, "lfoRampTime") - 4.0f) < 0.01f
-                     && std::abs(getParamValue(target, "osc1PitchMod")) < 1.0e-3f;
-
-        check("StateUpgrade_ASessionFromBeforeTheControlsLoadsTheirDefaults", ok,
-              "routing " + juce::String(upgradeChoiceIndex(target, "filterRouting")) + ", balance "
-                  + fmt(getParamValue(target, "filterParallelBalance"), 3) + ", key sync "
-                  + fmt(getParamValue(target, "lfoKeySync"), 0) + ", ramp "
-                  + fmt(getParamValue(target, "lfoRampTime"), 2) + " s, pitch mod "
-                  + fmt(getParamValue(target, "osc1PitchMod"), 2) + " st");
-    }
 }
 
 //==============================================================================

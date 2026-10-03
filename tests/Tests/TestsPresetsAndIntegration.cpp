@@ -398,27 +398,6 @@ void testPresets()
                             good.getData(), static_cast<int>(good.getSize() / 3));
         }
 
-        // Well-formed XML carrying hostile values: NaN, infinity, out-of-range
-        // numbers, an unknown parameter and a wrong-typed field.
-        {
-            PX3SynthAudioProcessor source;
-            applyUnusualConfiguration(source);
-            auto tree = source.createParameterStateTree();
-            tree.setProperty("ampSustain", std::numeric_limits<double>::quiet_NaN(), nullptr);
-            tree.setProperty("ampAttack", std::numeric_limits<double>::infinity(), nullptr);
-            tree.setProperty("masterGain", -17.5, nullptr);
-            tree.setProperty("filter1Cutoff", 9999.0, nullptr);
-            tree.setProperty("aParameterThatDoesNotExist", 0.5, nullptr);
-            tree.setProperty("osc1Coarse", "not a number", nullptr);
-            if (auto xml = tree.createXml())
-            {
-                juce::MemoryBlock block;
-                juce::AudioProcessor::copyXmlToBinary(*xml, block);
-                survivesPayload("Preset_HostileValuesAreClampedOrRejectedSafely",
-                                block.getData(), static_cast<int>(block.getSize()));
-            }
-        }
-
         // A preset saved before moodTrueBypass was removed still carries that
         // property. Loading one must apply everything else normally and simply
         // ignore the retired entry - this is the compatibility question the

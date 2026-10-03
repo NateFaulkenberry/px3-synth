@@ -4327,21 +4327,16 @@ void testMultiOutput()
         check("MultiOut_SeparateFxOutputIsSavedWithTheSession", restored.getFxSeparateOutputParam().get(),
               juce::String("saved on, restored ") + (restored.getFxSeparateOutputParam().get() ? "on" : "OFF"));
 
-        // Saved while the split was implicit. It has to come back OFF, whatever
-        // the instance was set to - that is what gives those sessions their FX.
+          // The old schema is intentionally not migrated by the 0.8 generation.
         auto tree = source.createParameterStateTree();
         tree.setProperty("stateVersion", 12, nullptr);
-        tree.removeProperty("fxSeparateOutput", nullptr);
         PX3SynthAudioProcessor older;
         older.getFxSeparateOutputParam().setValueNotifyingHost(1.0f);
-        if (auto xml = tree.createXml())
-        {
-            juce::MemoryBlock block;
-            juce::AudioProcessor::copyXmlToBinary(*xml, block);
-            older.setStateInformation(block.getData(), static_cast<int>(block.getSize()));
-        }
-        check("MultiOut_ASessionFromBeforeTheSwitchLoadsItOff", ! older.getFxSeparateOutputParam().get(),
-              juce::String("a version-12 session loaded it ") + (older.getFxSeparateOutputParam().get() ? "ON" : "off"));
+          juce::String error;
+          const auto accepted = older.applyParameterStateTree(tree, &error);
+          check("MultiOut_OldStateSchemaIsRejectedWithoutMutation",
+              ! accepted && older.getFxSeparateOutputParam().get(),
+              error);
     }
 
     // ---- turning it on mid-note crossfades rather than jumping -------------------
