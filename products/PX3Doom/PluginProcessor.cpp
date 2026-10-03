@@ -23,7 +23,7 @@ PX3DoomAudioProcessor::PX3DoomAudioProcessor()
     addParameter(wetTimeParam = new juce::AudioParameterFloat("fx.doom.wet.time", "Doom Wet Time", unit, 0.45f));
     addParameter(wetModifyParam = new juce::AudioParameterFloat("fx.doom.wet.modify", "Doom Wet Modify", unit, 0.40f));
     addParameter(crossParam = new juce::AudioParameterFloat("fx.doom.cross", "Doom Cross", unit, 0.0f));
-    addParameter(glueParam = new juce::AudioParameterFloat("fx.doom.glue", "Doom Glue", unit, 0.15f));
+    addParameter(glueParam = new juce::AudioParameterFloat("fx.doom.glue", "Doom Glue", unit, 0.0f));
     addParameter(eqParam = new juce::AudioParameterFloat("fx.doom.eq", "Doom EQ", bipolar, 0.0f));
     addParameter(balanceParam = new juce::AudioParameterFloat("fx.doom.balance", "Doom Balance", unit, 0.5f));
     addParameter(blendParam = new juce::AudioParameterFloat("fx.doom.blend", "Doom Blend", unit, 0.0f));

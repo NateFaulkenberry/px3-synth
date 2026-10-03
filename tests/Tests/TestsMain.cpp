@@ -73,6 +73,149 @@ Worst worstDiscontinuity(const std::vector<float>& x, int skip)
 }
 } // namespace artifactscan
 
+// Doom gain staging: a -12 dBFS sine through the engine, one surface control
+// swept at a time from its default, per wet mode. Reports level change, peak,
+// harmonic distortion of the steady output and how many samples sat near full
+// scale, so "it clips past halfway" can be pinned to the control that does it.
+void measureDoomGainStaging()
+{
+    constexpr double fs = 48000.0;
+    constexpr double hz = 220.0;
+    const float inLevel = static_cast<float>(juce::SystemStats::getEnvironmentVariable("PX3_DOOM_LEVEL", "0.25").getDoubleValue());
+    struct Control { const char* name; float px3::DoomUserParameters::* field; };
+    const Control controls[] = {
+        { "MIX", &px3::DoomUserParameters::mix },           { "CLOCK", &px3::DoomUserParameters::clock },
+        { "TIME", &px3::DoomUserParameters::wetTime },      { "WET MOD", &px3::DoomUserParameters::wetModify },
+        { "LENGTH", &px3::DoomUserParameters::loopLength }, { "LOOP MOD", &px3::DoomUserParameters::loopModify },
+        { "GLUE", &px3::DoomUserParameters::glue },         { "BALANCE", &px3::DoomUserParameters::balance },
+        { "OVERDUB", &px3::DoomUserParameters::overdub },   { "CROSS", &px3::DoomUserParameters::cross },
+        { "SPREAD", &px3::DoomUserParameters::spread } };
+    const char* modes[] = { "SOUP", "RELAY", "FLIP" };
+
+    auto run = [&](const px3::DoomUserParameters& settings, double& gainDb, double& peak, double& thdDb, double& nearFull)
+    {
+        px3::Doom doom;
+        doom.prepare(fs);
+        doom.setSeed(7u);
+        doom.updateForBlock(settings);
+        const int total = static_cast<int>(fs * 4.0);
+        const int from = static_cast<int>(fs * 2.0);
+        double inE = 0.0, outE = 0.0, c = 0.0, sn = 0.0, c2 = 0.0, s2 = 0.0, c3 = 0.0, s3 = 0.0;
+        peak = 0.0; nearFull = 0.0;
+        for (int n = 0; n < total; ++n)
+        {
+            if (n % 512 == 0) { doom.updateForBlock(settings); }
+            const auto x = inLevel * static_cast<float>(std::sin(juce::MathConstants<double>::twoPi * hz * n / fs));
+            float l = 0.0f, r = 0.0f;
+            doom.processSampleFrame(x, x, l, r);
+            if (n < from) { continue; }
+            const auto y = 0.5 * (l + r);
+            const auto w = juce::MathConstants<double>::twoPi * hz * n / fs;
+            inE += static_cast<double>(x) * x; outE += y * y;
+            c += y * std::cos(w); sn += y * std::sin(w);
+            c2 += y * std::cos(2 * w); s2 += y * std::sin(2 * w);
+            c3 += y * std::cos(3 * w); s3 += y * std::sin(3 * w);
+            peak = juce::jmax(peak, static_cast<double>(juce::jmax(std::abs(l), std::abs(r))));
+            if (std::abs(l) > 0.95f || std::abs(r) > 0.95f) { nearFull += 1.0; }
+        }
+        const auto count = static_cast<double>(total - from);
+        gainDb = 10.0 * std::log10(juce::jmax(1.0e-30, outE) / inE);
+        const auto fund = c * c + sn * sn;
+        const auto harm = c2 * c2 + s2 * s2 + c3 * c3 + s3 * s3;
+        thdDb = 10.0 * std::log10(juce::jmax(1.0e-30, harm) / juce::jmax(1.0e-30, fund));
+        nearFull = 100.0 * nearFull / count;
+    };
+
+    for (const auto glue : { 0.0f, 0.15f })
+    {
+        for (int mode = 0; mode < 3; ++mode)
+        {
+            px3::DoomUserParameters settings;
+            settings.wetMode = static_cast<px3::DoomWetMode>(mode);
+            settings.mix = 1.0f;
+            settings.glue = glue;
+            double gain = 0, peak = 0, thd = 0, full = 0;
+            run(settings, gain, peak, thd, full);
+            std::printf("  attribution: %s MIX 1 GLUE %.2f  gain %.2f dB  H2+H3 %.1f dB\n", modes[mode], glue, gain, thd);
+        }
+    }
+
+    std::printf("\nDOOM GAIN STAGING  (-12 dBFS 220 Hz sine, one control swept from default)\n");
+    std::printf("  %-6s %-9s %6s  %8s %7s %8s %7s\n", "mode", "control", "value", "gain dB", "peak", "H2+H3 dB", "%>0.95");
+    for (int mode = 0; mode < 3; ++mode)
+    {
+        for (const auto& control : controls)
+        {
+            for (const auto value : { 0.0f, 0.5f, 0.75f, 1.0f })
+            {
+                px3::DoomUserParameters settings;
+                settings.wetMode = static_cast<px3::DoomWetMode>(mode);
+                settings.*(control.field) = value;
+                double gain = 0, peak = 0, thd = 0, full = 0;
+                run(settings, gain, peak, thd, full);
+                std::printf("  %-6s %-9s %6.2f  %8.2f %7.3f %8.1f %7.2f\n", modes[mode], control.name, value, gain, peak, thd, full);
+            }
+        }
+    }
+}
+
+// The same question inside the instrument: a four-voice saw chord into the FX
+// send at its default, Doom's surface controls swept one at a time. Reports the
+// master peak, how much of the signal sits in the ceiling's knee, and the level
+// change against Doom off.
+void measureDoomInSynth()
+{
+    const char* ids[] = { "fx.doom.mix", "fx.doom.clock", "fx.doom.wet.time", "fx.doom.wet.modify",
+                          "fx.doom.loop.length", "fx.doom.loop.modify", "fx.doom.glue", "fx.doom.balance" };
+    auto renderWith = [](const char* id, float value, bool doomOn)
+    {
+        PX3SynthAudioProcessor processor;
+        processor.setPlayConfigDetails(0, 2, 48000.0, 512);
+        processor.prepareToPlay(48000.0, 512);
+        for (auto* param : processor.getParameters())
+        {
+            if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(param))
+            {
+                if (ranged->paramID == "fx.doom.enabled") { ranged->setValueNotifyingHost(doomOn ? 1.0f : 0.0f); }
+                if (id != nullptr && ranged->paramID == id) { ranged->setValueNotifyingHost(value); }
+            }
+        }
+        juce::AudioBuffer<float> buffer(2, 512);
+        double peak = 0.0, energy = 0.0, hot = 0.0, count = 0.0;
+        for (int block = 0; block < 400; ++block)
+        {
+            juce::MidiBuffer midi;
+            if (block == 2) { for (const auto note : { 48, 55, 60, 64 }) { midi.addEvent(juce::MidiMessage::noteOn(1, note, 1.0f), 0); } }
+            buffer.clear();
+            processor.processBlock(buffer, midi);
+            if (block < 120) { continue; }
+            for (int ch = 0; ch < 2; ++ch)
+            {
+                for (int n = 0; n < 512; ++n)
+                {
+                    const auto v = std::abs(static_cast<double>(buffer.getSample(ch, n)));
+                    peak = juce::jmax(peak, v); energy += v * v; count += 1.0;
+                    if (v > 0.8) { hot += 1.0; }
+                }
+            }
+        }
+        return std::array<double, 3> { peak, 10.0 * std::log10(juce::jmax(1.0e-30, energy / count)), 100.0 * hot / count };
+    };
+    const auto off = renderWith(nullptr, 0.0f, false);
+    const auto def = renderWith(nullptr, 0.0f, true);
+    std::printf("\nDOOM IN THE SYNTH  (4-voice chord, default patch and send)\n");
+    std::printf("  doom off          peak %.3f  rms %.2f dB  %%>0.8 %.2f\n", off[0], off[1], off[2]);
+    std::printf("  doom defaults     peak %.3f  rms %.2f dB  %%>0.8 %.2f\n", def[0], def[1], def[2]);
+    for (const auto* id : ids)
+    {
+        for (const auto value : { 0.25f, 0.5f, 0.75f, 1.0f })
+        {
+            const auto r = renderWith(id, value, true);
+            std::printf("  %-20s %4.2f  peak %.3f  rms %6.2f dB  %%>0.8 %5.2f\n", id, value, r[0], r[1], r[2]);
+        }
+    }
+}
+
 void scanDoomLucyArtifacts()
 {
     using namespace artifactscan;
@@ -1891,6 +2034,13 @@ int main(int argc, char* argv[])
                         file.getFileNameWithoutExtension().toRawUTF8());
         }
         std::printf("\n  %d preset files\n\n", files.size());
+        return 0;
+    }
+
+    if (filter == "doomgain")
+    {
+        measureDoomGainStaging();
+        measureDoomInSynth();
         return 0;
     }
 

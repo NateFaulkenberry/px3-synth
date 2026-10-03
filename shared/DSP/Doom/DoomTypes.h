@@ -83,7 +83,7 @@ struct DoomUserParameters
     float balance { 0.5f };       // alt of MIX        - looper <-> wet
     float fade { 1.0f };          // alt of LENGTH     - loop retention per lap
     float eq { 0.0f };            // alt of WET MODIFY - global tilt, -1 dark .. +1 bright
-    float glue { 0.15f };         // alt of CLOCK      - warm, then destroy
+    float glue { 0.0f };          // alt of CLOCK      - clean at 0, warm, then destroy
     float blend { 0.0f };         // alt of LOOP MODIFY- clean loop past the wet channel
 
     // ---- modes and routing -------------------------------------------------

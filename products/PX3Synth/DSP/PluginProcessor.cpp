@@ -531,7 +531,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     // Off by default: cross is confusing before you know what it does, and the
     // source pedal ships it off for the same reason.
     doomCrossParam = parameterCatalog.createFloat("fx.doom.cross", "Doom Cross", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
-    doomGlueParam = parameterCatalog.createFloat("fx.doom.glue", "Doom Glue", juce::NormalisableRange<float>(0.0f, 1.0f), 0.15f);
+    doomGlueParam = parameterCatalog.createFloat("fx.doom.glue", "Doom Glue", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
     doomEqParam = parameterCatalog.createFloat("fx.doom.eq", "Doom EQ", juce::NormalisableRange<float>(-1.0f, 1.0f), 0.0f);
     doomBalanceParam = parameterCatalog.createFloat("fx.doom.balance", "Doom Balance", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
     doomBlendParam = parameterCatalog.createFloat("fx.doom.blend", "Doom Blend", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);

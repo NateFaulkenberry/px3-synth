@@ -121,6 +121,7 @@ float Doom::clockRatioFor(float clockNormalised, bool smooth)
 void Doom::prepare(double sampleRate)
 {
     hostSampleRate = sampleRate > 0.0 ? sampleRate : 44100.0;
+    glueFollowCoeff = static_cast<float>(1.0 - std::exp(-1.0 / (0.08 * hostSampleRate)));
 
     historySize = juce::jmax(1024, static_cast<int>(hostSampleRate * kHistorySeconds));
     for (auto& channel : history)
@@ -264,6 +265,8 @@ void Doom::reset()
     eqHighState = { { 0.0f, 0.0f } };
     glueDcState = { { 0.0f, 0.0f } };
     glueDcPrev = { { 0.0f, 0.0f } };
+    glueInPower = 0.0f;
+    glueOutPower = 0.0f;
 
     clockPhase = 0.0f;
     heldOutput = {};
@@ -1437,10 +1440,12 @@ Doom::Frame Doom::applyGlue(Frame in)
     const auto glue = glueSmoothed.getNextValue();
     if (glue <= 0.0001f)
     {
+        glueInPower = glueOutPower = 0.0f;
         return in;
     }
 
     std::array<float, 2> values { { in.l, in.r } };
+    std::array<float, 2> shaped {};
 
     for (int ch = 0; ch < 2; ++ch)
     {
@@ -1485,13 +1490,21 @@ Doom::Frame Doom::applyGlue(Frame in)
         glueDcPrev[idx] = dcIn;
         glueDcState[idx] = y;
 
-        // Level-compensated per region, so turning GLUE up changes character
-        // rather than loudness.
-        const auto makeup = 1.0f / (1.0f + glue * 2.2f);
-        values[idx] = sanitize(y * makeup * (1.0f + glue * 0.55f));
+        shaped[idx] = y;
     }
 
-    return { values[0], values[1] };
+    // Auto-gain: the shaped signal is matched to the loudness it came in with,
+    // tracked over about 80 ms and linked across channels, so GLUE changes
+    // character rather than level at any input level and in every region. The
+    // old fixed makeup ignored the drive's small-signal gain and the fold, and
+    // added up to 4.5 dB.
+    const auto inPower = 0.5f * (in.l * in.l + in.r * in.r);
+    const auto outPower = 0.5f * (shaped[0] * shaped[0] + shaped[1] * shaped[1]);
+    glueInPower += (inPower - glueInPower) * glueFollowCoeff;
+    glueOutPower += (outPower - glueOutPower) * glueFollowCoeff;
+    const auto makeup = juce::jlimit(0.1f, 4.0f, std::sqrt((glueInPower + 1.0e-9f) / (glueOutPower + 1.0e-9f)));
+
+    return { sanitize(shaped[0] * makeup), sanitize(shaped[1] * makeup) };
 }
 
 // ============================================================================

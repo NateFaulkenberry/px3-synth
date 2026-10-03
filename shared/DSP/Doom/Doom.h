@@ -201,6 +201,9 @@ private:
     std::array<float, 2> eqLowState { { 0.0f, 0.0f } };
     std::array<float, 2> eqHighState { { 0.0f, 0.0f } };
     std::array<float, 2> glueDcState { { 0.0f, 0.0f } };
+    float glueInPower { 0.0f };
+    float glueOutPower { 0.0f };
+    float glueFollowCoeff { 0.0003f };
     std::array<float, 2> glueDcPrev { { 0.0f, 0.0f } };
 
     uint32_t rngState { 0x9E3779B9u };

@@ -11,8 +11,34 @@ namespace px3tests
 // ============================================================================
 
 
+namespace doomgaintest { std::pair<double, double> measure(px3::DoomUserParameters settings); }
+
 void testDoom()
 {
+    {
+        // GLUE changes character, not loudness: a -12 dBFS signal stays within
+        // 1.5 dB of where it started across the whole knob. And Doom at its
+        // defaults is clean - GLUE used to sit at 0.15, distorting even RELAY's
+        // plain repeats and adding about 3.5 dB.
+        px3::DoomUserParameters base;
+        base.mix = 1.0f;
+        base.wetMode = px3::DoomWetMode::relay;
+        const auto clean = doomgaintest::measure(base);
+        auto worst = 0.0;
+        juce::String levels;
+        for (const auto glue : { 0.25f, 0.5f, 0.75f, 1.0f })
+        {
+            auto settings = base;
+            settings.glue = glue;
+            const auto [gain, thd] = doomgaintest::measure(settings);
+            worst = juce::jmax(worst, std::abs(gain - clean.first));
+            levels << "GLUE " << juce::String(glue, 2) << " " << juce::String(gain - clean.first, 2) << " dB  ";
+        }
+        check("Doom_GlueChangesCharacterNotLevel", worst < 1.5, levels);
+        check("Doom_DefaultsAddNoDistortionToRelay", clean.second < -60.0,
+              "RELAY at defaults, full wet: H2+H3 " + juce::String(clean.second, 1) + " dB");
+    }
+
     suite("DOOM");
 
     using namespace doomtest;
@@ -1787,6 +1813,34 @@ void testDoom()
 // ============================================================================
 // LUCY
 // ============================================================================
+
+namespace doomgaintest
+{
+// A -12 dBFS sine through Doom at full wet: level and H2+H3 of the steady output.
+std::pair<double, double> measure(px3::DoomUserParameters settings)
+{
+    constexpr double fs = 48000.0, hz = 220.0;
+    px3::Doom doom;
+    doom.prepare(fs);
+    doom.setSeed(7u);
+    double inE = 0, outE = 0, c = 0, sn = 0, c2 = 0, s2 = 0, c3 = 0, s3 = 0;
+    for (int n = 0; n < 4 * 48000; ++n)
+    {
+        if (n % 512 == 0) { doom.updateForBlock(settings); }
+        const auto x = 0.25f * static_cast<float>(std::sin(juce::MathConstants<double>::twoPi * hz * n / fs));
+        float l = 0, r = 0;
+        doom.processSampleFrame(x, x, l, r);
+        if (n < 2 * 48000) { continue; }
+        const auto y = 0.5 * (l + r);
+        const auto w = juce::MathConstants<double>::twoPi * hz * n / fs;
+        inE += static_cast<double>(x) * x; outE += y * y;
+        c += y * std::cos(w); sn += y * std::sin(w);
+        c2 += y * std::cos(2 * w); s2 += y * std::sin(2 * w); c3 += y * std::cos(3 * w); s3 += y * std::sin(3 * w);
+    }
+    return { 10.0 * std::log10(outE / inE),
+             10.0 * std::log10(juce::jmax(1.0e-30, c2 * c2 + s2 * s2 + c3 * c3 + s3 * s3) / (c * c + sn * sn)) };
+}
+}
 
 namespace lucytest
 {
