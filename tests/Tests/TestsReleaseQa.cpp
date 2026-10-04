@@ -1076,5 +1076,88 @@ void testReleaseQa()
               "default types: filter 1 " + juce::String(d1, 0) + ", filter 2 " + juce::String(d2, 0)
                   + " (AllPass is " + juce::String(allPass, 0) + ")");
     }
+
+    // ---- AMP ENV's ADSR is a modulation destination, and modulating it is smooth --
+    // Reported: AMP ENV could not be routed to at all. Its four controls are
+    // destinations now, like ENV 1-3's; a change under a held note glides onto
+    // the new shape instead of stepping the gain.
+    {
+        Processor probe;
+        juce::StringArray missing;
+        for (const auto* id : { "voice.amp.attack", "voice.amp.decay", "voice.amp.sustain", "voice.amp.release" })
+        {
+            const auto* entry = probe.getParameterCatalog().find(id);
+            if (entry == nullptr || ! entry->modulationDestination) { missing.add(id); }
+        }
+
+        constexpr int kLfo1 = 0;
+        constexpr int kMacro1 = Processor::kLfoSourceCount + Processor::kEnvelopeSourceCount;
+        const auto heldLevel = [](bool routed)
+        {
+            Processor processor;
+            makePlainPatch(processor);
+            setParam(processor, "voice.amp.sustain", 1.0f);
+            setParam(processor, Processor::macroParameterId(0), 1.0f);
+            if (routed)
+            {
+                juce::String error;
+                processor.setGraphRoute(0, { kMacro1, "voice.amp.sustain", px3::synth::ModulationPolarity::native,
+                                             px3::synth::ModulationCurve::linear }, error);
+                auto& depth = processor.getGraphRouteDepthParam(0);
+                depth.setValueNotifyingHost(depth.convertTo0to1(-0.75f));
+            }
+            const auto c = render(processor, kSampleRate, { { 0, true, 60, 0.9f } });
+            return rmsOver(c.left, kSampleRate / 2, kSampleRate / 4);
+        };
+        const auto plain = heldLevel(false);
+        const auto lowered = heldLevel(true);
+        const auto dropDb = 20.0 * std::log10(juce::jmax(1.0e-9, lowered) / juce::jmax(1.0e-9, plain));
+
+        // A square LFO on SUSTAIN under a held sine: the gain changes in hard
+        // steps every half cycle. The output's worst second difference against
+        // the same note unmodulated shows whether those steps click.
+        const auto worstCurvature = [](bool routed)
+        {
+            Processor processor;
+            makePlainPatch(processor);
+            setParam(processor, "voice.amp.sustain", 0.7f);
+            setParam(processor, "mod.lfo1.enabled", routed ? 1.0f : 0.0f);
+            setChoice(processor, "mod.lfo1.waveform", 3);   // square
+            setParam(processor, "mod.lfo1.frequency", 5.0f);
+            setParam(processor, "mod.lfo1.amount", 1.0f);
+            if (routed)
+            {
+                juce::String error;
+                processor.setGraphRoute(0, { kLfo1, "voice.amp.sustain", px3::synth::ModulationPolarity::native,
+                                             px3::synth::ModulationCurve::linear }, error);
+                auto& depth = processor.getGraphRouteDepthParam(0);
+                depth.setValueNotifyingHost(depth.convertTo0to1(0.6f));
+            }
+            const auto c = render(processor, kSampleRate * 2, { { 0, true, 45, 0.9f } });
+            double worst = 0.0, levelLow = 1.0e9, levelHigh = 0.0;
+            for (int i = kSampleRate / 2; i + 2 < static_cast<int>(c.left.size()); ++i)
+            {
+                const auto d2 = std::abs(static_cast<double>(c.left[static_cast<std::size_t>(i + 2)])
+                                         - 2.0 * c.left[static_cast<std::size_t>(i + 1)] + c.left[static_cast<std::size_t>(i)]);
+                worst = juce::jmax(worst, d2);
+            }
+            for (int w = kSampleRate / 2; w + 960 < static_cast<int>(c.left.size()); w += 960)
+            {
+                const auto r = rmsOver(c.left, w, 960);
+                levelLow = juce::jmin(levelLow, r);
+                levelHigh = juce::jmax(levelHigh, r);
+            }
+            return std::make_pair(worst, 20.0 * std::log10(juce::jmax(1.0e-9, levelHigh) / juce::jmax(1.0e-9, levelLow)));
+        };
+        const auto still = worstCurvature(false);
+        const auto moving = worstCurvature(true);
+
+        check("Qa_AmpEnvelopeIsAModulationDestination",
+              missing.isEmpty() && dropDb < -6.0 && moving.second > 3.0 && moving.first < still.first * 1.5,
+              (missing.isEmpty() ? juce::String("all four are destinations") : "not destinations: " + missing.joinIntoString(", "))
+                  + "; M1 -> SUSTAIN at -75%: " + fmt(dropDb, 1) + " dB held level"
+                  + "; square LFO -> SUSTAIN swings " + fmt(moving.second, 1) + " dB with worst curvature "
+                  + fmt(moving.first, 5) + " against " + fmt(still.first, 5) + " unmodulated");
+    }
 }
 } // namespace px3tests

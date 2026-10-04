@@ -262,9 +262,13 @@ void ParameterCatalog::add(juce::AudioProcessorParameter* parameter)
         entry.interval = entry.definition->range.interval;
         entry.defaultValue = entry.definition->defaultValue;
         const auto& key = entry.id;
+        // The envelopes' own ADSR - AMP ENV's included - are destinations like
+        // any other control; they are "source controls" only in that the
+        // legacy per-LFO assign list leaves them out.
+        const auto isAdsr = key.endsWith(".attack") || key.endsWith(".decay")
+                            || key.endsWith(".sustain") || key.endsWith(".release");
         entry.sourceControl = (key.startsWith("mod.lfo") && (key.endsWith(".frequency") || key.endsWith(".ramp.time")))
-            || (key.startsWith("mod.env") && (key.endsWith(".attack") || key.endsWith(".decay")
-                                          || key.endsWith(".sustain") || key.endsWith(".release")));
+            || ((key.startsWith("mod.env") || key.startsWith("voice.amp.")) && isAdsr);
         entry.modulationDestination = entry.definition->kind == ParameterKind::continuous
             && (entry.sourceControl || (! key.startsWith("mod.") && ! key.startsWith("voice.amp.")
                                        && key != "performance.pitch.bend.range"));

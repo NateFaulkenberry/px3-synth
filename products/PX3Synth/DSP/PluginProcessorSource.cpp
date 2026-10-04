@@ -184,11 +184,10 @@ EnvelopeSettings PX3SynthAudioProcessor::currentAmpEnvelopeSettings() const
     // a macro is applied when a parameter is read, and this was the one place
     // that skipped the read.
     //
-    // AMP ENV stays independent of the assignable modulation matrix, as it must
-    // - and it does so without a special case here, because ampAttack/Decay/
-    // Sustain/Release are excluded from lfoAssignableTargets. An LFO or a mod
-    // envelope cannot name them, so the accumulator's only contribution to
-    // these four is the macro one.
+    // Any route to these four - LFO, envelope or macro, through the patch bay
+    // or a macro assignment - arrives here, once per block. A change under a
+    // sounding note does not step the level: AmpEnvelope glides onto the new
+    // shape (see kShapeGlideSeconds).
     const auto through = [this](juce::AudioParameterFloat* parameter)
     {
         return parameter->convertFrom0to1(applyModulationToNormalizedValue(

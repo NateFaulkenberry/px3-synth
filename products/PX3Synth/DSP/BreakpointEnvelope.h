@@ -159,6 +159,20 @@ public:
     const Point& getPoint(int index) const noexcept;
     int getSustainPoint() const noexcept { return sustainPoint; }
 
+    // Same shape, point for point. The processor pushes envelopes every block;
+    // this is how a consumer tells a real change from the same one again.
+    bool sameShapeAs(const BreakpointEnvelope& other) const noexcept
+    {
+        if (pointCount != other.pointCount || sustainPoint != other.sustainPoint || mode != other.mode) { return false; }
+        for (int i = 0; i < pointCount; ++i)
+        {
+            const auto& a = points[static_cast<std::size_t>(i)];
+            const auto& b = other.points[static_cast<std::size_t>(i)];
+            if (a.timeSeconds != b.timeSeconds || a.value != b.value || a.curveToNext != b.curveToNext) { return false; }
+        }
+        return true;
+    }
+
     // Every mutator keeps the invariants: points ordered by time, values in
     // range, sustain index valid. A caller cannot put the envelope into a state
     // the DSP has to defend against, which is why the DSP does not.

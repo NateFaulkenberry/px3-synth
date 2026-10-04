@@ -14,6 +14,8 @@ void AmpEnvelope::prepare(double sampleRate)
     constexpr double outputSmoothingSeconds = 0.0008;
     outputSmoothingCoefficient =
         1.0f - std::exp(-1.0f / static_cast<float>(outputSmoothingSeconds * sampleRateHz));
+    glideLength = juce::jmax(1, static_cast<int>(std::round(kShapeGlideSeconds * sampleRateHz)));
+    glidePosition = glideLength;
 }
 
 void AmpEnvelope::setSettings(const EnvelopeSettings& newSettings)
@@ -29,8 +31,13 @@ void AmpEnvelope::setSettings(const EnvelopeSettings& newSettings)
 
 void AmpEnvelope::setEnvelope(const px3::BreakpointEnvelope& newEnvelope)
 {
+    // The same shape is pushed every block; only a real change rebuilds, and
+    // only a real change may start a glide.
+    if (newEnvelope.sameShapeAs(envelope)) { return; }
+
     envelope = newEnvelope;
     snapshot.rebuild(envelope, sampleRateHz);
+    shapeChanged = true;
 
     // Whether the user has bent the release themselves, which decides if the
     // perceptual reshaping below still applies.
@@ -62,6 +69,8 @@ void AmpEnvelope::noteOn()
     // diving to nothing before the new attack begins - a dive of half the
     // amplitude in 5 ms under a long attack, and audible as a click.
     attackLevelAnchor = juce::jlimit(0.0f, 1.0f, smoothedOutput);
+    shapeChanged = false;
+    glidePosition = glideLength;
 }
 
 void AmpEnvelope::noteOff()
@@ -106,6 +115,9 @@ void AmpEnvelope::reset()
     finished = true;
     heldSeconds = 0.0;
     releasedSeconds = 0.0;
+    shapeChanged = false;
+    glidePosition = glideLength;
+    lastShaped = 0.0f;
 }
 
 float AmpEnvelope::shapeReleaseProgress(float progress)
@@ -197,6 +209,31 @@ float AmpEnvelope::getNextSample()
     {
         shaped = 0.0f;
     }
+
+    // A new shape under a sounding note: the jump it makes is faded out over
+    // kShapeGlideSeconds (see there). The jump is an OFFSET on the new curve,
+    // so the curve's own motion - an attack rising - carries on underneath;
+    // gliding from the old level instead would stall it at every change.
+    // Not once a release has finished, where the level has to be silence.
+    if (shapeChanged)
+    {
+        shapeChanged = false;
+        // lastShaped already includes any glide in progress, so a change on
+        // top of a change stays continuous.
+        const auto jump = lastShaped - shaped;
+        if ((noteHeld || inRelease) && std::abs(jump) > 1.0e-5f)
+        {
+            glideFrom = jump;
+            glidePosition = 0;
+        }
+    }
+    if (glidePosition < glideLength && ! finished)
+    {
+        const auto t = static_cast<float>(++glidePosition) / static_cast<float>(glideLength);
+        const auto s = t * t * (3.0f - 2.0f * t);
+        shaped += glideFrom * (1.0f - s);
+    }
+    lastShaped = shaped;
 
     smoothedOutput += (shaped - smoothedOutput) * outputSmoothingCoefficient;
     return smoothedOutput;

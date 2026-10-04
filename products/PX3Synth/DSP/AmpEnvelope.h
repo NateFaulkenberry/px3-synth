@@ -79,6 +79,20 @@ private:
     float smoothedOutput { 0.0f };
     float outputSmoothingCoefficient { 1.0f };
 
+    // A change of shape under a sounding note - a knob turned, or modulation
+    // of the ADSR, which arrives every block - moves the curve's value at the
+    // current position, and the level would step. The level instead glides
+    // from where it was onto the new curve over kShapeGlideSeconds with a
+    // smoothstep, so it lands with zero slope (gain envelopes stay C1). Long
+    // enough to span a host block, so block-rate modulation reads as a
+    // continuous curve rather than a staircase.
+    static constexpr double kShapeGlideSeconds = 0.010;
+    bool shapeChanged { false };
+    float lastShaped { 0.0f };
+    float glideFrom { 0.0f };   // the jump being faded out
+    int glidePosition { 0 };
+    int glideLength { 0 };
+
     float lastRawValue { 0.0f };
     float releaseProgress { 0.0f };
 
