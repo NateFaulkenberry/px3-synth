@@ -322,6 +322,11 @@ int runNativeUiBenchmark()
                 editor->getWidth(), editor->getHeight(), createMs, firstPaintMs);
     const auto memWithEditor = memoryNow();
 
+    // PX3_BENCH_UI_LIFECYCLE_ONLY=1 skips straight to the open/close cycles,
+    // so their memory is not read on top of the stress phases' allocations.
+    const auto lifecycleOnly = juce::SystemStats::getEnvironmentVariable("PX3_BENCH_UI_LIFECYCLE_ONLY", {}).isNotEmpty();
+    if (! lifecycleOnly)
+    {
     // --- CPU: idle and active --------------------------------------------------
     auto measureCpu = [&](const char* label, bool chord, bool automate)
     {
@@ -568,6 +573,8 @@ int runNativeUiBenchmark()
         }
     }
 
+    }
+
     // --- Editor lifecycle --------------------------------------------------------------
     {
         closeEditor();
@@ -575,7 +582,7 @@ int runNativeUiBenchmark()
         const auto memClosed = memoryNow();
         std::vector<double> creates, paints, closes;
         Memory afterFirst {};
-        constexpr int cycles = 15;
+        const auto cycles = juce::jmax(2, juce::SystemStats::getEnvironmentVariable("PX3_BENCH_UI_CYCLES", "15").getIntValue());
         for (int cycle = 0; cycle < cycles; ++cycle)
         {
             double c = 0.0, f = 0.0;
@@ -586,6 +593,11 @@ int runNativeUiBenchmark()
             closes.push_back(closeEditor());
             pumpFor(100.0);
             if (cycle == 0) { afterFirst = memoryNow(); }
+            if (lifecycleOnly)
+            {
+                const auto m = memoryNow();
+                std::printf("    cycle %2d: footprint %.1f MB, heap %.1f MB\n", cycle + 1, m.footprintMB, m.heapMB);
+            }
         }
         const auto memAfter = memoryNow();
         printStats("lifecycle: editor construction", creates);
