@@ -82,11 +82,7 @@ PX3 v0.8.0 rebuilds the Synth's interface into a single, dense modular window an
 * An envelope modulating an oscillator's macros no longer makes them wobble every block.
 * Smooth-random LFOs no longer jump once a cycle.
 * Modulating delay WOBBLE / MOD DEPTH or the compressor's INPUT, OUTPUT and MIX no longer clicks.
-* Shimmer and DRIVE sound the same at 44.1, 48 and 96 kHz.
+* Shimmer, DRIVE and every reverb network (including CLOUD, which was 1.7 dB louder at 96 kHz) sound the same at 44.1, 48 and 96 kHz.
 * MENU › Settings works in every build, and the version number is shown in the menu.
 * The master output can no longer exceed full scale: the reverb's level matching used to act after the output ceiling.
 * Host automation of the AMP envelope's enable is no longer overridden while the editor is open.
-
-## Known Limits
-
-* The CLOUD reverb's level is about 1.7 dB higher at 96 kHz than at 48 kHz.

@@ -319,8 +319,53 @@ void testReleaseQa()
         const auto at96 = tail(96000.0);
         const auto dry48 = tail(48000.0, 0.0f);
         const auto dry96 = tail(96000.0, 0.0f);
-        std::printf("  ..    CLOUD without shimmer, 96 vs 48 kHz: tail %.2f dB, brightness x%.2f\n",
-                    20.0 * std::log10(dry96.level1s / juce::jmax(1.0e-12, dry48.level1s)), dry96.centroid / juce::jmax(1.0, dry48.centroid));
+        // CLOUD itself, no shimmer: the network's per-sample damping and mod
+        // depth were tuned at 48 kHz and read literally elsewhere, so the tail
+        // sat 1.66 dB hotter at 96 kHz.
+        const auto cloudDb = 20.0 * std::log10(dry96.level1s / juce::jmax(1.0e-12, dry48.level1s));
+        const auto cloudDecay48 = 20.0 * std::log10(dry48.level3s / juce::jmax(1.0e-12, dry48.level1s));
+        const auto cloudDecay96 = 20.0 * std::log10(dry96.level3s / juce::jmax(1.0e-12, dry96.level1s));
+        // ROOM and HALL share the network: the same at 44.1 and 96 kHz.
+        {
+            const auto level = [](int mode, double sr)
+            {
+                ::Reverb reverb;
+                reverb.prepare(sr);
+                ReverbSettings settings;
+                settings.amount = 1.0f;
+                settings.algorithmIndex = mode;
+                settings.decay = 0.8f;
+                const auto total = static_cast<int>(sr * 1.5);
+                double e = 0.0; int n = 0;
+                for (int start = 0; start < total; start += 256)
+                {
+                    reverb.updateForBlock(settings, 256);
+                    for (int i = start; i < juce::jmin(total, start + 256); ++i)
+                    {
+                        const auto t = static_cast<double>(i) / sr;
+                        const auto in = t < 0.1 ? static_cast<float>(0.5 * std::sin(juce::MathConstants<double>::twoPi * 440.0 * t)) : 0.0f;
+                        float l = 0.0f, r = 0.0f;
+                        reverb.processSampleFrame(in, in, l, r);
+                        if (t >= 0.5) { e += 0.25 * (l + r) * (l + r); ++n; }
+                    }
+                }
+                return std::sqrt(e / juce::jmax(1, n));
+            };
+            auto worst = 0.0; juce::String where;
+            for (const auto mode : { 0, 2 })
+            {
+                const auto ref = level(mode, 48000.0);
+                for (const auto sr : { 44100.0, 96000.0 })
+                {
+                    const auto db = 20.0 * std::log10(level(mode, sr) / juce::jmax(1.0e-12, ref));
+                    if (std::abs(db) > std::abs(worst)) { worst = db; where = (mode == 0 ? "ROOM" : "HALL") + juce::String(" at ") + fmt(sr / 1000.0, 1) + " kHz"; }
+                }
+            }
+            check("Qa_RoomAndHallLevelsAreTheSameAtEverySampleRate", std::abs(worst) < 0.75,
+                  "worst tail difference against 48 kHz: " + fmt(worst, 2) + " dB (" + where + ")");
+        }
+        check("Qa_CloudLevelIsTheSameAtEverySampleRate", std::abs(cloudDb) < 0.5 && std::abs(cloudDecay96 - cloudDecay48) < 0.5,
+              "96 vs 48 kHz: tail " + fmt(cloudDb, 2) + " dB; decay 1 s -> 3 s " + fmt(cloudDecay48, 2) + " / " + fmt(cloudDecay96, 2) + " dB");
         const auto levelDb = 20.0 * std::log10(juce::jmax(1.0e-12, at96.level1s) / juce::jmax(1.0e-12, at48.level1s));
         const auto brightness = at96.centroid / juce::jmax(1.0, at48.centroid);
         check("Qa_ShimmerIsTheSameAtEverySampleRate",

@@ -218,6 +218,25 @@ void ::Reverb::processFdn8(std::array<DelayLine, 8>& delays,
     const auto sr = static_cast<float>(sampleRateHz);
     const auto modStep = juce::MathConstants<float>::twoPi * config.modHz / juce::jmax(1.0f, sr);
 
+    // The damping coefficient and the modulation depth were tuned at 48 kHz,
+    // in per-sample terms. Taken literally at 96 kHz the line lowpass sat an
+    // octave higher and the tail held 1.7 dB more energy (CLOUD, measured);
+    // the depth covered half the time. Both are mapped to the same cutoff and
+    // the same time at any rate. 48 kHz itself is untouched.
+    const auto rateRatio = 48000.0f / juce::jmax(1.0f, sr);
+    auto damping = config.dampingCoeff;
+    auto modSamples = config.modSamples;
+    if (rateRatio != 1.0f)
+    {
+        if (damping != dampingCacheIn)
+        {
+            dampingCacheIn = damping;
+            dampingCacheOut = 1.0f - std::pow(1.0f - juce::jlimit(0.0f, 1.0f, damping), rateRatio);
+        }
+        damping = dampingCacheOut;
+        modSamples /= rateRatio;
+    }
+
     std::array<float, 8> taps { };
     for (int i = 0; i < 8; ++i)
     {
@@ -233,12 +252,12 @@ void ::Reverb::processFdn8(std::array<DelayLine, 8>& delays,
         }
 
         const auto delaySamples = kFdnDelaySeconds[idx] * sr * config.sizeScale;
-        const auto mod = std::sin(line.modPhase) * config.modSamples;
+        const auto mod = std::sin(line.modPhase) * modSamples;
         auto v = readLine(line, juce::jmax(4.0f, delaySamples + mod));
 
         // One-pole lowpass per line: highs must die faster than lows, which is
         // what makes a space sound like air rather than metal.
-        line.lpState += config.dampingCoeff * (v - line.lpState);
+        line.lpState += damping * (v - line.lpState);
         v = line.lpState;
 
         readCache[idx] = v;
@@ -394,6 +413,7 @@ void ::Reverb::reset()
 
     allocateFdn(cloudLines, cloudAllpassLines, kCloudScaleMax);
     cloudReadCache.fill(0.0f);
+    dampingCacheIn = -1.0f;
 
     const auto rateScale = sampleRateHz / 48000.0;
     shimmerWindow = juce::jmax(64, static_cast<int>(std::round(2048.0 * rateScale)));

@@ -149,6 +149,10 @@ private:
     ReverbSettings currentSettings;
 
     double sampleRateHz { 44100.0 };
+    // The damping coefficient mapped to the current rate (see processFdn8),
+    // recomputed only when the setting moves; prepare() invalidates it.
+    float dampingCacheIn { -1.0f };
+    float dampingCacheOut { 0.0f };
     int blockSampleCount { 0 };
     // Latches so the clear on bypass runs once, after the fade reaches zero.
     bool bypassCleared { false };
