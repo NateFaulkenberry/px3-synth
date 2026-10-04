@@ -2,6 +2,91 @@
 
 namespace px3::ui
 {
+namespace
+{
+// One box pass of `radius` pixels along rows (horizontal) or columns, edges
+// clamped. Running sums, so the cost does not depend on the radius; raw
+// strides, so a column pass costs about what a row pass does.
+void boxPass(const juce::Image::BitmapData& src, juce::Image::BitmapData& dst, int radius, bool horizontal)
+{
+    const auto length = horizontal ? src.width : src.height;
+    const auto lines = horizontal ? src.height : src.width;
+    const auto srcStep = horizontal ? src.pixelStride : src.lineStride;
+    const auto dstStep = horizontal ? dst.pixelStride : dst.lineStride;
+    const auto srcLine = horizontal ? src.lineStride : src.pixelStride;
+    const auto dstLine = horizontal ? dst.lineStride : dst.pixelStride;
+    const auto window = static_cast<juce::uint32>(2 * radius + 1);
+    const auto half = window / 2;
+
+    for (int line = 0; line < lines; ++line)
+    {
+        const auto* in = src.data + line * srcLine;
+        auto* out = dst.data + line * dstLine;
+        const auto pixel = [&](int i) { return in + juce::jlimit(0, length - 1, i) * srcStep; };
+
+        juce::uint32 sum[4] {};
+        for (int i = -radius; i <= radius; ++i)
+        {
+            const auto* p = pixel(i);
+            for (int c = 0; c < 4; ++c) { sum[c] += p[c]; }
+        }
+        for (int i = 0; i < length; ++i, out += dstStep)
+        {
+            for (int c = 0; c < 4; ++c) { out[c] = static_cast<juce::uint8>((sum[c] + half) / window); }
+            const auto* entering = pixel(i + radius + 1);
+            const auto* leaving = pixel(i - radius);
+            for (int c = 0; c < 4; ++c) { sum[c] += static_cast<juce::uint32>(entering[c]) - leaving[c]; }
+        }
+    }
+}
+} // namespace
+
+juce::Image blurredCopy(const juce::Image& source, float radius)
+{
+    // Every pass reads one image and writes the other, so a pass never reads
+    // a pixel it has already blurred.
+    auto a = source.convertedToFormat(juce::Image::ARGB).createCopy();
+    if (radius <= 0.0f || a.getWidth() < 2 || a.getHeight() < 2) { return a; }
+    juce::Image b(juce::Image::ARGB, a.getWidth(), a.getHeight(), false);
+
+    // Two box passes per axis: a smooth, nearly Gaussian falloff. A box of
+    // half-width r has variance r^2/3; two of half-width k match it at
+    // k = r / sqrt(2) - the spread the stack of offset draws had.
+    const auto k = juce::jmax(1, juce::roundToInt(radius / std::sqrt(2.0f)));
+    for (int pass = 0; pass < 2; ++pass)
+    {
+        for (const auto horizontal : { true, false })
+        {
+            {
+                const juce::Image::BitmapData src(a, juce::Image::BitmapData::readOnly);
+                juce::Image::BitmapData dst(b, juce::Image::BitmapData::writeOnly);
+                boxPass(src, dst, k, horizontal);
+            }
+            std::swap(a, b);
+        }
+    }
+    return a;
+}
+
+juce::Image prepareBackdrop(const juce::Image& snapshot, juce::Rectangle<int> fullBounds, float blurRadius)
+{
+    if (! snapshot.isValid()) { return {}; }
+    // Blurred once, on the pixels. This used to be 48 fractional-offset draws
+    // of the whole window, each one resampled, on every paint: on a Retina
+    // display that measured over 2 s before a sheet appeared.
+    //
+    // The radius is in component pixels; a snapshot taken at 2x needs twice as
+    // many of its own. And it is blurred at half resolution: a blur has no
+    // detail left to lose, and it quarters the work.
+    const auto pixelScale = fullBounds.getWidth() > 0
+                                ? static_cast<float>(snapshot.getWidth()) / static_cast<float>(fullBounds.getWidth())
+                                : 1.0f;
+    const auto reduced = blurRadius * pixelScale >= 2.0f && snapshot.getWidth() > 2 && snapshot.getHeight() > 2;
+    const auto source = reduced ? snapshot.rescaled(snapshot.getWidth() / 2, snapshot.getHeight() / 2,
+                                                    juce::Graphics::mediumResamplingQuality)
+                                : snapshot;
+    return blurredCopy(source, blurRadius * pixelScale * (reduced ? 0.5f : 1.0f));
+}
 
 void paintModalBackdrop(juce::Graphics& g,
                         juce::Rectangle<int> fullBounds,
@@ -40,51 +125,10 @@ void paintModalBackdrop(juce::Graphics& g,
         g.saveState();
         g.reduceClipRegion(outsidePanelMask);
 
-        // The base pass, at full opacity, BEFORE the blur.
-        //
-        // Without it the offset copies are the only coverage, and an offset
-        // copy does not reach the edge it is shifted away from - so a strip
-        // around the window gets fewer copies than the middle, and a corner,
-        // being short on two axes at once, gets fewest of all. Measured on a
-        // uniform source: 0.1765 at the corner against 0.1961 in the middle,
-        // which shows up as a darker box in the corner of the dimmed backdrop.
-        // The base pass guarantees every pixel the same starting coverage.
-        g.setOpacity(1.0f);
-        g.drawImageAt(snapshot, 0, 0, false);
-
-        // A box blur as a stack of offset draws. Cheaper than a real
-        // convolution and, under the dim below, indistinguishable from one.
-        //
-        // Seven taps per axis whatever the radius, so changing the radius
-        // changes how far the smear reaches and not how dense it is - dropping
-        // taps with the radius would thin the blur as well as tightening it.
-        // The offsets are fractional, so a transform is used rather than
-        // drawImageAt, which only takes whole pixels.
-        constexpr int kTapsPerSide = 3;
-        const auto step = blurRadius / static_cast<float>(kTapsPerSide);
-
-        if (step > 0.0f)
-        {
-            g.setOpacity(0.075f);
-            for (int iy = -kTapsPerSide; iy <= kTapsPerSide; ++iy)
-            {
-                for (int ix = -kTapsPerSide; ix <= kTapsPerSide; ++ix)
-                {
-                    if (ix == 0 && iy == 0)
-                    {
-                        continue;
-                    }
-
-                    g.drawImageTransformed(snapshot,
-                                           juce::AffineTransform::translation(
-                                               static_cast<float>(ix) * step,
-                                               static_cast<float>(iy) * step),
-                                           false);
-                }
-            }
-        }
-
-        g.setOpacity(1.0f);
+        // A radius of 0 means the image is already a prepared backdrop.
+        const auto image = blurRadius > 0.0f ? prepareBackdrop(snapshot, fullBounds, blurRadius) : snapshot;
+        g.setImageResamplingQuality(juce::Graphics::mediumResamplingQuality);
+        g.drawImage(image, fullBounds.toFloat().withPosition(0.0f, 0.0f));
         g.restoreState();
     }
 

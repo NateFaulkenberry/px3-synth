@@ -167,7 +167,11 @@ void PX3SynthAudioProcessorEditor::requestPresetSwitch(const PresetManager::Pres
 
 void PX3SynthAudioProcessorEditor::openPresetBrowser()
 {
-    presetBrowserBackdropSnapshot = createComponentSnapshot(getLocalBounds());
+    // Blurred once here: the editor paints the backdrop on every repaint while
+    // the sheet is open.
+    presetBrowserBackdropSnapshot = px3::ui::prepareBackdrop(createComponentSnapshot(getLocalBounds()), getLocalBounds(),
+                                                             uiConfig != nullptr ? uiConfig->getFloat("busInserts.backdropBlur", 4.5f)
+                                                                                 : 4.5f);
     presetBrowserVisible = true;
     presetBrowserDragging = false;
     // Every opening starts centred; a drag only lasts while it is open.

@@ -23,6 +23,12 @@ namespace px3::ui
 // `blurRadius` is how far the treatment spreads, in pixels at 1x. The default
 // is 4.5: three quarters of the 6 this started at, which is a visibly softer
 // touch on the UI behind a sheet while still reading as out of focus.
+// The blurred image paintModalBackdrop draws, for a caller that paints the
+// backdrop often and wants to blur only once: pass the result back with a
+// blurRadius of 0. It may be at a lower resolution than the snapshot; it is
+// always drawn stretched to fullBounds.
+juce::Image prepareBackdrop(const juce::Image& snapshot, juce::Rectangle<int> fullBounds, float blurRadius);
+
 void paintModalBackdrop(juce::Graphics& g,
                         juce::Rectangle<int> fullBounds,
                         juce::Rectangle<float> panelBounds,
@@ -30,6 +36,10 @@ void paintModalBackdrop(juce::Graphics& g,
                         float panelCornerRadius,
                         juce::Colour dimColour = juce::Colour::fromRGBA(0, 0, 0, 180),
                         float blurRadius = 4.5f);
+
+// `source` blurred by about `radius` pixels (two box passes per axis, edges
+// clamped). Premultiplied ARGB in and out; a radius of 0 is a plain copy.
+juce::Image blurredCopy(const juce::Image& source, float radius);
 
 // Blocks every mouse event from reaching the UI behind a sheet, while still
 // letting the owner see clicks - which is what click-outside-to-close needs.

@@ -835,6 +835,22 @@ void testReleaseQa()
             const auto first = name();
 
             edit(432.0f);
+            // Opening the question has to feel instant. The backdrop was 48
+            // resampled full-window draws: over 2 s into a Retina (2x)
+            // context. A coarse guard at the scale of that bug, not a benchmark.
+            {
+                const auto t0 = juce::Time::getMillisecondCounterHiRes();
+                const auto snap = editor->createComponentSnapshot(editor->getLocalBounds());
+                juce::Image out(juce::Image::ARGB, snap.getWidth() * 2, snap.getHeight() * 2, true);
+                {
+                    juce::Graphics g(out);
+                    g.addTransform(juce::AffineTransform::scale(2.0f));
+                    px3::ui::paintModalBackdrop(g, editor->getLocalBounds(), {}, snap, 0.0f);
+                }
+                const auto ms = juce::Time::getMillisecondCounterHiRes() - t0;
+                check("Qa_ASheetBackdropOpensQuickly", ms < 400.0,
+                      "snapshot and blurred backdrop into a 2x context: " + juce::String(ms, 1) + " ms");
+            }
             next();
             if (! prompt.isAsking()) { wrong.add("did not ask with edits"); }
             if (name() != first + "*") { wrong.add("switched before the answer: " + name()); }
