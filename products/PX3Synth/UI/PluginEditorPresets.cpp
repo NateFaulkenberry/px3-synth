@@ -361,10 +361,11 @@ void PX3SynthAudioProcessorEditor::showPresetMenu()
     menu.addSeparator();
     // INIT is a state, not a file: there is nothing to favourite or export.
     const auto hasPresetFile = hasCurrentPreset && ! currentPreset.isInit;
+    // Says what clicking it will do: on a favourite it removes it.
     menu.addItem(MenuItemId::favorite,
-                 "Add to Favorites",
+                 hasPresetFile && currentPreset.isFavorite ? "Remove from Favorites" : "Add to Favorites",
                  hasPresetFile,
-                 hasPresetFile && currentPreset.isFavorite);
+                 false);
     menu.addSeparator();
     menu.addItem(MenuItemId::import, "Import");
     menu.addItem(MenuItemId::exportPreset, "Export", hasPresetFile);
@@ -379,12 +380,14 @@ void PX3SynthAudioProcessorEditor::showPresetMenu()
 #if PX3_DEBUG_PANEL
     menu.addSeparator();
     menu.addItem(MenuItemId::debug, "Debug");
+#endif
 
     // Disabled, so it reads as information rather than as something to click.
-    // This is where the version lives now that the logo panel does not show it.
+    // This is where the version lives now that the logo panel does not show it
+    // - in every build: it sat inside the debug-only block, so a release build
+    // showed no version anywhere.
     menu.addSeparator();
     menu.addItem(MenuItemId::versionInfo, "P(X3) Synth v" + px3::version::string(), false, false);
-#endif
 
     if (topMenuBar == nullptr)
     {
@@ -447,13 +450,16 @@ void PX3SynthAudioProcessorEditor::showPresetMenu()
                                case MenuItemId::exportPreset:
                                    exportCurrentPreset();
                                    break;
-#if PX3_DEBUG_PANEL
                                case MenuItemId::settings:
                                    // The same toggle the gear uses, so opening
                                    // SETTINGS from here closes it from here too
-                                   // and returns to whatever you were on.
+                                   // and returns to whatever you were on. Not
+                                   // debug-only: inside that block the item was
+                                   // in the menu of every build and did nothing
+                                   // in a release one.
                                    toggleSettingsView();
                                    break;
+#if PX3_DEBUG_PANEL
                                case MenuItemId::debug:
                                    toggleDebugWindow();
                                    break;

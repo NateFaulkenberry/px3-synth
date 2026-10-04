@@ -652,6 +652,9 @@ void BreakpointEnvelopeEditor::paint(juce::Graphics& g)
 
 void BreakpointEnvelopeEditor::mouseMove(const juce::MouseEvent& event)
 {
+    // A bypassed envelope's curve is shown, not edited: it only recoloured,
+    // and its points could still be grabbed and dragged.
+    if (! envelopeEnabled) { setMouseCursor(juce::MouseCursor::NormalCursor); return; }
     const auto hit = grabAt(event.position);
     if (hit.target != hovered.target || hit.index != hovered.index)
     {
@@ -673,6 +676,7 @@ void BreakpointEnvelopeEditor::mouseExit(const juce::MouseEvent&)
 
 void BreakpointEnvelopeEditor::mouseDown(const juce::MouseEvent& event)
 {
+    if (! envelopeEnabled) { dragging = {}; return; }
     grabKeyboardFocus();
 
     dragging = grabAt(event.position);
@@ -753,6 +757,7 @@ void BreakpointEnvelopeEditor::mouseUp(const juce::MouseEvent&)
 
 void BreakpointEnvelopeEditor::mouseDoubleClick(const juce::MouseEvent& event)
 {
+    if (! envelopeEnabled) { return; }
     const auto hit = grabAt(event.position);
 
     if (hit.target == Target::point)
@@ -796,6 +801,7 @@ void BreakpointEnvelopeEditor::mouseDoubleClick(const juce::MouseEvent& event)
 
 bool BreakpointEnvelopeEditor::keyPressed(const juce::KeyPress& key)
 {
+    if (! envelopeEnabled) { return false; }
     if (selectedPoint < 0) { return false; }
 
     if (key == juce::KeyPress::deleteKey || key == juce::KeyPress::backspaceKey)

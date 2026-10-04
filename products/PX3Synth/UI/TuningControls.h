@@ -91,5 +91,16 @@ struct TuningControls
         {
             component->setEnabled(enabled);
         }
+        // SLOP too (unused on the sub, where these are never shown). Left out of
+        // components() for layout reasons, it was the one knob still live on a
+        // bypassed oscillator.
+        for (auto* component : { static_cast<juce::Component*>(&slopKnob), static_cast<juce::Component*>(&slopLabel),
+                                 static_cast<juce::Component*>(&slopValue) })
+        {
+            component->setEnabled(enabled);
+        }
+        slopKnob.setInterceptsMouseClicks(enabled, enabled);
+        slopKnob.getProperties().set("knobBypassed", ! enabled);
+        slopKnob.getProperties().set("psychedelicBypassGray", ! enabled);
     }
 };

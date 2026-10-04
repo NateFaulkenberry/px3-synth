@@ -461,20 +461,21 @@ void PX3SynthAudioProcessorEditor::refreshGranularModeUI()
     const auto modeIndex = audioProcessor.getGranularModeParam().getIndex();
     px3::ui::syncComboItemIndex(granularModeBox, modeIndex);
 
-    if (modeIndex == lastGranularModeIndex)
+    // The captions are the granular MODE's only on the Granular algorithm;
+    // every other algorithm's knobs are TIME / FEEDBACK / SYNC. Keyed on both,
+    // since keyed on the mode alone an algorithm change never re-ran this and
+    // a tape delay could keep reading SIZE / DIFFUSE / RATE.
+    const auto granular = audioProcessor.getDelayAlgorithmParam().getIndex() == 0;
+    const auto captionKey = granular ? juce::jlimit(0, 3, modeIndex) : -1;
+    if (captionKey == lastGranularModeIndex)
     {
         return;
     }
 
-    lastGranularModeIndex = modeIndex;
+    lastGranularModeIndex = captionKey;
 
-    switch (juce::jlimit(0, 3, modeIndex))
+    switch (captionKey)
     {
-        case 0: // CLASSIC
-            delayTimeLabel.setText("TIME", juce::dontSendNotification);
-            delayFeedbackLabel.setText("FEEDBACK", juce::dontSendNotification);
-            granularSyncLabel.setText("SYNC", juce::dontSendNotification);
-            break;
         case 1: // CLOUD
             delayTimeLabel.setText("SIZE", juce::dontSendNotification);
             delayFeedbackLabel.setText("DIFFUSE", juce::dontSendNotification);
@@ -490,12 +491,16 @@ void PX3SynthAudioProcessorEditor::refreshGranularModeUI()
             delayFeedbackLabel.setText("SWING/FB", juce::dontSendNotification);
             granularSyncLabel.setText("RATE", juce::dontSendNotification);
             break;
-        default:
+        default: // CLASSIC granular, and every other algorithm
+            delayTimeLabel.setText("TIME", juce::dontSendNotification);
+            delayFeedbackLabel.setText("FEEDBACK", juce::dontSendNotification);
+            granularSyncLabel.setText("SYNC", juce::dontSendNotification);
             break;
     }
 
-    delayFeedbackLabel.setTooltip("FEEDBACK");
-    delayFeedbackKnob.setTooltip("FEEDBACK");
+    // Tooltips say what the caption says.
+    delayFeedbackLabel.setTooltip(delayFeedbackLabel.getText());
+    delayFeedbackKnob.setTooltip(delayFeedbackLabel.getText());
     delayTimeLabel.setTooltip(delayTimeLabel.getText());
     delayTimeKnob.setTooltip(delayTimeLabel.getText());
 }
@@ -668,6 +673,13 @@ void PX3SynthAudioProcessorEditor::timerCallback()
     if (isPanelVisible(kSectionFilter))
     {
         refreshFilterUI();
+    }
+    // SETTINGS follows its parameters while it is showing: the Analog Engine
+    // profile was only read when the page opened, so a preset load or host
+    // automation left it showing the old one.
+    if (settingsPanel != nullptr && settingsPanel->isVisible())
+    {
+        settingsPanel->refreshFromParameters();
     }
     refreshTopMenuSelectionFromProcessor();
 

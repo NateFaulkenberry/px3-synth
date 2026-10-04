@@ -3,6 +3,12 @@
 #include "UILayoutEditing.h"
 #include "ModRouting.h"
 #include "SubOscComponent.h"
+#include "PianoKeyboard.h"
+#include "SettingsPanel.h"
+#include "AmpEnvelopeComponent.h"
+#include "EnvelopeComponent.h"
+#include "LfoComponent.h"
+#include "OscillatorComponent.h"
 #include "ModalBackdrop.h"
 #include "FltPanel.h"
 #include "BusInsertOverlay.h"
@@ -560,6 +566,115 @@ void testDenseLayout()
               "corner outside " + out.getPixelAt(49, 49).toDisplayString(true) + ", edge outside "
                   + out.getPixelAt(49, 100).toDisplayString(true) + ", corner inside "
                   + out.getPixelAt(50, 50).toDisplayString(true));
+    }
+
+    // ---- release QA: a bypassed card has no live controls --------------------------
+    // The audit found ENV cards with MODE, LOOP, SYNC, KEY and the curve still
+    // live when bypassed, and SLOP on a bypassed oscillator. Every oscillator,
+    // the sub, every LFO and every ENV card switched off: nothing on them may
+    // still respond but the power button (and the MOD jack, a patch point).
+    {
+        editor->debugSelectSection(0);
+        const char* switches[] { "voice.osc1.enabled", "voice.osc2.enabled", "voice.osc3.enabled", "voice.sub.enabled",
+                                 "mod.lfo1.enabled", "mod.lfo2.enabled", "mod.lfo3.enabled",
+                                 "mod.env1.enabled", "mod.env2.enabled", "mod.env3.enabled" };
+        std::vector<std::pair<juce::RangedAudioParameter*, float>> restore;
+        for (const auto* id : switches)
+        {
+            if (auto* p = findParameter(processor, id)) { restore.push_back({ p, p->getValue() }); p->setValueNotifyingHost(0.0f); }
+        }
+        juce::MessageManager::getInstance()->runDispatchLoopUntil(20);
+        editor->debugTimerTick();
+        editor->debugTimerTick();
+        juce::StringArray live;
+        walkAll(*editor, [&](juce::Component& card)
+        {
+            const auto isCard = dynamic_cast<OscillatorComponent*>(&card) != nullptr || dynamic_cast<SubOscComponent*>(&card) != nullptr
+                                || dynamic_cast<LfoComponent*>(&card) != nullptr
+                                || (dynamic_cast<EnvelopeComponent*>(&card) != nullptr
+                                    && dynamic_cast<AmpEnvelopeComponent*>(card.getParentComponent()) == nullptr);
+            if (! isCard || ! shownIn(card, *editor)) { return; }
+            walkAll(card, [&](juce::Component& c)
+            {
+                if (&c == &card || ! shownIn(c, *editor) || ! c.isEnabled()) { return; }
+                const auto control = dynamic_cast<juce::Slider*>(&c) != nullptr || dynamic_cast<juce::ComboBox*>(&c) != nullptr
+                                     || dynamic_cast<juce::Button*>(&c) != nullptr;
+                const juce::String type(typeid(c).name());
+                if (! control || dynamic_cast<px3::ui::BypassButton*>(&c) != nullptr || type.containsIgnoreCase("Socket")
+                    || type.containsIgnoreCase("Jack"))
+                {
+                    return;
+                }
+                bool clicks = true, childClicks = true;
+                c.getInterceptsMouseClicks(clicks, childClicks);
+                if (! clicks && dynamic_cast<juce::Slider*>(&c) != nullptr) { return; }
+                live.add(juce::String(typeid(card).name()).fromLastOccurrenceOf("N", false, false).retainCharacters("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")
+                         + ":" + (c.getName().isNotEmpty() ? c.getName() : c.getComponentID().isNotEmpty() ? c.getComponentID() : type));
+            });
+        });
+        for (auto& [p, value] : restore) { p->setValueNotifyingHost(value); }
+        editor->debugTimerTick();
+        check("Dense_ABypassedCardHasNoLiveControls", live.isEmpty(),
+              live.isEmpty() ? juce::String("no live controls on 10 bypassed cards") : "live: " + live.joinIntoString(", "));
+    }
+
+    // ---- release QA: delay captions follow the algorithm -----------------------------
+    // They followed the granular MODE alone, and only when it changed: a Tape
+    // delay with the granular mode on CLOUD read SIZE / DIFFUSE / RATE.
+    {
+        editor->debugSelectSectionPersisted(4);   // as a click would: the tick follows the stored view
+        setChoice(processor, "fx.delay.granular.mode", 1);   // CLOUD
+        setChoice(processor, "fx.delay.algorithm", 0);       // Granular
+        editor->debugTimerTick();
+        auto granularShowsDiffuse = false;
+        walkAll(*editor, [&](juce::Component& c) { if (auto* l = dynamic_cast<juce::Label*>(&c); l != nullptr && l->getText() == "DIFFUSE") { granularShowsDiffuse = true; } });
+        setChoice(processor, "fx.delay.algorithm", 1);       // Tape
+        editor->debugTimerTick();
+        auto tapeShowsDiffuse = false;
+        walkAll(*editor, [&](juce::Component& c) { if (auto* l = dynamic_cast<juce::Label*>(&c); l != nullptr && l->getText() == "DIFFUSE") { tapeShowsDiffuse = true; } });
+        setChoice(processor, "fx.delay.granular.mode", 0);
+        setChoice(processor, "fx.delay.algorithm", 0);
+        editor->debugTimerTick();
+        editor->debugSelectSectionPersisted(0);
+        check("Dense_DelayCaptionsFollowTheAlgorithm", granularShowsDiffuse && ! tapeShowsDiffuse,
+              juce::String("Granular CLOUD shows DIFFUSE: ") + (granularShowsDiffuse ? "yes" : "no")
+                  + "; Tape shows it: " + (tapeShowsDiffuse ? "YES" : "no"));
+    }
+
+    // ---- release QA: an open macro depth panel stays on top through a resize -------
+    {
+        editor->debugOpenMacroDepthPanel(0);
+        editor->setSize(editor->getWidth() + 10, editor->getHeight());
+        editor->relayoutScene();
+        int panelIndex = -1, keysIndex = -1;
+        for (int i = 0; i < editor->getNumChildComponents(); ++i)
+        {
+            auto* child = editor->getChildComponent(i);
+            if (child == editor->debugMacroDepthPanel()) { panelIndex = i; }
+            if (dynamic_cast<PianoKeyboard*>(child) != nullptr) { keysIndex = i; }
+        }
+        editor->debugCloseMacroDepthPanel();
+        editor->setSize(editor->getWidth() - 10, editor->getHeight());
+        check("Dense_MacroDepthPanelStaysAboveTheKeyboardThroughAResize", panelIndex > keysIndex && keysIndex >= 0,
+              "panel at child " + juce::String(panelIndex) + ", keyboard at " + juce::String(keysIndex));
+    }
+
+    // ---- release QA: SETTINGS follows its parameters while open ---------------------
+    {
+        editor->debugSelectSectionPersisted(6);
+        editor->debugTimerTick();
+        SettingsPanel* settings = nullptr;
+        walkAll(*editor, [&](juce::Component& c) { if (auto* sp = dynamic_cast<SettingsPanel*>(&c)) { settings = sp; } });
+        auto& profile = processor.getAnalogProfileParam();
+        const auto original = profile.getIndex();
+        const auto next = (original + 1) % profile.choices.size();
+        profile.setValueNotifyingHost(profile.convertTo0to1(static_cast<float>(next)));
+        for (int i = 0; i < 12; ++i) { editor->debugTimerTick(); juce::MessageManager::getInstance()->runDispatchLoopUntil(30); }
+        const auto shown = settings != nullptr ? settings->debugAnalogProfileBox().getSelectedId() - 1 : -1;
+        profile.setValueNotifyingHost(profile.convertTo0to1(static_cast<float>(original)));
+        editor->debugSelectSectionPersisted(0);
+        check("Dense_SettingsFollowItsParametersWhileOpen", shown == next,
+              "parameter moved to " + juce::String(next) + ", SETTINGS shows " + juce::String(shown));
     }
 
     // ---- an enabled sub osc draws its wave in its own colour -------------------

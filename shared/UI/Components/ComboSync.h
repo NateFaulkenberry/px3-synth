@@ -42,6 +42,16 @@ inline void syncComboItemId(juce::ComboBox& box, int itemId)
     if (shown != itemId) { box.setSelectedId(itemId, juce::dontSendNotification); }
 }
 
+// For a box whose own change handler writes its parameter: call it there,
+// once the choice is applied. The choice is then the synced value at once, so
+// a host or preset moving the parameter straight after the click is shown on
+// the next sync instead of being held off as if the click were still pending.
+inline void markComboSynced(juce::ComboBox& box)
+{
+    box.getProperties().set("px3SyncedItemId", box.getSelectedId());
+    box.getProperties().remove("px3PendingSinceMs");
+}
+
 inline void syncComboItemIndex(juce::ComboBox& box, int index)
 {
     syncComboItemId(box, box.getItemId(index));

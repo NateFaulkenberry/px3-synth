@@ -557,6 +557,19 @@ void PX3SynthAudioProcessorEditor::applySceneLayout()
     pianoKeyboard.toFront(false);
     performanceControls.toFront(false);
     sparkOverlay.toFront(false);
+    // Raising the keyboard row put it above an open macro depth panel and its
+    // scrim, which are not always-on-top: after a resize the keys and wheels
+    // took the clicks that should have dismissed the panel.
+    raiseMacroDepthLayers();
+}
+
+void PX3SynthAudioProcessorEditor::raiseMacroDepthLayers()
+{
+    if (macroDepthPanel != nullptr && macroDepthPanel->isVisible())
+    {
+        macroDepthScrim.toFront(false);
+        macroDepthPanel->toFront(false);
+    }
 }
 
 #if PX3_UI_DESIGNER

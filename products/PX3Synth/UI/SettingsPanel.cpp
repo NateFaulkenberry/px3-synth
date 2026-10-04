@@ -1,6 +1,7 @@
 #include "SettingsPanel.h"
 
 #include "AnalogEngine.h"
+#include "ComboSync.h"
 #include "UIConfig.h"
 #include "PX3Version.h"
 
@@ -59,6 +60,7 @@ SettingsPanel::SettingsPanel(PX3SynthAudioProcessor& processorIn, juce::Colour p
         parameter.setValueNotifyingHost(
             parameter.convertTo0to1(static_cast<float>(chosen)));
         parameter.endChangeGesture();
+        px3::ui::markComboSynced(analogProfileBox);
     };
     addAndMakeVisible(analogProfileBox);
 
@@ -238,7 +240,10 @@ void SettingsPanel::refreshFromParameters()
                                     juce::dontSendNotification);
 
     const auto profile = processor.getAnalogProfileParam().getIndex();
-    analogProfileBox.setSelectedId(profile + 1, juce::dontSendNotification);
+    // Through the shared sync: this runs on the refresh tick while SETTINGS
+    // is showing, and a plain setSelectedId there would undo a menu choice
+    // before its notification lands (ComboSync.h).
+    px3::ui::syncComboItemId(analogProfileBox, profile + 1);
 }
 
 void SettingsPanel::refreshUpdateSection()

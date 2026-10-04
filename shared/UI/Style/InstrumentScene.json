@@ -188,7 +188,7 @@
     {"id": "filter.routing", "parent": "primary.filter", "kind": "panel", "label": "ROUTING", "layout": "flex", "height": 24, "shrink": 0, "gap": 8, "padding": [2, 6, 2, 6], "justify": "center", "order": 1},
     {"id": "filter.routing.mode", "parent": "filter.routing", "kind": "button", "label": "SERIES/PARALLEL", "width": 96, "margin": 0, "order": 0},
     {"id": "filter.routing.label", "parent": "filter.routing", "kind": "label", "label": "BALANCE LABEL", "width": 116, "order": 1},
-    {"id": "filter.routing.balance", "parent": "filter.routing", "kind": "control", "label": "BALANCE", "binding": "voice.filter.balance", "width": 180, "order": 2},
+    {"id": "filter.routing.balance", "parent": "filter.routing", "kind": "control", "label": "BALANCE", "binding": "voice.filters.routing.balance", "width": 180, "order": 2},
     {"id": "filter.cards", "parent": "primary.filter", "kind": "container", "label": "FILTER CARDS", "layout": "flex", "gap": 1, "grow": 1, "order": 0},
     {"id": "filter.1", "parent": "filter.cards", "kind": "card", "label": "FILTER 1", "grow": 1, "margin": 0, "order": 0},
     {"id": "filter.2", "parent": "filter.cards", "kind": "card", "label": "FILTER 2", "grow": 1, "margin": 0, "order": 1},

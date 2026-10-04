@@ -193,6 +193,22 @@ void EnvelopeComponent::refreshFromParameters()
         }
         applyAdsrKnobState();
 
+        // The rest of the card follows the same switch. MODE, LOOP, SYNC and
+        // KEY stayed live on a bypassed envelope.
+        modeBox.setEnabled(currentEnabled);
+        for (auto* control : { static_cast<juce::Component*>(loopButton), static_cast<juce::Component*>(syncButton),
+                               static_cast<juce::Component*>(keyLabel), static_cast<juce::Component*>(keyValueLabel) })
+        {
+            if (control != nullptr) { control->setEnabled(currentEnabled); }
+        }
+        if (keyKnob != nullptr)
+        {
+            keyKnob->setEnabled(currentEnabled);
+            keyKnob->setInterceptsMouseClicks(currentEnabled, currentEnabled);
+            keyKnob->getProperties().set("knobBypassed", ! currentEnabled);
+            keyKnob->getProperties().set("psychedelicBypassGray", ! currentEnabled);
+        }
+
         repaint();
     }
     refreshAdsrReadouts();

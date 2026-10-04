@@ -189,6 +189,7 @@ void PX3SynthAudioProcessorEditor::resized()
         macroDepthScrim.setBounds(getLocalBounds());
         layoutMacroDepthPanel();
         macroAssignOverlay->toFront(false);
+        raiseMacroDepthLayers();
     }
     // Panels whose insides read UIConfig re-lay themselves out even when the
     // scene left their bounds unchanged (a config reload changes their rows).

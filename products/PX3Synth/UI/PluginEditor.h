@@ -577,6 +577,9 @@ private:
     void applyTopMenuSectionSelection(int sectionIndex, bool pushToProcessor);
     // Open SETTINGS, or close it and go back to where you were.
     void toggleSettingsView();
+    // Keeps an open macro depth panel and its scrim above the layers a layout
+    // pass raises (keyboard, wheels, sparks).
+    void raiseMacroDepthLayers();
     // Pushes the animation preference down to the things that animate. One
     // call site for the flag, so the three of them cannot drift apart.
     void applyAnimationPreference();
@@ -1182,7 +1185,7 @@ private:
     std::vector<std::unique_ptr<juce::ButtonParameterAttachment>> buttonAttachments;
 
     std::array<KnobBinding, 32> knobBindings {};
-    int lastGranularModeIndex { -1 };
+    int lastGranularModeIndex { -2 };   // -1 is "not Granular"; -2 is "never set"
     int lastLfoAssignmentIndex { -1 };
     int lastEnvelopeAssignmentIndex { -1 };
 

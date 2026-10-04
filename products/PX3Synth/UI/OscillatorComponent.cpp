@@ -728,12 +728,14 @@ void OscillatorComponent::applyEnabledUi()
 
     const std::array<juce::Slider*, 3> sliders { &macroA, &macroB, &macroC };
     const std::array<juce::Label*, 3> labels { &macroALabel, &macroBLabel, &macroCLabel };
+    const std::array<juce::Label*, 3> readouts { &macroAValueLabel, &macroBValueLabel, &macroCValueLabel };
 
     for (int i = 0; i < 3; ++i)
     {
         const auto visible = sliders[static_cast<std::size_t>(i)]->isVisible();
         sliders[static_cast<std::size_t>(i)]->setEnabled(currentEnabled && visible);
         labels[static_cast<std::size_t>(i)]->setEnabled(currentEnabled && visible);
+        readouts[static_cast<std::size_t>(i)]->setEnabled(currentEnabled && visible);
     }
 
     repaint();
