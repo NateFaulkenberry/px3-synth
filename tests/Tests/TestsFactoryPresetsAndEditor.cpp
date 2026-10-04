@@ -1070,7 +1070,6 @@ void testEditorLifecycle()
                                  "borderGlowOpacity": 0.14, "centreLineOpacity": 0.15 },
                       "handle": { "radius": 17, "glowOuterRadius": 29, "glowInnerRadius": 23,
                                   "rimColor": "#2A2B2C" },
-                      "sparkles": { "maxPerBurst": 9, "rate": 0.33 },
                       "divider": { "orientation": "vertical", "color": "#313233",
                                    "opacity": 0.66, "inset": 21, "width": 3 },
                       "pitch": { "accent": "#2D2E2F" },
@@ -1137,8 +1136,6 @@ void testEditorLifecycle()
                 expectMoved("handle.glowOuterRadius", w.handleGlowOuterRadius != wDefault.handleGlowOuterRadius);
                 expectMoved("handle.glowInnerRadius", w.handleGlowInnerRadius != wDefault.handleGlowInnerRadius);
                 expectMoved("handle.rimColor", w.handleRimColour != wDefault.handleRimColour);
-                expectMoved("sparkles.maxPerBurst", w.sparkleMaxPerBurst != wDefault.sparkleMaxPerBurst);
-                expectMoved("sparkles.rate", w.sparkleRate != wDefault.sparkleRate);
                 expectMoved("pitch.accent", w.pitchAccent != wDefault.pitchAccent);
                 expectMoved("mod.accent", w.modAccent != wDefault.modAccent);
 
@@ -1419,11 +1416,10 @@ void testEditorLifecycle()
             }
 
             check("SparkOverlay_InvalidatesNothingWithNoParticles",
-                  keys != nullptr && wheels != nullptr
+                  keys != nullptr
                       && keys->sparkBounds().isEmpty()
-                      && wheels->sparkleBounds().isEmpty()
-                      && ! keys->hasSparks() && ! wheels->hasSparkles(),
-                  "no particles alive, so both boxes are empty and the overlay "
+                      && ! keys->hasSparks(),
+                  "no particles alive, so the box is empty and the overlay "
                   "leaves the panel beneath it untouched");
 
             check("SparkOverlay_TakesNoMouseEvents",

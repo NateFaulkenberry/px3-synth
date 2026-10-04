@@ -327,7 +327,6 @@ void PX3SynthAudioProcessorEditor::applyAnimationPreference()
     const auto enabled = px3::GlobalSettings::getInstance().areAnimationsEnabled();
 
     pianoKeyboard.setAnimationsEnabled(enabled);
-    performanceControls.setAnimationsEnabled(enabled);
 
     // The logo settles rather than freezing mid-shake: the timer stops
     // advancing its phase, so without this it would hold whatever offset it

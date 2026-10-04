@@ -1090,17 +1090,14 @@ private:
     // settings page, the macro depth panel and the sheets close with.
     px3::ui::SheetCloseButton presetBrowserCloseGlyph;
     juce::Label presetBrowserDetails;
-    // Draws BOTH the keyboard's sparks and the wheels' sparkles, above both
-    // components. They overlap each other, so z-order alone can never let both
-    // spill over the other - whichever went in front hid the other's particles
-    // behind its own opaque face. One transparent layer above the pair is the
-    // only arrangement where neither loses, and it takes no mouse events at
-    // all, so nothing underneath it changes behaviour.
+    // Draws the keyboard's sparks above the keyboard row, so they can rise over
+    // the panel above it. It takes no mouse events at all, so nothing
+    // underneath it changes behaviour.
     class SparkOverlay final : public juce::Component
     {
     public:
-        SparkOverlay(PianoKeyboard& keysIn, PerformanceControls& wheelsIn)
-            : keys(keysIn), wheels(wheelsIn)
+        explicit SparkOverlay(PianoKeyboard& keysIn)
+            : keys(keysIn)
         {
             setName("SparkOverlay");
             setInterceptsMouseClicks(false, false);
@@ -1109,7 +1106,6 @@ private:
         void paint(juce::Graphics& g) override
         {
             keys.paintSparksInto(g, keys.getPosition() - getPosition());
-            wheels.paintSparklesInto(g, wheels.getPosition() - getPosition());
         }
 
         // Repaints only where particles actually are.
@@ -1122,8 +1118,7 @@ private:
         // fraction.
         void repaintParticles()
         {
-            const auto region = boundsOf(keys.sparkBounds(), keys.getPosition())
-                                    .getUnion(boundsOf(wheels.sparkleBounds(), wheels.getPosition()));
+            const auto region = boundsOf(keys.sparkBounds(), keys.getPosition());
 
             // The union with LAST frame's region, not just this one.
             //
@@ -1164,11 +1159,10 @@ private:
 
 
         PianoKeyboard& keys;
-        PerformanceControls& wheels;
         juce::Rectangle<int> previousParticleRegion;
     };
 
-    SparkOverlay sparkOverlay { pianoKeyboard, performanceControls };
+    SparkOverlay sparkOverlay { pianoKeyboard };
 
     ModalDismissScrim presetBrowserScrim { *this };
     std::unique_ptr<px3::ui::BusEqOverlay> busEqOverlay;
@@ -1198,10 +1192,6 @@ private:
     // Host RSS when this editor opened, so the overlay can show the change
     // rather than only the absolute figure. See processResidentMemoryMb.
     double debugHostRssBaselineMb { 0.0 };
-    // How far the wheels' sparkles may spill past their strip, on the three
-    // sides that are not the shared headroom. Clamped to the window in
-    // resized().
-    int performanceSparkSpill { 112 };
     // The keyboard's own headroom above the keys, read from the config and
     // clamped to the panel area in resized().
     int keyboardSparkHeadroom { 112 };

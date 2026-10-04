@@ -77,7 +77,6 @@
       "blackKeyColor": "#E15F4B"
     },
     "sparkHeadroom": 112,
-    "wheelSparkSpill": 112,
     "warning": {
       "align": "center",
       "fontSize": 15,
@@ -163,10 +162,6 @@
       "glowOuterRadius": 15,
       "glowInnerRadius": 11,
       "rimColor": "#FFFFFF"
-    },
-    "sparkles": {
-      "maxPerBurst": 4,
-      "rate": 1
     },
     "divider": {
       "orientation": "vertical",

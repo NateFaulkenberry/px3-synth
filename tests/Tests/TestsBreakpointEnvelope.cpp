@@ -966,7 +966,6 @@ void testBreakpointEnvelope()
             editor->setSize(1400, 900);
 
             auto& keyboard = editor->debugPianoKeyboard();
-            auto& wheels = editor->debugPerformanceControls();
 
             // Long enough for the editor's timer to tick at least once.
             const auto settle = []
@@ -974,25 +973,22 @@ void testBreakpointEnvelope()
 
             settle();
             keyboard.debugSpawnSparks(60);
-            wheels.debugSpawnSparkles();
-            const auto sparkedWhileOn = keyboard.hasSparks() && wheels.hasSparkles();
+            const auto sparkedWhileOn = keyboard.hasSparks();
 
             px3::GlobalSettings::getInstance().setAnimationsEnabled(false);
             settle();
 
-            const auto clearedByTheSetting = ! keyboard.hasSparks() && ! wheels.hasSparkles();
+            const auto clearedByTheSetting = ! keyboard.hasSparks();
 
             keyboard.debugSpawnSparks(60);
-            wheels.debugSpawnSparkles();
-            const auto sparkedWhileOff = keyboard.hasSparks() || wheels.hasSparkles();
+            const auto sparkedWhileOff = keyboard.hasSparks();
 
             px3::GlobalSettings::getInstance().setAnimationsEnabled(true);
             settle();
             keyboard.debugSpawnSparks(60);
-            wheels.debugSpawnSparkles();
-            const auto sparkedAgain = keyboard.hasSparks() && wheels.hasSparkles();
+            const auto sparkedAgain = keyboard.hasSparks();
 
-            check("Settings_TurningAnimationsOffReachesTheKeyboardAndTheWheels",
+            check("Settings_TurningAnimationsOffReachesTheKeyboard",
                   sparkedWhileOn && clearedByTheSetting && ! sparkedWhileOff && sparkedAgain,
                   juce::String(sparkedWhileOn ? "sparks while on" : "no sparks even while on")
                       + ", " + (clearedByTheSetting ? "cleared when turned off"
@@ -1023,23 +1019,6 @@ void testBreakpointEnvelope()
                   juce::String(sparkedWhenOn ? "sparks when on" : "no sparks even when on")
                       + ", " + (clearedWhenTurnedOff ? "cleared on turning off" : "left running")
                       + ", " + (sparkedWhenOff ? "still sparks when off" : "silent when off"));
-
-            PerformanceControls wheels;
-            wheels.setSize(120, 120);
-
-            wheels.debugSpawnSparkles();
-            const auto sparkledWhenOn = wheels.hasSparkles();
-
-            wheels.setAnimationsEnabled(false);
-            const auto sparklesCleared = ! wheels.hasSparkles();
-            wheels.debugSpawnSparkles();
-            const auto sparkledWhenOff = wheels.hasSparkles();
-
-            check("Settings_ThePerformanceWheelsStopSparklingWhenAnimationsAreOff",
-                  sparkledWhenOn && sparklesCleared && ! sparkledWhenOff,
-                  juce::String(sparkledWhenOn ? "sparkles when on" : "none even when on")
-                      + ", " + (sparklesCleared ? "cleared on turning off" : "left running")
-                      + ", " + (sparkledWhenOff ? "still sparkles when off" : "silent when off"));
         }
 
         // ---- the setting itself, and where it is kept ----------------------

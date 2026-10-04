@@ -24,8 +24,7 @@ public:
     std::function<void()> onPitchBendGestureEnded;
     std::function<void(float)> onModWheelChanged;
 
-    // The controls occupy the whole component again, now that the sparkles are
-    // drawn by the overlay above rather than inside here.
+    // The controls occupy the whole component.
     juce::Rectangle<int> controlsArea() const;
     // The strip less the left cheek: where the wheel panels tile.
     juce::Rectangle<int> wheelsArea() const;
@@ -85,12 +84,6 @@ public:
         float handleGlowInnerRadius { 11.0f };
         juce::Colour handleRimColour { juce::Colour::fromRGB(255, 255, 255) };
 
-        // The burst at full bend. Halved from the original 7 per burst: at that
-        // density the wheels were the loudest thing on screen.
-        int sparkleMaxPerBurst { 4 };
-        // Scales how often a burst is emitted, independently of its size.
-        float sparkleRate { 1.0f };
-
         // A hairline between the two wheels.
         //
         // The wheels sit SIDE BY SIDE - 70 x 96 each in the shipping layout -
@@ -117,25 +110,6 @@ public:
     void setStyle(const Style& style);
 
     void paint(juce::Graphics& g) override;
-    // Draws this component's sparkles into another component's context,
-    // translated by `offset`.
-    void paintSparklesInto(juce::Graphics& g, juce::Point<int> offset) const;
-    bool hasSparkles() const noexcept { return ! sparkles.empty(); }
-
-    // Off means no new sparkles and none left running - the same gate the
-    // keyboard has, at the same place: the source, not the draw.
-    void setAnimationsEnabled(bool shouldBeEnabled);
-
-    // For the tests: fire a burst directly, without driving a wheel gesture.
-    void debugSpawnSparkles() { emitSparkles({ 20.0f, 20.0f }, 8.0f, 1.0f); }
-    juce::Rectangle<float> sparkleBounds() const;
-    std::function<void()> onSparklesChanged;
-
-private:
-    bool animationsEnabled { true };
-
-public:
-
     void mouseDown(const juce::MouseEvent& event) override;
     void mouseDrag(const juce::MouseEvent& event) override;
     void mouseUp(const juce::MouseEvent& event) override;
@@ -155,32 +129,8 @@ private:
         juce::Rectangle<float> track;
     };
 
-    // One sparkle. Emitted radially, tinted from a rotating hue, and drawn as a
-    // four-point star rather than a dot so it reads as a spark rather than as
-    // noise.
-    struct Sparkle
-    {
-        juce::Point<float> position;
-        juce::Point<float> velocity;
-        float lifetimeSeconds { 0.0f };
-        float maxLifetimeSeconds { 0.0f };
-        float size { 1.0f };
-        float hue { 0.0f };
-        float rotation { 0.0f };
-        float spin { 0.0f };
-    };
-
     void timerCallback() override;
     void updateFromMousePosition(juce::Point<float> position);
-    // `intensity` is 0 to 1 and drives count, speed, size and lifetime
-    // together - one number, so the whole burst grows with the bend rather than
-    // only part of it changing.
-    // Emitted from the RIM of the handle, not its centre: `centre` and
-    // `radius` describe the wheel's knob, and each sparkle leaves the point on
-    // that circle where it was born, travelling outward along the same radius.
-    void emitSparkles(juce::Point<float> centre, float radius, float intensity);
-    static juce::Path createSparklePath(float size);
-
     juce::Rectangle<float> trackIn(juce::Rectangle<float> panel) const;
     WheelVisual getPitchVisual() const;
     WheelVisual getModVisual() const;
@@ -199,21 +149,7 @@ private:
     float visualModGlow { 0.0f };
     // The values last painted, so the timer repaints only on a visible change.
     float drawnPitch { -2.0f }, drawnMod { -2.0f }, drawnPitchGlow { -2.0f }, drawnModGlow { -2.0f };
-    float previousTargetPitch { 0.0f };
-    float previousTargetMod { 0.0f };
 
     ActiveControl activeControl { ActiveControl::none };
-    std::vector<Sparkle> sparkles;
-    // Advances with every burst so consecutive sparkles are different colours
-    // and the emission reads as a rainbow rather than as one tint at a time.
     Style style;
-    float hueCycle { 0.0f };
-    bool hadSparklesLastFrame { false };
-    // A moved wheel gets a short-lived boost on top of its displacement, so a
-    // fast sweep sparks harder than a slow one at the same position.
-    float pitchKick { 0.0f };
-    float modKick { 0.0f };
-    float pitchEmitAccumulator { 0.0f };
-    float modEmitAccumulator { 0.0f };
-    juce::Random rng;
 };

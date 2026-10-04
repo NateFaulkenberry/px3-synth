@@ -140,7 +140,6 @@ void PX3SynthAudioProcessorEditor::buildKeyboardCallbacks()
     // Each animator asks the overlay to repaint; neither draws its own
     // particles any more.
     pianoKeyboard.onSparksChanged = [this]() { sparkOverlay.repaintParticles(); };
-    performanceControls.onSparklesChanged = [this]() { sparkOverlay.repaintParticles(); };
 
     performanceControls.onPitchBendChanged = [this](float normalized)
     {

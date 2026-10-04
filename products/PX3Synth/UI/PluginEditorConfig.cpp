@@ -546,13 +546,10 @@ void PX3SynthAudioProcessorEditor::applySceneLayout()
     }
 
     // The spark overlay is a decoration over the keyboard row plus the room
-    // the particles need; it takes no clicks.
+    // the keys' sparks rise into; it takes no clicks.
     const auto keyboardRow = rect("keys");
     const auto headroom = juce::jmin(keyboardSparkHeadroom, controlsArea.getHeight());
-    const auto spill = juce::jmax(0, performanceSparkSpill);
-    sparkOverlay.setBounds(keyboardRow.expanded(spill, 0)
-                               .withTop(keyboardRow.getY() - headroom)
-                               .withBottom(keyboardRow.getBottom() + spill)
+    sparkOverlay.setBounds(keyboardRow.withTop(keyboardRow.getY() - headroom)
                                .getIntersection(getLocalBounds()));
     pianoKeyboard.toFront(false);
     performanceControls.toFront(false);
@@ -621,16 +618,9 @@ void PX3SynthAudioProcessorEditor::applyUiConfig()
         // frame, over a lifetime of up to 0.45 s. That integrates to about
         // 102 px of travel, which is why the first value of 46 still clipped.
         keyboardSparkHeadroom = uiConfig != nullptr ? uiConfig->getInt("keyboard.sparkHeadroom", 112) : 112;
-        // The wheels throw the same sparks, so they get the same room - and
-        // more of it, because theirs go out in every direction. resized()
-        // turns this into the four margins, clamped to the window.
         // The instrument and the wheels, both fully styled from config.
         pianoKeyboard.setStyle(PianoKeyboard::Style::fromConfig(uiConfig.get(), "keyboard"));
         performanceControls.setStyle(PerformanceControls::Style::fromConfig(uiConfig.get(), "performance"));
-
-        performanceSparkSpill = uiConfig != nullptr
-                                    ? uiConfig->getInt("keyboard.wheelSparkSpill", keyboardSparkHeadroom)
-                                    : keyboardSparkHeadroom;
         resized();
     }
     {
