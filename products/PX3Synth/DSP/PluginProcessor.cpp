@@ -1069,7 +1069,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
         auto* synthVoice = new SynthVoice();
         synthVoice->setVoiceIndex(voice);
         synthVoice->setAmpEnvelope(initialAmpEnvelope);
-        synthVoice->setAmpEnvelopeEnabled(ampEnvEnabledParam != nullptr ? ampEnvEnabledParam->get() : true);
+        synthVoice->setAmpEnvelopeEnabled(true);   // see the block setup below
         synthVoice->setModEnvelopeSettings(initialModEnvelopeSettings, initialModEnvelopeEnabled);
         synthVoice->setFilterSettings(initialFilter);
         synthVoice->setFilterRouting(initialFilterParallel, initialFilterBalance);
@@ -1470,7 +1470,11 @@ void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
     polyphonyGainHold = 1.0f;
 
     const auto ampEnvelope = currentAmpEnvelopeSettings();
-    const auto ampEnvelopeEnabled = ampEnvEnabledParam != nullptr ? ampEnvEnabledParam->get() : true;
+    // AMP ENV has no off switch in the instrument. voice.amp.enabled stays
+    // registered so saved host state still loads, but it no longer gates the
+    // voice: the editor used to force it back on every tick, so whether a host
+    // or preset could turn it off depended on whether the window was open.
+    constexpr auto ampEnvelopeEnabled = true;
     std::array<EnvelopeSettings, kEnvelopeSourceCount> modEnvelopeSettings;
     std::array<bool, kEnvelopeSourceCount> modEnvelopeEnabled;
     for (int envIndex = 0; envIndex < kEnvelopeSourceCount; ++envIndex)
@@ -1969,7 +1973,11 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
 
 
     const auto ampEnvelope = currentAmpEnvelopeSettings();
-    const auto ampEnvelopeEnabled = ampEnvEnabledParam != nullptr ? ampEnvEnabledParam->get() : true;
+    // AMP ENV has no off switch in the instrument. voice.amp.enabled stays
+    // registered so saved host state still loads, but it no longer gates the
+    // voice: the editor used to force it back on every tick, so whether a host
+    // or preset could turn it off depended on whether the window was open.
+    constexpr auto ampEnvelopeEnabled = true;
     std::array<EnvelopeSettings, kEnvelopeSourceCount> modEnvelopeSettings;
     std::array<bool, kEnvelopeSourceCount> modEnvelopeEnabled;
     for (int envIndex = 0; envIndex < kEnvelopeSourceCount; ++envIndex)

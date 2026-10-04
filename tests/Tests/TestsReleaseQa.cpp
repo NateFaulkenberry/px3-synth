@@ -950,5 +950,26 @@ void testReleaseQa()
               wrong.isEmpty() ? juce::String("both sheets follow a title drag, stay in the window, ignore a face drag")
                               : wrong.joinIntoString("; "));
     }
+
+    // ---- the editor leaves voice.amp.enabled alone --------------------------------
+    // AMP ENV has no switch on screen, and the editor wrote the parameter back
+    // on every tick: host automation of it fought the open window. The voice
+    // now treats AMP ENV as always on, and the editor never writes it.
+    {
+        Processor processor;
+        processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        processor.prepareToPlay(kSampleRate, kBlockSize);
+        std::unique_ptr<juce::AudioProcessorEditor> base(processor.createEditor());
+        auto* editor = dynamic_cast<PX3SynthAudioProcessorEditor*>(base.get());
+        setParam(processor, "voice.amp.enabled", 0.0f);
+        if (editor != nullptr)
+        {
+            editor->setSize(1518, 938);
+            for (int tick = 0; tick < 10; ++tick) { editor->debugTimerTick(); }
+        }
+        const auto after = getParamValue(processor, "voice.amp.enabled");
+        check("Qa_EditorLeavesTheAmpEnableAlone", editor != nullptr && after < 0.5f,
+              "voice.amp.enabled set off by the host reads " + fmt(after, 0) + " after 10 editor ticks");
+    }
 }
 } // namespace px3tests

@@ -9,14 +9,6 @@ AmpPanel::AmpPanel(PX3SynthAudioProcessor& processorIn, juce::Colour panelAccent
 {
     ampEnvelopeComponent = std::make_unique<AmpEnvelopeComponent>(processor, panelAccent);
 
-    if (!processor.getAmpEnvEnabledParam().get())
-    {
-        auto& ampEnabled = processor.getAmpEnvEnabledParam();
-        ampEnabled.beginChangeGesture();
-        ampEnabled.setValueNotifyingHost(1.0f);
-        ampEnabled.endChangeGesture();
-    }
-
     addAndMakeVisible(*ampEnvelopeComponent);
 }
 
@@ -120,13 +112,6 @@ int AmpPanel::getPreferredContentHeight() const
 
 void AmpPanel::refreshFromParameters()
 {
-    if (!processor.getAmpEnvEnabledParam().get())
-    {
-        auto& ampEnabled = processor.getAmpEnvEnabledParam();
-        ampEnabled.beginChangeGesture();
-        ampEnabled.setValueNotifyingHost(1.0f);
-        ampEnabled.endChangeGesture();
-    }
 
     if (ampEnvelopeComponent != nullptr)
     {
