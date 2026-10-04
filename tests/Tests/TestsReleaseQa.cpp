@@ -467,13 +467,99 @@ void testReleaseQa()
         }
         std::printf("  ..    alias below 15 kHz vs fundamental: DRIVE HARD full %.1f dB; saw alone %.1f dB; %s\n",
                     driveAlias, bare, filters.toRawUTF8());
-        // First-order ADAA, no oversampling: clean wherever a note is played,
-        // audible only with a ~5 kHz fundamental at full drive (a known limit,
-        // in the release notes; oversampling it would add latency against the
-        // dry path).
-        check("Qa_DriveAliasingIsInaudibleAtPlayedPitches", worstTypical < -55.0,
-              "worst at 220 Hz-3 kHz input, any drive, SOFT or HARD: " + fmt(worstTypical, 1)
-                  + " dB (5 kHz at full HARD drive: " + fmt(driveAlias, 1) + " dB)");
+        // A band-limited saw at full HARD drive: the realistic worst case (a
+        // sine survey alone hid it - the saw's own upper harmonics alias too).
+        double sawAlias = 0.0;
+        {
+            px3::Distortion drive;
+            drive.prepare(48000.0);
+            px3::DistortionSettings settings;
+            settings.type = 1;
+            settings.drive = 1.0f;
+            settings.tight = 0.0f;
+            settings.tone = 1.0f;
+            settings.mix = 1.0f;
+            std::vector<float> out;
+            for (int i = 0; i < 8192 + 32768; ++i)
+            {
+                if (i % 256 == 0) { drive.updateForBlock(settings); }
+                double v = 0.0;
+                for (int h = 1; h * 440.0 < 22000.0; ++h) { v += std::sin(juce::MathConstants<double>::twoPi * h * 440.0 * i / 48000.0) / h; }
+                float l = 0.0f, r = 0.0f;
+                drive.processSampleFrame(static_cast<float>(0.55 * v), static_cast<float>(0.55 * v), l, r);
+                if (i >= 8192) { out.push_back(l); }
+            }
+            sawAlias = aliasDb(out, 48000.0, 440.0);
+        }
+        // 8x polyphase-IIR oversampling with first-order ADAA inside it.
+        // Before: 5 kHz sine -24 dB, 440 Hz saw -37 dB.
+        check("Qa_DriveAliasingIsBelow60dBEverywhere", worstTypical < -70.0 && driveAlias < -60.0 && sawAlias < -60.0,
+              "sines 220 Hz-3 kHz any drive: " + fmt(worstTypical, 1) + " dB; 5 kHz full HARD: " + fmt(driveAlias, 1)
+                  + " dB; 440 Hz saw full HARD: " + fmt(sawAlias, 1) + " dB");
+
+        // MIX blends two signals with the same phase: at half mix with the
+        // clipper linear (tiny input, no drive) the stage is flat - no comb
+        // from the oversampling filters' delay against the dry signal.
+        {
+            px3::Distortion drive;
+            drive.prepare(48000.0);
+            px3::DistortionSettings settings;
+            settings.type = 1;
+            settings.drive = 0.0f;
+            settings.tight = 0.0f;
+            settings.tone = 1.0f;
+            settings.mix = 0.5f;
+            settings.level = 0.5f;
+            juce::String gains;
+            auto worstDb = 0.0;
+            for (const auto hz : { 200.0, 1000.0, 4000.0, 8000.0, 12000.0 })
+            {
+                double inE = 0.0, outE = 0.0;
+                drive.reset();
+                for (int i = 0; i < 48000; ++i)
+                {
+                    if (i % 256 == 0) { drive.updateForBlock(settings); }
+                    const auto x = static_cast<float>(0.01 * std::sin(juce::MathConstants<double>::twoPi * hz * i / 48000.0));
+                    float l = 0.0f, r = 0.0f;
+                    drive.processSampleFrame(x, x, l, r);
+                    if (i > 24000) { inE += static_cast<double>(x) * x; outE += static_cast<double>(l) * l; }
+                }
+                const auto db = 10.0 * std::log10(outE / inE);
+                gains << fmt(hz, 0) << " Hz " << fmt(db, 2) << " dB, ";
+                if (hz < 10000.0) { worstDb = juce::jmax(worstDb, std::abs(db)); }   // the TONE filter's top is 14 kHz
+            }
+            check("Qa_DriveMixDoesNotComb", worstDb < 0.5, "half MIX, linear: " + gains);
+        }
+
+        // Engaging and bypassing crossfade: no step larger than the signal's own.
+        {
+            px3::Distortion drive;
+            drive.prepare(48000.0);
+            px3::DistortionSettings settings;
+            settings.type = 0;
+            settings.drive = 0.5f;
+            settings.mix = 0.0f;
+            float previous = 0.0f;
+            auto worstStep = 0.0f, steadyStep = 0.0f;
+            for (int i = 0; i < 48000; ++i)
+            {
+                if (i % 256 == 0)
+                {
+                    settings.mix = (i / 12000) % 2 == 1 ? 1.0f : 0.0f;   // on at 12000, off at 24000, on at 36000
+                    drive.updateForBlock(settings);
+                }
+                const auto x = static_cast<float>(0.3 * std::sin(juce::MathConstants<double>::twoPi * 220.0 * i / 48000.0));
+                float l = 0.0f, r = 0.0f;
+                drive.processSampleFrame(x, x, l, r);
+                const auto step = std::abs(l - previous);
+                previous = l;
+                if (i > 100 && i < 11000) { steadyStep = juce::jmax(steadyStep, step); }
+                if (i > 100) { worstStep = juce::jmax(worstStep, step); }
+            }
+            check("Qa_DriveEngagesWithoutAClick", worstStep < steadyStep * 3.0f,
+                  "largest step " + fmt(worstStep, 4) + " against the dry signal's own " + fmt(steadyStep, 4));
+        }
+
         check("Qa_AnalogFiltersAddNoAudibleAliasing", worstFilter < -40.0,
               "worst model at half resonance on a 3.5 kHz saw: " + fmt(worstFilter, 1) + " dB (saw alone " + fmt(bare, 1) + " dB)");
     }
