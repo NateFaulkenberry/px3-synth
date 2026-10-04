@@ -41,6 +41,7 @@ private:
     std::array<float, 2> toneState { { 0.0f, 0.0f } };
     std::array<float, 2> previousInput { { 0.0f, 0.0f } };
     std::array<float, 2> dcX1 { { 0.0f, 0.0f } }, dcY1 { { 0.0f, 0.0f } };
+    float dcPole { 0.9995f };   // ~3.8 Hz at any rate (0.9995 was per sample at 48 kHz)
     float inPower { 0.0f }, outPower { 0.0f };
     bool idle { true };
 };

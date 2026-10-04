@@ -135,6 +135,12 @@ private:
     std::atomic<float> inputMeterDb { -60.0f };
     std::atomic<float> outputMeterDb { -60.0f };
     float meterSmoothed { 0.0f };
+    // INPUT, OUTPUT and MIX, smoothed per sample toward their settings. Applied
+    // raw they stepped at every block when modulated - a click per block.
+    float gainSmoothingCoeff { 0.005f };
+    float inputGainTarget { 1.0f }, outputGainTarget { 1.0f };
+    float inputGainSmoothed { 1.0f }, outputGainSmoothed { 1.0f }, mixSmoothed { 1.0f };
+    bool gainsPrimed { false };
     // Full-wave accumulators, emptied into the atomics once per window.
     double inputRectifiedSum { 0.0 };
     double outputRectifiedSum { 0.0 };

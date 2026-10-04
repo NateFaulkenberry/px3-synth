@@ -196,6 +196,10 @@ private:
     bool isaacRhythmicSwingToggle { false };
     float isaacPanPhase { 0.0f };
     float delayAmountSmoothed { 0.0f };
+    // WOBBLE and MOD DEPTH scale the read position's movement; read raw once
+    // per block, a modulated one stepped it at every block.
+    float delayWobbleSmoothed { 0.275f };
+    float delayModDepthSmoothed { 0.3f };
     float delayTimeControlSmoothed { 0.5f };
     float delayFeedbackControlSmoothed { 0.35f };
     float delayControlSmoothingCoeff { 0.0f };

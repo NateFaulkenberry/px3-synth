@@ -241,6 +241,8 @@ void Delay::updateForBlock(const DelaySettings& settings)
         delayAmountSmoothed = currentSettings.amount;
         delayTimeControlSmoothed = currentSettings.timeControl;
         delayFeedbackControlSmoothed = currentSettings.feedbackControl;
+        delayWobbleSmoothed = currentSettings.wobble;
+        delayModDepthSmoothed = currentSettings.modDepth;
         smoothingPrimed = true;
     }
 
@@ -1018,6 +1020,8 @@ void Delay::processDelayAlgorithmSample(float inL,
     delayAmountSmoothed += coeff * (clamp01(amount) - delayAmountSmoothed);
     delayTimeControlSmoothed += coeff * (clamp01(timeControl) - delayTimeControlSmoothed);
     delayFeedbackControlSmoothed += coeff * (clamp01(feedbackControl) - delayFeedbackControlSmoothed);
+    delayWobbleSmoothed += coeff * (currentSettings.wobble - delayWobbleSmoothed);
+    delayModDepthSmoothed += coeff * (currentSettings.modDepth - delayModDepthSmoothed);
 
     const auto amountSmooth = clamp01(delayAmountSmoothed);
     const auto timeControlSmooth = clamp01(delayTimeControlSmoothed);
@@ -1160,7 +1164,7 @@ void Delay::processDelayAlgorithmSample(float inL,
         // they sound as they did.
         // WOBBLE sets it: 0 is a perfect transport, the default 0.275 is the
         // 0.55 this mode always had, 1 is a badly worn machine.
-        const auto depth = 2.0f * currentSettings.wobble;
+        const auto depth = 2.0f * delayWobbleSmoothed;
         const auto wow = std::sin(tapeWowPhase) * 0.0035f
                        + std::sin(tapeWowPhase * 2.7f + 1.1f) * 0.0011f;
         const auto flutter = std::sin(tapeFlutterPhase) * 0.0009f
@@ -1456,7 +1460,7 @@ void Delay::processDelayAlgorithmSample(float inL,
         // modulation got deepest exactly as it got loudest. 0.0018 is what the
         // old expression gave at the amount the presets ship with.
         // MOD DEPTH: 0 to 6 ms; the default 0.3 is the 1.8 ms this always had.
-        const auto depthSeconds = 0.006f * currentSettings.modDepth;
+        const auto depthSeconds = 0.006f * delayModDepthSmoothed;
         const auto depthSamples = depthSeconds * sr;
         const auto modL = std::sin(delayModPhaseA)
                         + 0.6f * std::sin(delayModPhaseB * 1.31f + 1.2f)

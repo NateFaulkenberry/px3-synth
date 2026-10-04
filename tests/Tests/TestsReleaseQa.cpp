@@ -1,6 +1,7 @@
 #include "TestSupport.h"
 #include "LfoGenerator.h"
 #include "OscillatorUnit.h"
+#include "Reverb.h"
 
 // v0.8.0 release QA: one test per defect found by the DSP and UI audits of
 // everything added since v0.7.6, each written to fail on the defect before it
@@ -198,6 +199,135 @@ void testReleaseQa()
         }
         check("Qa_MidiClockTransportLfoMovesEveryBlock", compared > 0 && held == 0,
               juce::String(held) + " of " + juce::String(compared) + " blocks held still while the clock ran");
+    }
+
+    // ---- delay WOBBLE / MOD DEPTH and the compressor's gains are smooth -----------
+    // All five were read once per block and applied raw per sample, so an LFO
+    // on any of them moved the sound in steps at every block boundary - a
+    // click at each 512 samples. The test: how much bigger the signal's
+    // curvature (second difference) is at block boundaries than elsewhere.
+    {
+        const auto boundaryRatio = [](const juce::String& destination, const std::function<void(Processor&)>& patch)
+        {
+            Processor processor;
+            makePlainPatch(processor);
+            patch(processor);
+            setParam(processor, "mod.lfo1.enabled", 1.0f);
+            setParam(processor, "mod.lfo1.amount", 1.0f);
+            setParam(processor, "mod.lfo1.frequency", 5.0f);
+            setChoice(processor, "mod.lfo1.waveform", 0);   // SINE
+            juce::String error;
+            processor.setGraphRoute(0, { 0, destination, px3::synth::ModulationPolarity::native,
+                                         px3::synth::ModulationCurve::linear }, error);
+            auto& depth = processor.getGraphRouteDepthParam(0);
+            depth.setValueNotifyingHost(depth.convertTo0to1(1.0f));
+            const auto capture = render(processor, 48000, { { 0, true, 45, 0.9f } });
+            double atBoundary = 0.0, elsewhere = 0.0;
+            int nb = 0, ne = 0;
+            for (int i = 4096; i + 1 < static_cast<int>(capture.left.size()); ++i)
+            {
+                const auto curvature = std::abs(static_cast<double>(capture.left[static_cast<std::size_t>(i + 1)])
+                                                - 2.0 * capture.left[static_cast<std::size_t>(i)]
+                                                + capture.left[static_cast<std::size_t>(i - 1)]);
+                if (i % kBlockSize == 0) { atBoundary += curvature; ++nb; } else { elsewhere += curvature; ++ne; }
+            }
+            return (atBoundary / juce::jmax(1, nb)) / juce::jmax(1.0e-12, elsewhere / juce::jmax(1, ne));
+        };
+
+        juce::StringArray stepped;
+        const auto probe = [&](const juce::String& id, const std::function<void(Processor&)>& patch)
+        {
+            const auto ratio = boundaryRatio(id, patch);
+            if (ratio > 1.5) { stepped.add(id + " " + fmt(ratio, 2) + "x"); }
+            return ratio;
+        };
+        const auto delayPatch = [](int algorithm)
+        {
+            return [algorithm](Processor& p)
+            {
+                setChoice(p, "voice.osc1.mode", 1);   // SAW
+                setParam(p, "fx.delay.enabled", 1.0f);
+                setParam(p, "fx.delay.amount", 1.0f);
+                setChoice(p, "fx.delay.algorithm", algorithm);
+                setParam(p, "mix.osc1.send.fx", 1.0f);
+            };
+        };
+        const auto compPatch = [](Processor& p)
+        {
+            setChoice(p, "voice.osc1.mode", 1);
+            setParam(p, "mix.dry.insert.comp.enabled", 1.0f);
+        };
+        const auto r1 = probe("fx.delay.mod.depth", delayPatch(5));   // Modulated
+        const auto r2 = probe("fx.delay.wobble", delayPatch(1));      // Tape
+        const auto r3 = probe("mix.dry.insert.comp.input", compPatch);
+        const auto r4 = probe("mix.dry.insert.comp.output", compPatch);
+        const auto r5 = probe("mix.dry.insert.comp.mix", compPatch);
+        check("Qa_ModulatedDelayAndCompControlsAreSmooth", stepped.isEmpty(),
+              "curvature at block boundaries vs elsewhere: mod depth " + fmt(r1, 2) + "x, wobble " + fmt(r2, 2)
+                  + "x, comp input " + fmt(r3, 2) + "x, output " + fmt(r4, 2) + "x, mix " + fmt(r5, 2) + "x");
+    }
+
+    // ---- shimmer sounds the same at every sample rate ------------------------------
+    // Its grain window (2048 samples), its loop lowpass (0.35) and its DC pole
+    // were fixed per SAMPLE: at 96 kHz the window was half as long, the loop
+    // brighter and its gain higher. Same settings, same burst, 48 and 96 kHz:
+    // the tail's level and brightness must match, and it must still decay.
+    {
+        struct Tail { double level1s; double level3s; double centroid; };
+        const auto tail = [](double sr, float shimmerAmount = 1.0f)
+        {
+            ::Reverb reverb;
+            reverb.prepare(sr);
+            ReverbSettings settings;
+            settings.amount = 1.0f;
+            settings.algorithmIndex = 3;   // CLOUD
+            settings.decay = 1.0f;
+            settings.cloudFeedback = 1.0f;
+            settings.shimmer = shimmerAmount;
+            const auto total = static_cast<int>(sr * 4.0);
+            std::vector<float> out(static_cast<std::size_t>(total));
+            constexpr int block = 256;
+            for (int start = 0; start < total; start += block)
+            {
+                reverb.updateForBlock(settings, block);
+                for (int i = start; i < juce::jmin(total, start + block); ++i)
+                {
+                    const auto t = static_cast<double>(i) / sr;
+                    const auto in = t < 0.1 ? static_cast<float>(0.5 * std::sin(juce::MathConstants<double>::twoPi * 440.0 * t)) : 0.0f;
+                    float l = 0.0f, r = 0.0f;
+                    reverb.processSampleFrame(in, in, l, r);
+                    out[static_cast<std::size_t>(i)] = 0.5f * (l + r);
+                }
+            }
+            const auto rmsAt = [&](double from, double to)
+            {
+                double e = 0.0; int n = 0;
+                for (int i = static_cast<int>(from * sr); i < static_cast<int>(to * sr); ++i) { e += out[static_cast<std::size_t>(i)] * out[static_cast<std::size_t>(i)]; ++n; }
+                return std::sqrt(e / juce::jmax(1, n));
+            };
+            // Brightness: zero crossings per second over the 1 s window - a
+            // centroid proxy that does not care about the sample rate.
+            int crossings = 0;
+            for (int i = static_cast<int>(1.0 * sr) + 1; i < static_cast<int>(2.0 * sr); ++i)
+            {
+                crossings += (out[static_cast<std::size_t>(i - 1)] < 0.0f) != (out[static_cast<std::size_t>(i)] < 0.0f) ? 1 : 0;
+            }
+            return Tail { rmsAt(1.0, 2.0), rmsAt(3.0, 4.0), static_cast<double>(crossings) };
+        };
+        const auto at48 = tail(48000.0);
+        const auto at96 = tail(96000.0);
+        const auto dry48 = tail(48000.0, 0.0f);
+        const auto dry96 = tail(96000.0, 0.0f);
+        std::printf("  ..    CLOUD without shimmer, 96 vs 48 kHz: tail %.2f dB, brightness x%.2f\n",
+                    20.0 * std::log10(dry96.level1s / juce::jmax(1.0e-12, dry48.level1s)), dry96.centroid / juce::jmax(1.0, dry48.centroid));
+        const auto levelDb = 20.0 * std::log10(juce::jmax(1.0e-12, at96.level1s) / juce::jmax(1.0e-12, at48.level1s));
+        const auto brightness = at96.centroid / juce::jmax(1.0, at48.centroid);
+        check("Qa_ShimmerIsTheSameAtEverySampleRate",
+              std::abs(levelDb) < 3.0 && brightness > 0.8 && brightness < 1.25
+                  && at48.level3s < at48.level1s && at96.level3s < at96.level1s,
+              "96 vs 48 kHz: tail " + fmt(levelDb, 2) + " dB, brightness x" + fmt(brightness, 2)
+                  + "; decays " + fmt(20.0 * std::log10(at48.level3s / juce::jmax(1.0e-12, at48.level1s)), 1) + " / "
+                  + fmt(20.0 * std::log10(at96.level3s / juce::jmax(1.0e-12, at96.level1s)), 1) + " dB from 1 s to 3 s");
     }
 }
 } // namespace px3tests

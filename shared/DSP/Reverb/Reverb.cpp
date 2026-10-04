@@ -322,8 +322,10 @@ juce::String (::Reverb::loadImpulseResponse)(const juce::File& file)
 
 void (::Reverb::clearImpulseResponse)()
 {
-    convolution.reset();
+    // Silent at once (the wet is gated on irLoaded); the convolution's own
+    // state is reset by the audio thread before its next block.
     irLoaded.store(false);
+    irResetRequested.store(true);
     irName.clear();
 }
 
@@ -391,9 +393,15 @@ void ::Reverb::reset()
     allocateFdn(cloudLines, cloudAllpassLines, kCloudScaleMax);
     cloudReadCache.fill(0.0f);
 
-    if (shimmerBuffer.size() != static_cast<std::size_t>(kShimmerBufferSize))
+    const auto rateScale = sampleRateHz / 48000.0;
+    shimmerWindow = juce::jmax(64, static_cast<int>(std::round(2048.0 * rateScale)));
+    // 0.35 per sample at 48 kHz is a time constant; the same time constant here.
+    shimmerLowpassCoeff = static_cast<float>(1.0 - std::pow(0.65, 1.0 / rateScale));
+    shimmerDcPole = static_cast<float>(std::pow(0.995, 1.0 / rateScale));
+    const auto shimmerSize = static_cast<std::size_t>(juce::jmax(kShimmerBufferSize, shimmerWindow * 4));
+    if (shimmerBuffer.size() != shimmerSize)
     {
-        shimmerBuffer.assign(static_cast<std::size_t>(kShimmerBufferSize), 0.0f);
+        shimmerBuffer.assign(shimmerSize, 0.0f);
     }
     else
     {
@@ -408,7 +416,7 @@ float ::Reverb::processShimmer(float input) noexcept
 {
     // Window of about 43 ms: long enough to keep the grain rate below pitch,
     // short enough that the shifted tail stays tight to the original.
-    constexpr int window = 2048;
+    const auto window = shimmerWindow;
     const auto size = static_cast<int>(shimmerBuffer.size());
     if (size < window + 8) { return 0.0f; }
     shimmerBuffer[static_cast<std::size_t>(shimmerWrite)] = input;
@@ -701,6 +709,7 @@ void ::Reverb::processCore(float inL,
             if (++irFill >= kIrBlock)
             {
                 irFill = 0;
+                if (irResetRequested.exchange(false, std::memory_order_acq_rel)) { convolution.reset(); }
                 juce::dsp::AudioBlock<float> block(irBlock);
                 convolution.process(juce::dsp::ProcessContextReplacing<float>(block));
             }
@@ -735,8 +744,8 @@ void ::Reverb::processCore(float inL,
             const auto shifted = processShimmer(0.5f * (lateL + lateR));
             // Darken each pass so the climb does not end in fizz, and keep DC
             // (which pitch shifting a slow drift can produce) out of the loop.
-            shimmerLowpass += (shifted - shimmerLowpass) * 0.35f;
-            const auto hp = shimmerLowpass - shimmerDcX1 + 0.995f * shimmerDcY1;
+            shimmerLowpass += (shifted - shimmerLowpass) * shimmerLowpassCoeff;
+            const auto hp = shimmerLowpass - shimmerDcX1 + shimmerDcPole * shimmerDcY1;
             shimmerDcX1 = shimmerLowpass;
             shimmerDcY1 = hp;
             shimmerReturn = std::isfinite(hp) ? hp : 0.0f;

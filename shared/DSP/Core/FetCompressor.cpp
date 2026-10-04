@@ -50,6 +50,7 @@ void FetCompressor::prepare(double sampleRate)
     // Kept only for the gain-reduction readout's anti-zipper, not for
     // ballistics: the needle's 300 ms lives in the GUI's physical model.
     meterCoeff = onePoleCoeff(0.010f, sampleRateHz);
+    gainSmoothingCoeff = onePoleCoeff(0.005f, sampleRateHz);
     vuWindowSamples = juce::jmax(1, juce::roundToInt(sampleRateHz * kVuWindowSeconds));
     vuWindowCount = 0;
     inputRectifiedSum = 0.0;
@@ -90,6 +91,7 @@ void FetCompressor::reset()
     fetPrevBias = { { 0.0f, 0.0f } };
     ratioCreep = 0.0f;
     meterSmoothed = 0.0f;
+    gainsPrimed = false;
     inputRectifiedSum = 0.0;
     outputRectifiedSum = 0.0;
     vuWindowCount = 0;
@@ -106,6 +108,15 @@ void FetCompressor::setSettings(const CompressorSettings& newSettings)
     settings.attack = juce::jlimit(0.0f, 1.0f, settings.attack);
     settings.release = juce::jlimit(0.0f, 1.0f, settings.release);
     settings.mix = juce::jlimit(0.0f, 1.0f, settings.mix);
+    inputGainTarget = juce::Decibels::decibelsToGain(settings.inputDb);
+    outputGainTarget = juce::Decibels::decibelsToGain(settings.outputDb);
+    if (! gainsPrimed)
+    {
+        inputGainSmoothed = inputGainTarget;
+        outputGainSmoothed = outputGainTarget;
+        mixSmoothed = settings.mix;
+        gainsPrimed = true;
+    }
 
     // Both panel controls are reversed on the hardware - fully clockwise is
     // fastest - and the parameter is stored that way, so 1 is fast here.
@@ -259,8 +270,11 @@ void FetCompressor::processSample(float& left, float& right)
     const auto dryL = left;
     const auto dryR = right;
 
-    const auto inputGain = juce::Decibels::decibelsToGain(settings.inputDb);
-    const auto outputGain = juce::Decibels::decibelsToGain(settings.outputDb);
+    inputGainSmoothed += gainSmoothingCoeff * (inputGainTarget - inputGainSmoothed);
+    outputGainSmoothed += gainSmoothingCoeff * (outputGainTarget - outputGainSmoothed);
+    mixSmoothed += gainSmoothingCoeff * (settings.mix - mixSmoothed);
+    const auto inputGain = inputGainSmoothed;
+    const auto outputGain = outputGainSmoothed;
 
     const auto point = ratioPointFor(settings.ratio);
     const auto allButtons = settings.ratio == CompRatio::allButtons;
@@ -389,7 +403,7 @@ void FetCompressor::processSample(float& left, float& right)
     // 0 is the untouched bus, 1 is fully compressed. The dry side is the signal
     // as it arrived, before input gain, so the blend is between "this bus" and
     // "this bus compressed" rather than between two different levels.
-    const auto wet = settings.mix;
+    const auto wet = mixSmoothed;
     const auto dry = 1.0f - wet;
     left = sanitize(dryL * dry + outL * wet);
     right = sanitize(dryR * dry + outR * wet);

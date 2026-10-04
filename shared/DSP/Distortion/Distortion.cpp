@@ -45,6 +45,7 @@ void Distortion::prepare(double sampleRate)
     sampleRateHz = sampleRate > 0.0 ? sampleRate : 48000.0;
     for (auto* s : { &mixSmoothed, &driveSmoothed, &levelSmoothed }) { s->reset(sampleRateHz, 0.02); }
     followCoeff = static_cast<float>(1.0 - std::exp(-1.0 / (0.15 * sampleRateHz)));
+    dcPole = static_cast<float>(std::pow(0.9995, 48000.0 / sampleRateHz));
     reset();
 }
 
@@ -107,7 +108,7 @@ void Distortion::processSampleFrame(float inL, float inR, float& outL, float& ou
         const auto emphasised = in[c] - 0.8f * tightState[c];
         auto y = clip(ch, emphasised * drive);
         // Unmatched diodes leave DC; it never reaches the output.
-        const auto dc = y - dcX1[c] + 0.9995f * dcY1[c];
+        const auto dc = y - dcX1[c] + dcPole * dcY1[c];
         dcX1[c] = y;
         dcY1[c] = dc;
         toneState[c] += (dc - toneState[c]) * toneCoeff;

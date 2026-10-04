@@ -110,7 +110,13 @@ private:
     // SHIMMER: an octave-up delay-line pitch shifter on the CLOUD tail, fed
     // back into the network's input. Two taps half a window apart, each read
     // at twice the write speed and Hann-crossfaded, so their weights sum to 1.
-    static constexpr int kShimmerBufferSize = 8192;
+    static constexpr int kShimmerBufferSize = 8192;   // at 48 kHz; scaled with the rate in prepare
+    // Shimmer's constants, set per sample rate in prepare: tuned at 48 kHz as
+    // per-sample values, they made the shift faster, the loop brighter and its
+    // gain higher at 96 kHz.
+    int shimmerWindow { 2048 };
+    float shimmerLowpassCoeff { 0.35f };
+    float shimmerDcPole { 0.995f };
     std::vector<float> shimmerBuffer;
     int shimmerWrite { 0 };
     float shimmerPhase { 0.0f };
@@ -123,6 +129,11 @@ private:
     juce::AudioBuffer<float> irBlock;   // kIrBlock frames, allocated in prepare
     int irFill { 0 };
     std::atomic<bool> irLoaded { false };
+    // Set by clearImpulseResponse (message thread); the audio thread does the
+    // reset. Convolution::reset() is not safe against a concurrent process(),
+    // and clearing used to call it directly while the audio thread might be
+    // inside one.
+    std::atomic<bool> irResetRequested { false };
     juce::String irName;
 
     std::array<float, 2> inputDcX1 { { 0.0f, 0.0f } };
