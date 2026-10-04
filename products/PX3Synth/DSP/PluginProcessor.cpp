@@ -235,7 +235,10 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
         const auto slot = juce::String(filterIndex + 1);
         const auto idPrefix = "voice.filter" + slot;
         const auto labelPrefix = "Filter " + slot + " ";
-        const auto defaultMode = filterIndex == 0 ? 0 : 6; // LP12 for Filter 1, AllPass for others.
+        // AllPass on both: INIT (the catalog defaults) is a blank slate, and a
+        // filter that already shapes the sound is a choice the patch should
+        // make. Every factory preset sets voice.filter1.type explicitly.
+        const auto defaultMode = static_cast<int>(px3::FilterMode::allPass);
 
         filterEnabledParams[static_cast<std::size_t>(filterIndex)] = parameterCatalog.createBool(
             idPrefix + ".enabled",

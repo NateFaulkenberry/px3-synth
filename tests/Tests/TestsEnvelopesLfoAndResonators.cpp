@@ -732,6 +732,7 @@ void testLfo()
             makePlainPatch(processor);
             setChoice(processor, "voice.osc1.mode", 1);
             setParam(processor, "voice.filter1.enabled", 1.0f);
+            setChoice(processor, "voice.filter1.type", 0);   // LP12: INIT's filters are AllPass
             setParam(processor, "voice.filter1.cutoff", 1200.0f);
             setParam(processor, "mod.lfo1.enabled", lfoEnabled ? 1.0f : 0.0f);
             setParam(processor, "mod.lfo1.frequency", 6.0f);

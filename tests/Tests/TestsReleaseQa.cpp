@@ -1015,5 +1015,18 @@ void testReleaseQa()
               juce::String(layers) + " display layers (3 OSC, SUB, 3 LFO), " + juce::String(translucent)
                   + " translucent, " + juce::String(cachedAncestors) + " inside an image-cached parent");
     }
+
+    // ---- INIT's filters are AllPass ------------------------------------------------
+    {
+        Processor processor;
+        const auto f1 = findParameter(processor, "voice.filter1.type");
+        const auto f2 = findParameter(processor, "voice.filter2.type");
+        const auto allPass = static_cast<float>(px3::FilterMode::allPass);
+        const auto d1 = f1 != nullptr ? f1->convertFrom0to1(f1->getDefaultValue()) : -1.0f;
+        const auto d2 = f2 != nullptr ? f2->convertFrom0to1(f2->getDefaultValue()) : -1.0f;
+        check("Qa_InitFiltersAreAllPass", std::abs(d1 - allPass) < 0.5f && std::abs(d2 - allPass) < 0.5f,
+              "default types: filter 1 " + juce::String(d1, 0) + ", filter 2 " + juce::String(d2, 0)
+                  + " (AllPass is " + juce::String(allPass, 0) + ")");
+    }
 }
 } // namespace px3tests
