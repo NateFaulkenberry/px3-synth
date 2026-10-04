@@ -1106,8 +1106,9 @@ void testReleaseQa()
                 auto& depth = processor.getGraphRouteDepthParam(0);
                 depth.setValueNotifyingHost(depth.convertTo0to1(-0.75f));
             }
-            const auto c = render(processor, kSampleRate, { { 0, true, 60, 0.9f } });
-            return rmsOver(c.left, kSampleRate / 2, kSampleRate / 4);
+            constexpr auto sr = static_cast<int>(kSampleRate);
+            const auto c = render(processor, sr, { { 0, true, 60, 0.9f } });
+            return rmsOver(c.left, sr / 2, sr / 4);
         };
         const auto plain = heldLevel(false);
         const auto lowered = heldLevel(true);
@@ -1133,15 +1134,16 @@ void testReleaseQa()
                 auto& depth = processor.getGraphRouteDepthParam(0);
                 depth.setValueNotifyingHost(depth.convertTo0to1(0.6f));
             }
-            const auto c = render(processor, kSampleRate * 2, { { 0, true, 45, 0.9f } });
+            constexpr auto sr = static_cast<int>(kSampleRate);
+            const auto c = render(processor, sr * 2, { { 0, true, 45, 0.9f } });
             double worst = 0.0, levelLow = 1.0e9, levelHigh = 0.0;
-            for (int i = kSampleRate / 2; i + 2 < static_cast<int>(c.left.size()); ++i)
+            for (int i = sr / 2; i + 2 < static_cast<int>(c.left.size()); ++i)
             {
                 const auto d2 = std::abs(static_cast<double>(c.left[static_cast<std::size_t>(i + 2)])
                                          - 2.0 * c.left[static_cast<std::size_t>(i + 1)] + c.left[static_cast<std::size_t>(i)]);
                 worst = juce::jmax(worst, d2);
             }
-            for (int w = kSampleRate / 2; w + 960 < static_cast<int>(c.left.size()); w += 960)
+            for (int w = sr / 2; w + 960 < static_cast<int>(c.left.size()); w += 960)
             {
                 const auto r = rmsOver(c.left, w, 960);
                 levelLow = juce::jmin(levelLow, r);
