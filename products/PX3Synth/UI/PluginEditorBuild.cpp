@@ -1196,9 +1196,10 @@ void PX3SynthAudioProcessorEditor::buildPresetBar()
 {
     const auto setupPresetButton = [](juce::TextButton& button)
     {
-        button.setColour(juce::TextButton::buttonColourId, juce::Colour::fromRGBA(40, 40, 40, 210));
-        button.setColour(juce::TextButton::textColourOffId, juce::Colour::fromRGB(232, 232, 232));
-        button.setColour(juce::TextButton::buttonOnColourId, juce::Colour::fromRGBA(68, 124, 180, 220));
+        button.setColour(juce::TextButton::buttonColourId, px3::ui::theme::colour::panelTop);
+        button.setColour(juce::TextButton::textColourOffId, px3::ui::theme::colour::textPrimary);
+        button.setColour(juce::TextButton::buttonOnColourId,
+                         PresetBrowserPanelComponent::kAccent.withAlpha(0.35f));
     };
 
     applyTopMenuSectionSelection(audioProcessor.getTopMenuViewIndex(), false);
@@ -1231,12 +1232,18 @@ void PX3SynthAudioProcessorEditor::buildPresetBar()
     presetCategoryBox.setSelectedId(1, juce::dontSendNotification);
 
     presetSearchEditor.setTextToShowWhenEmpty("Search name/category/author/description", juce::Colour::fromRGBA(220, 220, 220, 120));
-    presetSearchEditor.setColour(juce::TextEditor::backgroundColourId, juce::Colour::fromRGBA(24, 24, 24, 210));
-    presetSearchEditor.setColour(juce::TextEditor::textColourId, juce::Colour::fromRGB(235, 235, 235));
+    // Wells, like every display and field on the surface.
+    presetSearchEditor.setColour(juce::TextEditor::backgroundColourId, px3::ui::theme::colour::inset);
+    presetSearchEditor.setColour(juce::TextEditor::outlineColourId, px3::ui::theme::colour::insetEdge);
+    presetSearchEditor.setColour(juce::TextEditor::focusedOutlineColourId,
+                                 PresetBrowserPanelComponent::kAccent.withAlpha(0.6f));
+    presetSearchEditor.setColour(juce::TextEditor::textColourId, px3::ui::theme::colour::textPrimary);
 
     presetListBox.setModel(this);
     presetListBox.setRowHeight(24);
-    presetListBox.setColour(juce::ListBox::backgroundColourId, juce::Colour::fromRGBA(20, 20, 20, 200));
+    presetListBox.setColour(juce::ListBox::backgroundColourId, px3::ui::theme::colour::inset);
+    presetListBox.setColour(juce::ListBox::outlineColourId, px3::ui::theme::colour::insetEdge);
+    presetListBox.setOutlineThickness(1);
 
     presetBrowserLoadButton.setButtonText("LOAD");
     // CANCEL rather than CLOSE: it sits beside LOAD, and the pair reads as the
@@ -1249,7 +1256,9 @@ void PX3SynthAudioProcessorEditor::buildPresetBar()
     presetBrowserDetails.setColour(juce::Label::textColourId, juce::Colour::fromRGB(208, 208, 208));
     presetBrowserDetails.setFont(juce::FontOptions(12.0f));
 
-    presetBrowserPanel.addAndMakeVisible(presetBrowserTitle);
+    // Kept for its bounds (the title band) but not shown: the faceplate
+    // paints the title, as every module's does.
+    presetBrowserPanel.addChildComponent(presetBrowserTitle);
     presetBrowserPanel.addAndMakeVisible(presetScopeBox);
     presetBrowserPanel.addAndMakeVisible(presetCategoryBox);
     presetBrowserPanel.addAndMakeVisible(presetSearchEditor);

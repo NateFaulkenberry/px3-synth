@@ -219,20 +219,30 @@ void PX3SynthAudioProcessorEditor::resized()
     presetBrowserScrim.setBounds(getLocalBounds());
     presetBrowserPanel.setBounds(browserX, browserY, browserWidth, browserHeight);
 
-    auto browserArea = presetBrowserPanel.getLocalBounds().reduced(10);
-    const auto presetTitleArea = browserArea.removeFromTop(24);
+    // The faceplate paints the title; the close glyph sits in its band, centred
+    // below the accent stripe and inset from the right edge as a card's power
+    // button is from the left.
+    namespace th = px3::ui::theme;
+    const auto band = juce::roundToInt(PresetBrowserPanelComponent::kTitleBand);
+    auto browserArea = presetBrowserPanel.getLocalBounds();
+    const auto presetTitleArea = browserArea.removeFromTop(band);
     presetBrowserTitle.setBounds(presetTitleArea);
+    browserArea = browserArea.reduced(8);
 
     {
         px3::ui::SheetCloseButton::Style closeStyle;
-        closeStyle.size = 20;
+        closeStyle.size = static_cast<int>(th::space::powerButton);
         px3::ui::SheetCloseButton::readStyleFrom(uiConfig.get(), "presetBrowser.closeButton",
                                                  closeStyle);
         presetBrowserCloseGlyph.applyStyle(closeStyle);
-        presetBrowserCloseGlyph.setBounds(
-            presetBrowserCloseGlyph.boundsWithin(presetTitleArea));
+        const auto side = closeStyle.size;
+        const auto accent = juce::roundToInt(th::space::accentBar);
+        presetBrowserCloseGlyph.setBounds(presetTitleArea.getRight() - juce::roundToInt(th::space::powerInset) - side
+                                              + closeStyle.offsetX,
+                                          accent + (band - accent - side) / 2 + juce::roundToInt(th::space::powerNudge)
+                                              + closeStyle.offsetY,
+                                          side, side);
     }
-    browserArea.removeFromTop(6);
 
     auto filterRow = browserArea.removeFromTop(26);
     presetScopeBox.setBounds(filterRow.removeFromLeft(120));

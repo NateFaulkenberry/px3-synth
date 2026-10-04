@@ -28,6 +28,7 @@
 #include "KnobLookAndFeel.h"
 #include "ParameterKnob.h"
 #include "PianoKeyboard.h"
+#include "Theme.h"
 #include "NoticeBanner.h"
 #include "PresetManager.h"
 #include "PluginProcessor.h"
@@ -99,17 +100,16 @@ private:
     class PresetBrowserPanelComponent final : public juce::Component
     {
     public:
+        // The same faceplate the EQ / COMP sheets and every module use: square,
+        // an identity stripe and a title band. The old rounded glass panel with
+        // a blue outline was the last overlay in the pre-dense style.
+        static constexpr float kTitleBand = px3::ui::theme::space::minTitleBand;
+        static inline const juce::Colour kAccent { 0xff8abcff };
+
         void paint(juce::Graphics& g) override
         {
-            const auto panel = getLocalBounds().toFloat();
-            g.setColour(juce::Colour::fromRGBA(24, 24, 24, 246));
-            g.fillRoundedRectangle(panel, 10.0f);
-
-            g.setColour(juce::Colour::fromRGBA(255, 255, 255, 18));
-            g.fillRoundedRectangle(panel.withTrimmedBottom(panel.getHeight() * 0.58f), 10.0f);
-
-            g.setColour(juce::Colour::fromRGBA(138, 188, 255, 180));
-            g.drawRoundedRectangle(panel, 10.0f, 1.0f);
+            px3::ui::theme::drawModulePanel(g, getLocalBounds().toFloat(), "P(X3) PRESETS",
+                                            kAccent, true, kTitleBand);
         }
     };
 

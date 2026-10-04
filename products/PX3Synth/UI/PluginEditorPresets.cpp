@@ -515,8 +515,14 @@ void PX3SynthAudioProcessorEditor::paintListBoxItem(int rowNumber,
                                                         int height,
                                                         bool rowIsSelected)
 {
-    g.fillAll(rowIsSelected ? juce::Colour::fromRGBA(76, 120, 184, 170)
-                            : juce::Colour::fromRGBA(0, 0, 0, 0));
+    // Selection in the sheet's accent, with the same left tick a card's
+    // title carries, rather than a solid blue bar.
+    if (rowIsSelected)
+    {
+        g.fillAll(PresetBrowserPanelComponent::kAccent.withAlpha(0.18f));
+        g.setColour(PresetBrowserPanelComponent::kAccent);
+        g.fillRect(0, 0, 2, height);
+    }
 
     if (rowNumber < 0 || rowNumber >= static_cast<int>(presetFiltered.size()))
     {
