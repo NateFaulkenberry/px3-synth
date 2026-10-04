@@ -384,9 +384,10 @@ void ModPanel::setSceneManaged(bool managed)
 {
     sceneManaged = managed;
     // Placed by the scene as compact modules: their interiors go dense too.
-    // Six modules on the always-visible VOICE page: each is cached, so the
-    // 30 Hz tick redraws only what moved (the LFO wave, an envelope playhead).
-    for (int i = 0; i < 6; ++i) { if (auto* card = getCard(i)) { card->setBufferedToImage(managed); } }
+    // Not cached as images: an animated display inside a cached card dirtied
+    // the cache, and re-rendering it through an exclusion clip cost more than
+    // the card. The moving parts are opaque layers instead (AnimatedDisplay),
+    // so a frame repaints only them.
     if (lfoComponent != nullptr) { lfoComponent->setCompactLayout(managed); }
     for (auto& bundle : extraLfos) { if (bundle.component != nullptr) { bundle.component->setCompactLayout(managed); } }
     for (auto& bundle : envelopes) { if (bundle.component != nullptr) { bundle.component->setCompactLayout(managed); } }

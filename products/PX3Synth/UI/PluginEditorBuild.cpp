@@ -1003,10 +1003,10 @@ void PX3SynthAudioProcessorEditor::buildSettingsAndOverlays()
     addAndMakeVisible(*fltPanel);
     addAndMakeVisible(*fxPanel);
     addAndMakeVisible(*mixPanel);
-    for (auto* panel : std::array<juce::Component*, 3> { oscPanel.get(), fltPanel.get(), ampPanel.get() })
-    {
-        panel->setBufferedToImage(true);
-    }
+    // OSC, FILTER and AMP are not cached as images. Their animated displays
+    // dirtied the cache every frame, and re-rendering it through an exclusion
+    // clip cost more than painting the panel (PX3Bench uinative, animations
+    // on: 16.8% -> 14.1% idle). The displays are opaque layers instead.
 
     busEqOverlay = std::make_unique<px3::ui::BusEqOverlay>(audioProcessor);
     busCompOverlay = std::make_unique<px3::ui::BusCompOverlay>(audioProcessor);

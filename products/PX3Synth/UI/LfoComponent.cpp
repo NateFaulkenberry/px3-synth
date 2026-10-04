@@ -63,6 +63,9 @@ LfoComponent::LfoComponent(juce::ToggleButton& enabledButtonIn,
         addAndMakeVisible(enabledButton);
     baseRateValueTextColour = rateValueLabel.findColour(juce::Label::textColourId);
     baseAmountValueTextColour = amountValueLabel.findColour(juce::Label::textColourId);
+    graphView.paintStill = [this](juce::Graphics& g) { paintGraphStill(g); };
+    graphView.paintMoving = [this](juce::Graphics& g) { paintGraphMoving(g); };
+    addAndMakeVisible(graphView);
     addAndMakeVisible(rateKnob);
     addAndMakeVisible(rateLabel);
     addAndMakeVisible(rateValueLabel);
@@ -180,6 +183,7 @@ void LfoComponent::setAccentColour(juce::Colour accentIn)
 {
     accent = accentIn;
     repaint();
+    graphView.invalidateStill();
 }
 
 void LfoComponent::setUIConfig(std::shared_ptr<const UIConfig> configIn)
@@ -270,6 +274,7 @@ void LfoComponent::refreshFromParameters(bool enabled, float rateHz, float amoun
         rateKnob.repaint();
         amountKnob.repaint();
         repaint();
+        graphView.invalidateStill();
     }
 }
 
@@ -286,7 +291,7 @@ void LfoComponent::advanceAnimation(float deltaSeconds)
 
     // Only the wave display moves; the rest of the card (knobs, boxes, title)
     // stays cached.
-    repaint(graphArea().expanded(2));
+    graphView.repaint();
 }
 
 void LfoComponent::resized()
@@ -328,6 +333,7 @@ void LfoComponent::resized()
     if (compactLayout)
     {
         layoutCompact();
+        placeGraphView();
         return;
     }
 
@@ -416,7 +422,15 @@ void LfoComponent::resized()
                                        inner.rowControl(1));
     }
 
-    // Row 3 is the wave graph, drawn by paint().
+    // Row 3 is the wave graph.
+    placeGraphView();
+}
+
+void LfoComponent::placeGraphView()
+{
+    // A pixel past the graph each way, so its 1 px frame is inside the layer.
+    graphView.setBounds(graphBounds().expanded(1.0f).getSmallestIntegerContainer());
+    graphView.invalidateStill();
 }
 
 void LfoComponent::layoutCompact()
@@ -516,9 +530,16 @@ void LfoComponent::setPanelContentBounds(juce::Rectangle<int> panelContent)
 
 void LfoComponent::paint(juce::Graphics& g)
 {
-    // The card and its title live here. ModPanel used to draw the title into
-    // this component's bounds, which is the parent-owns-child's-pixels pattern
-    // this refactor removes everywhere it appears.
+    // The wave display is its own opaque layer (graphView), so a frame of it
+    // never repaints this.
+    paintChrome(g);
+}
+
+// The card and its title. ModPanel used to draw the title into this
+// component's bounds, which is the parent-owns-child's-pixels pattern this
+// refactor removes everywhere it appears.
+void LfoComponent::paintChrome(juce::Graphics& g)
+{
     card.setStyleKey(configPrefix.fromLastOccurrenceOf(".", false, false));
     card.setConfig(uiConfig);
     card.layout(getLocalBounds());
@@ -533,23 +554,29 @@ void LfoComponent::paint(juce::Graphics& g)
     {
         card.drawInactive(g, title);
     }
+}
 
-    const auto effectiveAccent = currentEnabled ? accent : juce::Colour::fromRGBA(150, 150, 150, 180);
-    juce::ignoreUnused(effectiveAccent);
+// The graph is row 3. It used to be found by replaying resized()'s stack of
+// removeFromTop calls against a separately-derived card rectangle.
+juce::Rectangle<float> LfoComponent::graphBounds() const
+{
+    return graphArea().toFloat().reduced(0.0f, compactLayout ? 0.0f : 2.0f);
+}
 
-    // The graph is row 3. It used to be found by replaying resized()'s stack of
-    // removeFromTop calls against a separately-derived card rectangle.
-    const auto graph = graphArea().toFloat().reduced(0.0f, compactLayout ? 0.0f : 2.0f);
-
+void LfoComponent::paintGraphStill(juce::Graphics& g)
+{
+    paintChrome(g);
+    const auto graph = graphBounds();
     if (graph.getWidth() < 40.0f || graph.getHeight() < 20.0f)
     {
         return;
     }
 
+    const auto effectiveAccent = currentEnabled ? accent : juce::Colour::fromRGBA(150, 150, 150, 180);
     g.setColour(juce::Colour::fromRGBA(14, 14, 18, 170));
-    g.fillRoundedRectangle(graph, 0.0f);
+    g.fillRect(graph);
     g.setColour(effectiveAccent.withAlpha(0.32f));
-    g.drawRoundedRectangle(graph, 0.0f, 1.0f);
+    g.drawRect(graph.expanded(0.5f), 1.0f);
 
     const auto left = graph.getX() + 6.0f;
     const auto right = graph.getRight() - 6.0f;
@@ -564,6 +591,22 @@ void LfoComponent::paint(juce::Graphics& g)
         const auto x = left + (right - left) * (static_cast<float>(gx) / 6.0f);
         g.drawLine(x, top, x, bottom, 0.7f);
     }
+}
+
+void LfoComponent::paintGraphMoving(juce::Graphics& g)
+{
+    const auto graph = graphBounds();
+    if (graph.getWidth() < 40.0f || graph.getHeight() < 20.0f)
+    {
+        return;
+    }
+
+    const auto effectiveAccent = currentEnabled ? accent : juce::Colour::fromRGBA(150, 150, 150, 180);
+    const auto left = graph.getX() + 6.0f;
+    const auto right = graph.getRight() - 6.0f;
+    const auto top = graph.getY() + 5.0f;
+    const auto bottom = graph.getBottom() - 5.0f;
+    const auto mid = (top + bottom) * 0.5f;
 
     juce::Path wave;
     const auto width = juce::jmax(1.0f, right - left);
@@ -592,14 +635,14 @@ void LfoComponent::paint(juce::Graphics& g)
     g.setColour(effectiveAccent.withAlpha(currentEnabled ? 0.70f : 0.42f));
     g.strokePath(wave,
                  juce::PathStrokeType(2.6f,
-                                      juce::PathStrokeType::curved,
+                                      juce::PathStrokeType::mitered,
                                       juce::PathStrokeType::rounded));
     const auto waveDetailColour = currentEnabled ? juce::Colour::fromRGB(232, 240, 255)
                                                  : juce::Colour::fromRGB(178, 178, 178);
     g.setColour(waveDetailColour);
     g.strokePath(wave,
                  juce::PathStrokeType(1.2f,
-                                      juce::PathStrokeType::curved,
+                                      juce::PathStrokeType::mitered,
                                       juce::PathStrokeType::rounded));
 }
 

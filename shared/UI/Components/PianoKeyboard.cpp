@@ -222,8 +222,20 @@ void PianoKeyboard::paintSparksInto(juce::Graphics& g, juce::Point<int> offset) 
     g.addTransform(juce::AffineTransform::translation(static_cast<float>(offset.getX()),
                                                       static_cast<float>(offset.getY())));
 
+    // Only the sparks this paint can show. The overlay is painted once per
+    // dirty rectangle it touches - the LFO and wave displays above the keys
+    // are rectangles of their own - and drawing all of up to 450 sparks into
+    // each, clipped, was most of the editor's CPU with a chord held.
+    const auto clip = g.getClipBounds().toFloat();
+
     for (const auto& spark : sparks)
     {
+        const auto reach = 4.0f * (spark.segmentLength + std::abs(spark.zigzagAmplitude)) + spark.width * 1.45f + 2.0f;
+        if (! clip.intersects(juce::Rectangle<float>(spark.position, spark.position).expanded(reach)))
+        {
+            continue;
+        }
+
         const auto lifeDivisor = (spark.maxLifetimeSeconds > 0.0001f) ? spark.maxLifetimeSeconds : 0.0001f;
         auto lifeNorm = spark.lifetimeSeconds / lifeDivisor;
         lifeNorm = (lifeNorm < 0.0f) ? 0.0f : lifeNorm;

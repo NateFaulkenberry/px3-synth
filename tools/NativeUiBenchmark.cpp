@@ -30,6 +30,7 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 #include "PresetManager.h"
+#include "GlobalSettings.h"
 
 #include <algorithm>
 #include <atomic>
@@ -246,6 +247,17 @@ int runNativeUiBenchmark()
     {
         std::printf("  primary display %d x %d logical, scale %.1f\n",
                     display->userArea.getWidth(), display->userArea.getHeight(), display->scale);
+    }
+
+    // PX3_BENCH_UI_ANIMATIONS=on|off measures with that setting, on a scratch
+    // settings file so the user's own settings are neither read nor written.
+    if (const auto animations = juce::SystemStats::getEnvironmentVariable("PX3_BENCH_UI_ANIMATIONS", {}); animations.isNotEmpty())
+    {
+        const auto scratch = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("px3-bench-settings.xml");
+        scratch.deleteFile();
+        px3::GlobalSettings::debugUseSettingsFile(scratch);
+        px3::GlobalSettings::getInstance().setAnimationsEnabled(animations.equalsIgnoreCase("on"));
+        std::printf("  animations %s (scratch settings)\n", animations.equalsIgnoreCase("on") ? "ON" : "OFF");
     }
 
     const auto memStart = memoryNow();

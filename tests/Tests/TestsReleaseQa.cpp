@@ -971,5 +971,38 @@ void testReleaseQa()
         check("Qa_EditorLeavesTheAmpEnableAlone", editor != nullptr && after < 0.5f,
               "voice.amp.enabled set off by the host reads " + fmt(after, 0) + " after 10 editor ticks");
     }
+
+    // ---- animated displays repaint only themselves ---------------------------------
+    // With animations on, the idle editor took 27% of a core and a held chord
+    // saturated the message thread: every wave frame repainted its whole card
+    // through an image cache. The waves are opaque layers now, and nothing
+    // around them is image-cached (PX3Bench uinative is the measurement).
+    {
+        Processor processor;
+        std::unique_ptr<juce::AudioProcessorEditor> base(processor.createEditor());
+        base->setSize(1518, 938);
+        int layers = 0, translucent = 0, cachedAncestors = 0;
+        std::function<void(juce::Component&)> walk = [&](juce::Component& c)
+        {
+            for (auto* child : c.getChildren())
+            {
+                if (child == nullptr) { continue; }
+                if (dynamic_cast<px3::ui::AnimatedDisplay*>(child) != nullptr)
+                {
+                    ++layers;
+                    if (! child->isOpaque()) { ++translucent; }
+                    for (auto* p = child->getParentComponent(); p != nullptr; p = p->getParentComponent())
+                    {
+                        if (p->getCachedComponentImage() != nullptr) { ++cachedAncestors; break; }
+                    }
+                }
+                walk(*child);
+            }
+        };
+        walk(*base);
+        check("Qa_AnimatedDisplaysAreOpaqueUncachedLayers", layers >= 7 && translucent == 0 && cachedAncestors == 0,
+              juce::String(layers) + " display layers (3 OSC, SUB, 3 LFO), " + juce::String(translucent)
+                  + " translucent, " + juce::String(cachedAncestors) + " inside an image-cached parent");
+    }
 }
 } // namespace px3tests

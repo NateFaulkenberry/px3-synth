@@ -76,6 +76,13 @@ function(px3_add_product)
         PRIVATE
             JUCE_WEB_BROWSER=0
             JUCE_USE_CURL=0
+            # Paint each dirty rectangle on its own (JUCE's Metal-layer path).
+            # Without it macOS hands JUCE the BOUNDING BOX of every dirty
+            # rectangle, so a key spark at the bottom and a wave display at
+            # the top repainted the whole window: with animations on, a held
+            # chord pinned the message thread at 99% (now ~40%; PX3Bench
+            # uinative). JUCE documents the trade-off as app-specific.
+            JUCE_COREGRAPHICS_RENDER_WITH_MULTIPLE_PAINT_CALLS=1
             PX3_DEBUG_PANEL=$<IF:$<BOOL:${PX3_DEBUG_PANEL}>,1,0>
             PX3_UI_DESIGNER=$<IF:$<BOOL:${PX3_UI_DESIGNER}>,1,0>)
 

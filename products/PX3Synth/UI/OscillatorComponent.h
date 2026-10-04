@@ -2,6 +2,7 @@
 
 #include <JuceHeader.h>
 
+#include "AnimatedDisplay.h"
 #include "Card.h"
 #include "CardInner.h"
 #include "TuningControls.h"
@@ -33,6 +34,7 @@ public:
                         juce::ComboBox& vowelBoxIn,
                         juce::Label& vowelLabelIn,
                         juce::Colour accentIn);
+    ~OscillatorComponent() override { wavetableGraph.removeComponentListener(&graphFollower); }
 
     void setAccentColour(juce::Colour accentIn);
     void setHardwareFaceplate(bool enabled);
@@ -83,6 +85,19 @@ private:
     bool sceneManaged { false };
     // Row 4: where the wave is drawn and clicks are ignored.
     juce::Rectangle<int> graphRow() const;
+    juce::Rectangle<float> graphBounds() const;
+    void paintChrome(juce::Graphics& g);
+    void paintGraphStill(juce::Graphics& g);
+    void paintGraphMoving(juce::Graphics& g);
+    // Places and shows the mode visual's layer; hidden in wavetable mode.
+    void syncGraphView();
+    px3::ui::AnimatedDisplay graphView;
+    struct GraphFollower final : juce::ComponentListener
+    {
+        std::function<void()> onMoved;
+        void componentMovedOrResized(juce::Component&, bool, bool) override { if (onMoved) { onMoved(); } }
+        void componentVisibilityChanged(juce::Component&) override { if (onMoved) { onMoved(); } }
+    } graphFollower;
     void applyModeUi();
     WavetableGraph wavetableGraph;
     juce::ComboBox* wtTableBox { nullptr };

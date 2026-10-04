@@ -2,6 +2,7 @@
 
 #include <JuceHeader.h>
 
+#include "AnimatedDisplay.h"
 #include "Card.h"
 #include "CardInner.h"
 #include "TuningControls.h"
@@ -18,6 +19,7 @@ public:
                            juce::ComboBox& waveformBoxIn,
                            juce::Label& waveformLabelIn,
                            juce::Colour accentIn);
+    ~SubOscComponent() override;
 
     void setAccentColour(juce::Colour accentIn);
     void setHardwareFaceplate(bool enabled);
@@ -41,6 +43,19 @@ private:
     bool sceneManaged { false };
     juce::Component graphSlot;
     juce::Rectangle<int> graphRow() const;
+    juce::Colour effectiveAccent() const;
+    void paintChrome(juce::Graphics& g);
+    void paintGraphStill(juce::Graphics& g);
+    void paintGraphMoving(juce::Graphics& g);
+    void syncGraphView();
+    // The wave, as its own opaque layer: see AnimatedDisplay. Declared after
+    // graphSlot, which it follows.
+    px3::ui::AnimatedDisplay graphView;
+    struct GraphFollower final : juce::ComponentListener
+    {
+        std::function<void()> onMoved;
+        void componentMovedOrResized(juce::Component&, bool, bool) override { if (onMoved) { onMoved(); } }
+    } graphFollower;
     static float waveformSample(float phaseNorm, int waveformIndex);
 
     juce::ToggleButton& enabledButton;

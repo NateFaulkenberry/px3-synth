@@ -91,6 +91,7 @@
 #include "UIConfigManager.h"
 #include "BusEqGraph.h"
 #include "BusInsertOverlay.h"
+#include "AnimatedDisplay.h"
 #include "MixerControls.h"
 #include "MixerChannelComponent.h"
 #include "FetPanelStyle.h"

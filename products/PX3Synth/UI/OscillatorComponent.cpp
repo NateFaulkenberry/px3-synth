@@ -54,6 +54,13 @@ OscillatorComponent::OscillatorComponent(juce::ToggleButton& enabledButtonIn,
     // click does not reach through it.
     wavetableGraph.setVisible(false);
     addChildComponent(wavetableGraph);
+    graphView.paintStill = [this](juce::Graphics& g) { paintGraphStill(g); };
+    graphView.paintMoving = [this](juce::Graphics& g) { paintGraphMoving(g); };
+    addAndMakeVisible(graphView);
+    // The scene places the wavetable panel after resized(); the mode visual's
+    // layer shares its rectangle, so it follows every move.
+    graphFollower.onMoved = [this] { syncGraphView(); };
+    wavetableGraph.addComponentListener(&graphFollower);
     for (auto* component : tuning.components())
     {
         addAndMakeVisible(*component);
@@ -80,12 +87,14 @@ void OscillatorComponent::setAccentColour(juce::Colour accentIn)
 {
     accent = accentIn;
     repaint();
+    graphView.invalidateStill();
 }
 
 void OscillatorComponent::setHardwareFaceplate(bool enabled)
 {
     card.setHardwareFaceplate(enabled);
     repaint();
+    graphView.invalidateStill();
 }
 
 void OscillatorComponent::setWavetableControls(juce::ComboBox& tableBox,
@@ -129,6 +138,7 @@ void OscillatorComponent::setUIConfig(std::shared_ptr<const UIConfig> configIn)
     card.setConfig(uiConfig);
     resized();
     repaint();
+    graphView.invalidateStill();
 }
 
 void OscillatorComponent::refreshFromParameters(bool enabled, int modeIndex, int vowelIndex)
@@ -172,7 +182,9 @@ void OscillatorComponent::advanceAnimation(float deltaPhase)
         phase = std::fmod(phase, juce::MathConstants<double>::twoPi);
     }
 
-    repaint();
+    // Only the mode visual moves; the wavetable panel animates itself.
+    syncGraphView();
+    if (graphView.isVisible()) { graphView.repaint(); }
 }
 
 void OscillatorComponent::resized()
@@ -206,10 +218,12 @@ void OscillatorComponent::resized()
     // The power button is card chrome: the card places it the same way on
     // every card, scene-managed or not, so all power buttons match.
     enabledButton.setBounds(card.powerBounds());
+    graphView.invalidateStill();
 
     if (sceneManaged)
     {
         px3::ui::requestSceneLayout(*this);
+        syncGraphView();
         return;
     }
 
@@ -378,6 +392,7 @@ void OscillatorComponent::resized()
     // component owning it - except in wavetable mode, where a child component
     // owns it because it also has to accept dropped files.
     wavetableGraph.setBounds(inner.rowContent(3).reduced(0, 2));
+    syncGraphView();
 }
 
 void OscillatorComponent::mouseUp(const juce::MouseEvent& event)
@@ -432,11 +447,16 @@ void OscillatorComponent::setPanelContentBounds(juce::Rectangle<int> panelConten
 
 void OscillatorComponent::paint(juce::Graphics& g)
 {
-    // Same card implementation as Sub Osc, differing only in configuration and
-    // in what the component puts inside it. The title is the component's own
-    // content and is drawn by the card, not by the parent panel.
-    const auto effectiveAccent = currentEnabled ? accent : juce::Colour::fromRGBA(150, 150, 150, 180);
+    // The mode visual is its own opaque layer (graphView), so an animation
+    // frame never repaints the card.
+    paintChrome(g);
+}
 
+// Same card implementation as Sub Osc, differing only in configuration and in
+// what the component puts inside it. The title is the component's own content
+// and is drawn by the card, not by the parent panel.
+void OscillatorComponent::paintChrome(juce::Graphics& g)
+{
     const auto title = "OSC " + juce::String(instanceIndex);
     if (currentEnabled)
     {
@@ -447,28 +467,30 @@ void OscillatorComponent::paint(juce::Graphics& g)
         card.drawInactive(g, title);
     }
 
-    // The graph is row 3. This used to re-derive the whole vertical stack that
-    // resized() had just walked, including the vowel-box branch, which meant
-    // two copies of one layout kept in step by hand.
-    const auto graph = graphRow().toFloat().reduced(0.0f, 2.0f);
+}
 
-    // In wavetable mode a child component owns row 3, and its panel is
-    // translucent - so painting the animated preview here as well leaves the old
-    // waveform moving underneath the new one.
-    if (wavetableGraph.isVisible())
-    {
-        return;
-    }
+// The graph is row 3. This used to re-derive the whole vertical stack that
+// resized() had just walked, including the vowel-box branch, which meant two
+// copies of one layout kept in step by hand.
+juce::Rectangle<float> OscillatorComponent::graphBounds() const
+{
+    return graphRow().toFloat().reduced(0.0f, 2.0f);
+}
 
-    if (graph.getWidth() <= 40 || graph.getHeight() <= 24)
-    {
-        return;
-    }
+void OscillatorComponent::syncGraphView()
+{
+    // In wavetable mode a child component owns row 3 and draws its own panel.
+    const auto graph = graphBounds();
+    const auto shown = ! wavetableGraph.isVisible() && graph.getWidth() > 40 && graph.getHeight() > 24;
+    const auto bounds = graph.expanded(1.0f).getSmallestIntegerContainer();
+    if (graphView.getBounds() != bounds) { graphView.setBounds(bounds); }
+    if (graphView.isVisible() != shown) { graphView.setVisible(shown); }
+}
 
-    const auto modeIndex = juce::jmax(0, modeBox.getSelectedItemIndex());
-    const auto macroAValue = static_cast<float>(macroA.getValue());
-    const auto macroBValue = static_cast<float>(macroB.getValue());
-    const auto macroCValue = static_cast<float>(macroC.getValue());
+void OscillatorComponent::paintGraphStill(juce::Graphics& g)
+{
+    paintChrome(g);
+    const auto graph = graphBounds();
 
     // The mode visual occupies the SAME rectangle the wavetable panel does, in
     // the modes where the wavetable panel is hidden - so it has to be the same
@@ -493,7 +515,6 @@ void OscillatorComponent::paint(juce::Graphics& g)
     const auto bottom = graph.getBottom() - 5.0f;
     const auto mid = (top + bottom) * 0.5f;
     const auto width = juce::jmax(1.0f, right - left);
-    const auto height = juce::jmax(1.0f, bottom - top);
 
     g.setColour(juce::Colour::fromRGBA(255, 255, 255, 28));
     for (int gx = 1; gx < 6; ++gx)
@@ -502,6 +523,24 @@ void OscillatorComponent::paint(juce::Graphics& g)
         g.drawLine(x, top, x, bottom, 0.7f);
     }
     g.drawLine(left, mid, right, mid, 0.9f);
+}
+
+void OscillatorComponent::paintGraphMoving(juce::Graphics& g)
+{
+    const auto effectiveAccent = currentEnabled ? accent : juce::Colour::fromRGBA(150, 150, 150, 180);
+    const auto graph = graphBounds();
+    const auto modeIndex = juce::jmax(0, modeBox.getSelectedItemIndex());
+    const auto macroAValue = static_cast<float>(macroA.getValue());
+    const auto macroBValue = static_cast<float>(macroB.getValue());
+    const auto macroCValue = static_cast<float>(macroC.getValue());
+
+    const auto left = graph.getX() + 6.0f;
+    const auto right = graph.getRight() - 6.0f;
+    const auto top = graph.getY() + 5.0f;
+    const auto bottom = graph.getBottom() - 5.0f;
+    const auto mid = (top + bottom) * 0.5f;
+    const auto width = juce::jmax(1.0f, right - left);
+    const auto height = juce::jmax(1.0f, bottom - top);
 
     juce::Path wave;
     wave.startNewSubPath(left, mid);
@@ -609,14 +648,14 @@ void OscillatorComponent::paint(juce::Graphics& g)
     g.setColour(effectiveAccent.withAlpha(juce::jlimit(0.2f, 1.0f, glowAlpha * 0.6f)));
     g.strokePath(wave,
                  juce::PathStrokeType(3.0f,
-                                      juce::PathStrokeType::curved,
+                                      juce::PathStrokeType::mitered,
                                       juce::PathStrokeType::rounded));
     const auto waveDetailColour = currentEnabled ? juce::Colour::fromRGB(170, 228, 255)
                                                  : juce::Colour::fromRGB(178, 178, 178);
     g.setColour(waveDetailColour);
     g.strokePath(wave,
                  juce::PathStrokeType(1.35f,
-                                      juce::PathStrokeType::curved,
+                                      juce::PathStrokeType::mitered,
                                       juce::PathStrokeType::rounded));
 
 }
@@ -710,6 +749,7 @@ void OscillatorComponent::applyModeUi()
     applyEnabledUi();
     resized();
     repaint();
+    syncGraphView();
 }
 
 void OscillatorComponent::applyEnabledUi()
@@ -746,5 +786,6 @@ void OscillatorComponent::applyEnabledUi()
     }
 
     repaint();
+    graphView.invalidateStill();
 }
 

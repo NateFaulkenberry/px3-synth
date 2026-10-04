@@ -2,6 +2,26 @@
 
 namespace px3::ui::theme
 {
+namespace
+{
+// Square shapes go through fillRect / drawRect. Core Graphics fills a
+// gradient through a path by building a mask of the whole shape first: the
+// card faceplates, all square, were most of the editor's paint time while an
+// animation repainted one small graph inside them.
+void fillBox(juce::Graphics& g, juce::Rectangle<float> b, float r)
+{
+    if (r <= 0.0f) { g.fillRect(b); }
+    else           { g.fillRoundedRectangle(b, r); }
+}
+
+// The 1 px outline just inside `b`.
+void outlineBox(juce::Graphics& g, juce::Rectangle<float> b, float r)
+{
+    if (r <= 0.0f) { g.drawRect(b, 1.0f); }
+    else           { g.drawRoundedRectangle(b.reduced(0.5f), r, 1.0f); }
+}
+} // namespace
+
 
 float size(Type type) noexcept
 {
@@ -53,9 +73,9 @@ void drawInset(juce::Graphics& g, juce::Rectangle<float> bounds, float radius)
 {
     if (bounds.isEmpty()) { return; }
     g.setColour(colour::inset);
-    g.fillRoundedRectangle(bounds, radius);
+    fillBox(g, bounds, radius);
     g.setColour(colour::insetEdge);
-    g.drawRoundedRectangle(bounds.reduced(0.5f), radius, 1.0f);
+    outlineBox(g, bounds, radius);
     // Lit bottom lip: the well reads as recessed into the faceplate.
     g.setColour(colour::insetLight);
     g.drawHorizontalLine(juce::roundToInt(bounds.getBottom()) - 1,
@@ -87,13 +107,13 @@ void drawModulePanel(juce::Graphics& g,
     // Faceplate: a quiet top-to-bottom falloff, nothing glossy.
     g.setGradientFill(juce::ColourGradient(colour::panelTop, 0.0f, bounds.getY(),
                                            colour::panelBottom, 0.0f, bounds.getBottom(), false));
-    g.fillRoundedRectangle(bounds, r);
+    fillBox(g, bounds, r);
 
     // Edge and the lit top bevel.
     if (space::moduleOutlines)
     {
         g.setColour(colour::panelEdge);
-        g.drawRoundedRectangle(bounds.reduced(0.5f), r, 1.0f);
+        outlineBox(g, bounds, r);
     }
     g.setColour(colour::panelLight);
     g.drawHorizontalLine(juce::roundToInt(bounds.getY()) + 1, bounds.getX() + r, bounds.getRight() - r);
@@ -109,10 +129,17 @@ void drawModulePanel(juce::Graphics& g,
 
     const auto stripe = active ? accent : accent.withSaturation(0.0f).withMultipliedBrightness(0.55f);
     g.setColour(stripe.withAlpha(active ? 0.95f : 0.6f));
-    juce::Path bar;
-    bar.addRoundedRectangle(bounds.getX() + 1.0f, bounds.getY() + 1.0f, bounds.getWidth() - 2.0f,
-                            space::accentBar, juce::jmax(0.0f, r - 1.0f), juce::jmax(0.0f, r - 1.0f), true, true, false, false);
-    g.fillPath(bar);
+    if (r <= 1.0f)
+    {
+        g.fillRect(juce::Rectangle<float>(bounds.getX() + 1.0f, bounds.getY() + 1.0f, bounds.getWidth() - 2.0f, space::accentBar));
+    }
+    else
+    {
+        juce::Path bar;
+        bar.addRoundedRectangle(bounds.getX() + 1.0f, bounds.getY() + 1.0f, bounds.getWidth() - 2.0f,
+                                space::accentBar, r - 1.0f, r - 1.0f, true, true, false, false);
+        g.fillPath(bar);
+    }
 
     if (title.isNotEmpty())
     {
@@ -188,7 +215,7 @@ void InstrumentLookAndFeel::drawComboBox(juce::Graphics& g, int width, int heigh
     if (box.isMouseOver(true) && box.isEnabled())
     {
         g.setColour(colour::hover);
-        g.fillRoundedRectangle(area.reduced(1.0f), space::insetRadius);
+        fillBox(g, area.reduced(1.0f), space::insetRadius);
     }
     if (box.hasKeyboardFocus(true))
     {

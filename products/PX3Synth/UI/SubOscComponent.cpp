@@ -36,18 +36,32 @@ SubOscComponent::SubOscComponent(juce::ToggleButton& enabledButtonIn,
     // Paints nothing and takes no clicks: it only carries the wave table's box.
     graphSlot.setInterceptsMouseClicks(false, false);
     addAndMakeVisible(graphSlot);
+
+    graphView.paintStill = [this](juce::Graphics& g) { paintGraphStill(g); };
+    graphView.paintMoving = [this](juce::Graphics& g) { paintGraphMoving(g); };
+    addAndMakeVisible(graphView);
+    // The scene places graphSlot after resized(); the layer follows it.
+    graphFollower.onMoved = [this] { syncGraphView(); };
+    graphSlot.addComponentListener(&graphFollower);
+}
+
+SubOscComponent::~SubOscComponent()
+{
+    graphSlot.removeComponentListener(&graphFollower);
 }
 
 void SubOscComponent::setAccentColour(juce::Colour accentIn)
 {
     accent = accentIn;
     repaint();
+    graphView.invalidateStill();
 }
 
 void SubOscComponent::setHardwareFaceplate(bool enabled)
 {
     card.setHardwareFaceplate(enabled);
     repaint();
+    graphView.invalidateStill();
 }
 
 void SubOscComponent::setUIConfig(std::shared_ptr<const UIConfig> configIn)
@@ -56,6 +70,7 @@ void SubOscComponent::setUIConfig(std::shared_ptr<const UIConfig> configIn)
     card.setConfig(uiConfig);
     resized();
     repaint();
+    graphView.invalidateStill();
 }
 
 void SubOscComponent::refreshFromParameters(bool enabled, int waveformIndex)
@@ -76,6 +91,7 @@ void SubOscComponent::refreshFromParameters(bool enabled, int waveformIndex)
     if (enabledChanged || waveformChanged)
     {
         repaint();
+        graphView.invalidateStill();
     }
 }
 
@@ -92,7 +108,7 @@ void SubOscComponent::advanceAnimation(float deltaPhase)
         visualPhase -= juce::MathConstants<float>::twoPi;
     }
 
-    repaint();
+    graphView.repaint();
 }
 
 void SubOscComponent::resized()
@@ -124,6 +140,7 @@ void SubOscComponent::resized()
     if (sceneManaged)
     {
         px3::ui::requestSceneLayout(*this);
+        syncGraphView();
         return;
     }
 
@@ -186,8 +203,8 @@ void SubOscComponent::resized()
                                        inner.rowControl(1));
     }
 
-    // Row 3 is the wave table, drawn in paint() rather than being a child
-    // component, so it only needs its bounds - see waveTableBounds.
+    // Row 3 is the wave table: its own opaque layer, placed over the row.
+    syncGraphView();
 }
 
 void SubOscComponent::mouseUp(const juce::MouseEvent& event)
@@ -227,9 +244,16 @@ void SubOscComponent::setPanelContentBounds(juce::Rectangle<int> panelContent)
     card.setPanelContentBounds(panelContent);
     resized();
     repaint();
+    graphView.invalidateStill();
 }
 
 void SubOscComponent::paint(juce::Graphics& g)
+{
+    // The wave is its own opaque layer (graphView): a frame never repaints this.
+    paintChrome(g);
+}
+
+void SubOscComponent::paintChrome(juce::Graphics& g)
 {
     // The card owns its own frame and its own title. The title used to be drawn
     // by OscPanel using this component's bounds - a parent painting into a
@@ -239,9 +263,6 @@ void SubOscComponent::paint(juce::Graphics& g)
     // takes it, rather than from the copy resized() made: in the scene the
     // config can arrive without a resize, and the copy kept the pre-config
     // grey while the stripe beside it turned blue.
-    const auto identity = card.style().border.colour;
-    const auto effectiveAccent = currentEnabled ? identity : juce::Colour::fromRGBA(150, 150, 150, 180);
-
     // Enabled state is runtime, not style, so it modulates the parsed style
     // rather than living in the configuration.
     if (currentEnabled)
@@ -253,20 +274,36 @@ void SubOscComponent::paint(juce::Graphics& g)
         card.drawInactive(g, "SUB OSC");
     }
 
-    // The wave table occupies row 3. It used to be found by replaying the same
-    // removeFromTop sequence resized() used, which meant two copies of one
-    // layout that had to be kept in step by hand.
-    auto graph = graphRow().toFloat();
+}
 
-    if (graph.getWidth() < 40.0f || graph.getHeight() < 20.0f)
-    {
-        return;
-    }
+// Read from the card's style at paint time, not from resized()'s copy: in the
+// scene the config can arrive without a resize.
+juce::Colour SubOscComponent::effectiveAccent() const
+{
+    return currentEnabled ? card.style().border.colour : juce::Colour::fromRGBA(150, 150, 150, 180);
+}
 
+// The wave table occupies row 3. It used to be found by replaying the same
+// removeFromTop sequence resized() used, which meant two copies of one layout
+// that had to be kept in step by hand.
+void SubOscComponent::syncGraphView()
+{
+    const auto graph = graphRow().toFloat();
+    const auto shown = graph.getWidth() >= 40.0f && graph.getHeight() >= 20.0f;
+    const auto bounds = graph.expanded(1.0f).getSmallestIntegerContainer();
+    if (graphView.getBounds() != bounds) { graphView.setBounds(bounds); }
+    if (graphView.isVisible() != shown) { graphView.setVisible(shown); }
+}
+
+void SubOscComponent::paintGraphStill(juce::Graphics& g)
+{
+    paintChrome(g);
+    const auto graph = graphRow().toFloat();
+    const auto effectiveAccent = this->effectiveAccent();
     g.setColour(juce::Colour::fromRGBA(14, 14, 18, 170));
-    g.fillRoundedRectangle(graph, 0.0f);
+    g.fillRect(graph);
     g.setColour(effectiveAccent.withAlpha(0.32f));
-    g.drawRoundedRectangle(graph, 0.0f, 1.0f);
+    g.drawRect(graph.expanded(0.5f), 1.0f);
 
     const auto left = graph.getX() + 6.0f;
     const auto right = graph.getRight() - 6.0f;
@@ -276,6 +313,18 @@ void SubOscComponent::paint(juce::Graphics& g)
 
     g.setColour(juce::Colour::fromRGBA(255, 255, 255, 24));
     g.drawLine(left, mid, right, mid, 0.9f);
+
+}
+
+void SubOscComponent::paintGraphMoving(juce::Graphics& g)
+{
+    const auto graph = graphRow().toFloat();
+    const auto effectiveAccent = this->effectiveAccent();
+    const auto left = graph.getX() + 6.0f;
+    const auto right = graph.getRight() - 6.0f;
+    const auto top = graph.getY() + 5.0f;
+    const auto bottom = graph.getBottom() - 5.0f;
+    const auto mid = (top + bottom) * 0.5f;
 
     juce::Path wave;
     const auto width = juce::jmax(1.0f, right - left);
@@ -301,7 +350,7 @@ void SubOscComponent::paint(juce::Graphics& g)
     g.setColour(effectiveAccent.withAlpha(currentEnabled ? 0.72f : 0.42f));
     g.strokePath(wave,
                  juce::PathStrokeType(2.2f,
-                                      juce::PathStrokeType::curved,
+                                      juce::PathStrokeType::mitered,
                                       juce::PathStrokeType::rounded));
 }
 

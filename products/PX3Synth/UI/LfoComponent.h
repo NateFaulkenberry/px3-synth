@@ -1,6 +1,8 @@
 #pragma once
 
 #include <JuceHeader.h>
+
+#include "AnimatedDisplay.h"
 #include "Theme.h"
 
 #include "Card.h"
@@ -123,4 +125,11 @@ private:
     // The wave display's area (and the band the display ignores clicks in).
     juce::Rectangle<int> graphArea() const;
     juce::Rectangle<int> graphHitArea() const;
+    juce::Rectangle<float> graphBounds() const;
+    void paintChrome(juce::Graphics& g);
+    void paintGraphStill(juce::Graphics& g);
+    void paintGraphMoving(juce::Graphics& g);
+    void placeGraphView();
+    // The wave display, as its own opaque layer: see AnimatedDisplay.
+    px3::ui::AnimatedDisplay graphView;
 };

@@ -619,6 +619,7 @@ if (PX3_BUILD_DIAGNOSTIC)
             JUCE_STANDALONE_APPLICATION=1
             PX3_DEBUG_PANEL=0
             PX3_DIAGNOSTICS=0
+            JUCE_COREGRAPHICS_RENDER_WITH_MULTIPLE_PAINT_CALLS=1   # as the products: see PX3Product.cmake
             JucePlugin_Name="PX3 Synth"
     )
     target_link_libraries(PX3Bench
