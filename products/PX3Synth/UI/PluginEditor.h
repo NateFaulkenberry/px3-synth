@@ -277,6 +277,9 @@ public:
     px3::ui::SheetCloseButton& debugUpdateNoticeClose() { return updateNoticeCloseButton; }
     juce::String debugUpdateNoticeText() const { return updateNotice.getText(); }
     void debugTimerTick() { timerCallback(); }
+    void debugOpenBusInsert(int bus, bool wantsEq) { openBusInsert(bus, wantsEq); }
+    void debugCloseBusInsert() { closeBusInsert(); }
+    juce::Component* debugActiveBusInsertSheet() const { return activeBusInsertSheet(); }
     void debugCloseMacroDepthPanel() { closeMacroDepthPanel(); }
     void debugOpenMacroDepthPanel(int macroIndex) { openMacroDepthPanel(macroIndex); }
 

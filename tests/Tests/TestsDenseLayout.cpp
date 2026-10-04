@@ -3,6 +3,7 @@
 #include "UILayoutEditing.h"
 #include "ModRouting.h"
 #include "SubOscComponent.h"
+#include "BusInsertOverlay.h"
 
 #include "../../shared/UI/Style/Theme.h"
 #include "../../shared/UI/Components/BypassButton.h"
@@ -460,6 +461,33 @@ void testDenseLayout()
         editor->debugSelectSection(0);
         check("Dense_DropdownChoiceSurvivesTheRefreshTick", examined > 8 && lost.isEmpty(),
               juce::String(examined) + " dropdowns; lost: " + lost.joinIntoString(", "));
+    }
+
+    // ---- the EQ / COMP sheets keep ON and close inside their title band -------
+    // Both used to be placed by corner offsets tuned for an older, taller
+    // header, and crossed the band's divider into the panel below.
+    {
+        juce::StringArray outside;
+        for (const bool eq : { true, false })
+        {
+            editor->debugOpenBusInsert(0, eq);
+            auto* sheet = dynamic_cast<px3::ui::BusInsertOverlay*>(editor->debugActiveBusInsertSheet());
+            if (sheet == nullptr) { outside.add(eq ? "EQ missing" : "COMP missing"); continue; }
+            const auto band = sheet->debugTitleBand();
+            for (auto* button : { &sheet->debugEnableButton(), &sheet->debugCloseButton() })
+            {
+                const auto b = button->getBounds().toFloat();
+                const auto centreGap = std::abs(b.getCentreY() - (band.getY() + px3::ui::theme::space::accentBar
+                                                                  + (band.getHeight() - px3::ui::theme::space::accentBar) * 0.5f));
+                if (b.getY() < band.getY() + px3::ui::theme::space::accentBar || b.getBottom() > band.getBottom() || centreGap > 1.5f)
+                {
+                    outside.add(juce::String(eq ? "EQ " : "COMP ") + (button == &sheet->debugCloseButton() ? "close " : "ON ")
+                                + b.toString() + " band " + band.toString());
+                }
+            }
+            editor->debugCloseBusInsert();
+        }
+        check("Dense_InsertSheetHeaderButtonsSitInTheTitleBand", outside.isEmpty(), outside.joinIntoString("; "));
     }
 
     // ---- an enabled sub osc draws its wave in its own colour -------------------

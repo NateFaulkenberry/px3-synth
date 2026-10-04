@@ -119,7 +119,7 @@ void BusInsertOverlay::refreshHeaderButtonStyles()
 
     MixerToggleButton::Style enableFallback;
     enableFallback.width = 42;
-    enableFallback.height = 24;
+    enableFallback.height = 20;
 
     enableStyle = px3::ui::mixerToggleStyleFromConfig(
         uiConfig.get(), "busInserts.enableButton", "busInserts." + sheet + ".enableButton", enableFallback);

@@ -35,6 +35,14 @@ namespace px3::ui
 class BusInsertOverlay : public juce::Component
 {
 public:
+    // Tests: the header controls and the title band they belong in.
+    juce::Rectangle<float> debugTitleBand() const
+    {
+        return card.bounds().withHeight(card.titleBandHeight());
+    }
+    juce::Component& debugEnableButton() noexcept { return enableButton; }
+    juce::Component& debugCloseButton() noexcept { return closeButton; }
+
     BusInsertOverlay(PX3SynthAudioProcessor& processorIn);
     ~BusInsertOverlay() override;
 
@@ -130,7 +138,7 @@ protected:
     // on the face itself, which is what the EQ sheet wants now that its header
     // row is zero-height.
     enum class EnableAnchor { headerTopRight, innerTopLeft, titleBand };
-    EnableAnchor enableAnchor { EnableAnchor::headerTopRight };
+    EnableAnchor enableAnchor { EnableAnchor::titleBand };
     juce::LookAndFeel* knobLookAndFeel { nullptr };
 
     px3::ui::CardHost card;

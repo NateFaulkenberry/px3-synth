@@ -1,5 +1,6 @@
 #include "PerformanceControls.h"
 
+#include "Theme.h"
 #include "UIConfig.h"
 
 #include <algorithm>
@@ -29,64 +30,99 @@ void drawWheel(juce::Graphics& g,
                bool hasCenter,
                float glow)
 {
+    // A hardware wheel seen edge-on through its slot: a ribbed cylinder in a
+    // recessed well. The cylinder is shaded by the cosine of the angle each row
+    // of it faces away from the viewer, so it reads round; its grip ribs bunch
+    // up towards the slot's ends for the same reason, and they ROLL with the
+    // value, so moving the wheel looks like turning it. The value is the one
+    // accent line on the wheel - the painted stripe a real wheel carries -
+    // rather than a ball riding a groove.
     g.setColour(panelColour);
     px3::ui::fillRounded(g, panel, style.panelRadius);
 
     const auto labelArea = panel.removeFromTop(style.titleHeight);
-
     g.setColour(style.titleColour);
     g.setFont(juce::FontOptions(style.titleSize, juce::Font::bold));
     g.drawText(title, labelArea.toNearestInt(), juce::Justification::centred, false);
 
-    g.setColour(accent.withAlpha(style.trackFillAlpha + style.trackFillGlowAlpha * glow));
-    px3::ui::fillRounded(g, track, style.trackRadius);
+    if (track.getHeight() < 8.0f || track.getWidth() < 4.0f) { return; }
 
-    g.setColour(accent.withAlpha(style.trackBorderAlpha + style.trackBorderGlowAlpha * glow));
-    px3::ui::drawRounded(g, track, style.trackRadius, style.trackBorderWidth);
+    // The well, then the wheel inside it with a hairline of shadow all round.
+    px3::ui::theme::drawInset(g, track);
+    const auto wheel = track.reduced(2.0f, 1.0f);
 
-    const auto handleRadius = style.handleRadius;
-    const auto topY = track.getY() + handleRadius;
-    const auto bottomY = track.getBottom() - handleRadius;
-    float handleY = bottomY;
+    const auto halfSpan = juce::MathConstants<float>::halfPi * 0.92f; // how much of the cylinder shows
+    const auto centreY = wheel.getCentreY();
+    const auto radius = wheel.getHeight() * 0.5f / std::sin(halfSpan);
+    const auto angleAt = [&](float y) { return std::asin(juce::jlimit(-1.0f, 1.0f, (y - centreY) / radius)); };
 
+    // Body: a vertical ramp sampled from the cylinder's own shading, so the
+    // brightest band sits where the wheel faces the viewer.
+    {
+        const auto lit = juce::Colour::fromRGB(74, 79, 86);
+        const auto shade = juce::Colour::fromRGB(14, 15, 17);
+        juce::ColourGradient body(shade, 0.0f, wheel.getY(), shade, 0.0f, wheel.getBottom(), false);
+        for (int i = 1; i < 12; ++i)
+        {
+            const auto t = static_cast<float>(i) / 12.0f;
+            const auto facing = std::cos(angleAt(wheel.getY() + t * wheel.getHeight()));
+            body.addColour(t, shade.interpolatedWith(lit, std::pow(facing, 1.6f)));
+        }
+        g.setGradientFill(body);
+        g.fillRect(wheel);
+
+        // The rubber's edge catches a little light on either side.
+        g.setColour(juce::Colours::white.withAlpha(0.06f));
+        g.fillRect(wheel.withWidth(1.0f));
+        g.setColour(juce::Colours::black.withAlpha(0.35f));
+        g.fillRect(wheel.withX(wheel.getRight() - 1.0f).withWidth(1.0f));
+    }
+
+    // Where the value puts the stripe, and so how far the wheel has turned.
+    const auto topY = track.getY() + style.handleRadius;
+    const auto bottomY = track.getBottom() - style.handleRadius;
+    const auto markY = hasCenter ? (topY + bottomY) * 0.5f - normalizedValue * (bottomY - topY) * 0.5f
+                                 : bottomY - normalizedValue * (bottomY - topY);
+    const auto turn = angleAt(markY);
+
+    // Ribs, every ribStep of rotation, dimming as they turn away.
+    {
+        constexpr auto ribStep = 0.17f;
+        const auto first = std::ceil((-halfSpan - turn) / ribStep);
+        const auto last = std::floor((halfSpan - turn) / ribStep);
+        for (auto k = first; k <= last; k += 1.0f)
+        {
+            const auto angle = turn + k * ribStep;
+            const auto y = std::round(centreY + radius * std::sin(angle));
+            const auto facing = std::cos(angle);
+            g.setColour(juce::Colours::black.withAlpha(0.55f * facing));
+            g.fillRect(wheel.getX() + 1.0f, y, wheel.getWidth() - 2.0f, 1.0f);
+            g.setColour(juce::Colours::white.withAlpha(0.10f * facing));
+            g.fillRect(wheel.getX() + 1.0f, y + 1.0f, wheel.getWidth() - 2.0f, 1.0f);
+        }
+    }
+
+    // The stripe: thicker facing the viewer, thinner at the ends, with a glow
+    // that rises with activity.
+    {
+        const auto facing = std::cos(turn);
+        const auto thickness = juce::jmax(1.0f, 3.0f * facing);
+        const auto stripe = juce::Rectangle<float>(wheel.getX(), markY - thickness * 0.5f,
+                                                   wheel.getWidth(), thickness);
+        g.setColour(accent.withAlpha((0.18f + 0.30f * glow) * facing));
+        g.fillRect(stripe.expanded(0.0f, 2.0f));
+        g.setColour(accent.brighter(0.2f + 0.3f * glow).withAlpha(0.55f + 0.45f * facing));
+        g.fillRect(stripe);
+    }
+
+    // Pitch springs back to centre, so its detent is marked beside the slot.
     if (hasCenter)
     {
-        const auto centerY = (topY + bottomY) * 0.5f;
-        handleY = centerY - normalizedValue * (bottomY - topY) * 0.5f;
-
-        g.setColour(accent.withAlpha(style.centreLineAlpha));
-        g.drawLine(track.getX() - 6.0f, centerY, track.getRight() + 6.0f, centerY, 1.0f);
+        g.setColour(accent.withAlpha(style.centreLineAlpha + 0.25f * glow));
+        const auto y = std::round(centreY) - 0.5f;
+        g.fillRect(track.getX() - 6.0f, y, 4.0f, 1.0f);
+        g.fillRect(track.getRight() + 2.0f, y, 4.0f, 1.0f);
     }
-    else
-    {
-        handleY = bottomY - normalizedValue * (bottomY - topY);
-    }
-
-    const auto handleX = track.getCentreX();
-    const auto glowAlpha = 0.14f + 0.56f * glow;
-
-    const auto outer = style.handleGlowOuterRadius;
-    const auto inner = style.handleGlowInnerRadius;
-
-    g.setColour(accent.withAlpha(glowAlpha * 0.50f));
-    g.fillEllipse(handleX - outer, handleY - outer, outer * 2.0f, outer * 2.0f);
-
-    g.setColour(accent.withAlpha(glowAlpha));
-    g.fillEllipse(handleX - inner, handleY - inner, inner * 2.0f, inner * 2.0f);
-
-    juce::ColourGradient handleGradient(accent.brighter(0.35f + 0.25f * glow),
-                                        handleX,
-                                        handleY - handleRadius,
-                                        accent.darker(0.45f),
-                                        handleX,
-                                        handleY + handleRadius,
-                                        false);
-    g.setGradientFill(handleGradient);
-    g.fillEllipse(handleX - handleRadius, handleY - handleRadius, handleRadius * 2.0f, handleRadius * 2.0f);
-
-    g.setColour(style.handleRimColour.withAlpha((120.0f + 80.0f * glow) / 255.0f));
-    g.drawEllipse(handleX - handleRadius, handleY - handleRadius, handleRadius * 2.0f, handleRadius * 2.0f, 1.0f);
-
 }
 }
 

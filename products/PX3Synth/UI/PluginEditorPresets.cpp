@@ -350,6 +350,10 @@ void PX3SynthAudioProcessorEditor::showPresetMenu()
     };
 
     juce::PopupMenu menu;
+    // A popup takes its look from its target component, and the top bar's
+    // buttons have their own - so without this the MENU list was drawn in
+    // the JUCE default rather than like every dropdown in the plugin.
+    menu.setLookAndFeel(&instrumentLookAndFeel);
     menu.addItem(MenuItemId::save, "Save");
     menu.addItem(MenuItemId::saveAs, "Save As");
     menu.addSeparator();

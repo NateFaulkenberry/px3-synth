@@ -624,6 +624,25 @@ int main(int argc, char* argv[])
 {
     juce::ScopedJuceInitialiser_GUI juceInit;
 
+    // Every editor and processor a test builds installs the factory library,
+    // and without this they installed it into the user's real
+    // ~/Library/P(X3) - stamped with whatever parameter schema the test build
+    // had, which left an older running build unable to load any factory
+    // preset. The whole run gets a scratch tree instead, unless the caller
+    // already chose one.
+    const auto scratchPresets = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                                    .getChildFile("px3-tests-" + juce::String(juce::Time::currentTimeMillis()));
+    if (juce::SystemStats::getEnvironmentVariable("PX3_PRESET_ROOT", {}).isEmpty())
+    {
+        scratchPresets.createDirectory();
+        ::setenv("PX3_PRESET_ROOT", scratchPresets.getFullPathName().toRawUTF8(), 1);
+    }
+    struct ScratchCleanup
+    {
+        juce::File dir;
+        ~ScratchCleanup() { if (dir.isDirectory()) { dir.deleteRecursively(); } }
+    } scratchCleanup { scratchPresets };
+
     const juce::String filter = argc > 1 ? argv[1] : "";
     auto wants = [&filter](const char* name)
     {
