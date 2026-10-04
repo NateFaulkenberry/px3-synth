@@ -242,6 +242,11 @@ private:
 public:
     void refreshControlEnablement() override;
 
+    // For the tests: the space MIX/LINK centre in, and where they landed.
+    juce::Rectangle<int> debugMeterArea() const noexcept { return meterArea; }
+    juce::Rectangle<float> debugMixBankArea() const noexcept { return mixBankArea; }
+    int debugEarLine() const noexcept { return earLineX; }
+
 private:
 
     // A moving-coil VU face reading gain reduction, which on this unit runs
@@ -288,6 +293,7 @@ private:
     juce::Rectangle<float> outputKnobArea;
     juce::Rectangle<float> ratioBankArea;
     juce::Rectangle<float> mixBankArea;
+    int earLineX { 0 };
     juce::Rectangle<float> mixLabelArea;
     juce::Rectangle<int> meterModeArea;
 

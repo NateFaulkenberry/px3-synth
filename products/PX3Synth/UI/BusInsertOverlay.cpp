@@ -843,12 +843,9 @@ void BusCompOverlay::resized()
     // them - shifting the meter would drag them along with it.
     auto mixSlot = panel.removeFromRight(configInt(uiConfig, "busInserts.comp.mixColumnWidth", 70));
 
-    // The whole MIX/LINK group shifts together - knob, both its labels, the
-    // button and its legend - because everything below is measured from this
-    // rectangle. Moving the pieces individually would need four offsets that
-    // have to be kept equal to stay aligned.
-    mixSlot.translate(configInt(uiConfig, "busInserts.comp.mixOffsetX", 0), 0);
-    mixBankArea = mixSlot.toFloat();
+    // The right ear's inner line: MIX/LINK centre between the meter and it.
+    const auto earLine = mixSlot.getRight();
+    earLineX = earLine;
 
     // Everything else is offset from the left ear by this much.
     panel.removeFromLeft(configInt(uiConfig, "busInserts.comp.contentOffsetX", 30));
@@ -933,6 +930,15 @@ void BusCompOverlay::resized()
             row.removeFromLeft(buttonGap);
         }
     }
+
+    // Centred in the space between the meter and the ear line, so the gap is
+    // the same on both sides whatever the meter's width. The whole MIX/LINK
+    // group shifts together - knob, both its labels, the button and its
+    // legend - because everything below is measured from this rectangle;
+    // mixOffsetX is a nudge from that centre.
+    mixSlot.setX(meterArea.getRight() + (earLine - meterArea.getRight() - mixSlot.getWidth()) / 2
+                 + configInt(uiConfig, "busInserts.comp.mixOffsetX", 0));
+    mixBankArea = mixSlot.toFloat();
 
     {
         // MIX and LINK, in the space the meter-select bank occupies on the

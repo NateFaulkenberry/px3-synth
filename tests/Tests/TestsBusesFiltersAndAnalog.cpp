@@ -2360,6 +2360,19 @@ void testBusInserts()
                             + " controls all shifted by exactly -10 px, none vertically"
                       : "per-control dx: " + detail);
 
+            // MIX/LINK sit centred between the meter and the right ear line.
+            {
+                compOverlay->setUIConfig(UIConfig::fromJsonText(R"({ "busInserts": { "comp": { "mixOffsetX": 0 } } })", cfgError));
+                const auto meterRight = compOverlay->debugMeterArea().getRight();
+                const auto mixBank = compOverlay->debugMixBankArea();
+                const auto leftGap = mixBank.getX() - static_cast<float>(meterRight);
+                const auto rightGap = static_cast<float>(compOverlay->debugEarLine()) - mixBank.getRight();
+                check("BusComp_MixAndLinkCentreBetweenMeterAndEar",
+                      leftGap > 0.0f && std::abs(leftGap - rightGap) <= 1.0f,
+                      "gap to the meter " + juce::String(leftGap, 1) + " px, to the ear line "
+                          + juce::String(rightGap, 1) + " px");
+            }
+
             compOverlay->setUIConfig(nullptr);
         }
 

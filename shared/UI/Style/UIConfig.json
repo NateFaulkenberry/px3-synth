@@ -853,7 +853,7 @@
       "sectionGap": 10,
       "contentOffsetX": 30,
       "mixColumnWidth": 70,
-      "mixOffsetX": -10,
+      "mixOffsetX": 0,
       "mixOffsetY": 20,
       "mixStackGap": 2,
       "legendHeight": 14,
