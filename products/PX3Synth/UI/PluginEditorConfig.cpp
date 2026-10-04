@@ -478,7 +478,6 @@ void PX3SynthAudioProcessorEditor::applySceneLayout()
     // hidden - the owner hides the component, the scene keeps its box - so a
     // panel is already the right size when its tab is chosen.
     const auto section = selectedTopMenuSection;
-    const auto voiceSection = section == kSectionOsc || section == kSectionFilter || section == kSectionAmp;
     const auto showMacros = section != kSectionSettings;
     uiLayout.setRuntimeHidden("macros", ! showMacros);
     if (macroStrip != nullptr) { macroStrip->setVisible(showMacros); }
