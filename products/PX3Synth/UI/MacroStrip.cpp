@@ -1,4 +1,5 @@
 #include "MacroStrip.h"
+#include "Theme.h"
 
 #include "PluginProcessor.h"
 #include "MacroLook.h"
@@ -224,7 +225,9 @@ void MacroStrip::resized()
 
 void MacroStrip::paint(juce::Graphics& g)
 {
-    const auto area = getLocalBounds().toFloat().reduced(1.0f);
+    // Edge to edge when modules carry no outline: inset, the background showed
+    // through a pixel each side and the strip's seams read 2 px, not 1.
+    const auto area = getLocalBounds().toFloat().reduced(px3::ui::theme::space::moduleOutlines ? 1.0f : 0.0f);
 
     g.setColour(juce::Colour::fromRGBA(255, 255, 255, 10));
     g.fillRoundedRectangle(area, 0.0f);

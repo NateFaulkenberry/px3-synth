@@ -214,8 +214,11 @@ void TopMenuTabButton::paintButton(juce::Graphics& g,
         g.setColour(attentionColour.withAlpha(0.18f + 0.30f * attentionPhase));
         g.drawRoundedRectangle(area.reduced(1.0f), 0.0f, 1.5f);
     }
-    g.setColour(on ? juce::Colours::white.withAlpha(0.10f) : tc::panelEdge);
-    g.drawRoundedRectangle(area.reduced(0.5f), 0.0f, 1.0f);
+    if (on || px3::ui::theme::space::moduleOutlines)
+    {
+        g.setColour(on ? juce::Colours::white.withAlpha(0.10f) : tc::panelEdge);
+        g.drawRoundedRectangle(area.reduced(0.5f), 0.0f, 1.0f);
+    }
     if (on && showLed)
     {
         // The section's identity stripe across the full top edge, the same

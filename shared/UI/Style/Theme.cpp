@@ -90,8 +90,11 @@ void drawModulePanel(juce::Graphics& g,
     g.fillRoundedRectangle(bounds, r);
 
     // Edge and the lit top bevel.
-    g.setColour(colour::panelEdge);
-    g.drawRoundedRectangle(bounds.reduced(0.5f), r, 1.0f);
+    if (space::moduleOutlines)
+    {
+        g.setColour(colour::panelEdge);
+        g.drawRoundedRectangle(bounds.reduced(0.5f), r, 1.0f);
+    }
     g.setColour(colour::panelLight);
     g.drawHorizontalLine(juce::roundToInt(bounds.getY()) + 1, bounds.getX() + r, bounds.getRight() - r);
 

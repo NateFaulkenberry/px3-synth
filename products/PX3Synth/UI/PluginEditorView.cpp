@@ -32,7 +32,7 @@ void PX3SynthAudioProcessorEditor::paintOverChildren(juce::Graphics& g)
     // The performance row is one module, so it carries the same 1 px outline
     // every card does - drawn over the wheels and keys, which fill their bounds.
     // Without it the bottom seam read a pixel narrower than the others.
-    if (isPerformanceSectionShown())
+    if (isPerformanceSectionShown() && px3::ui::theme::space::moduleOutlines)
     {
         const auto row = performanceControls.getBounds().getUnion(pianoKeyboard.getBounds());
         g.setColour(px3::ui::theme::colour::panelEdge);

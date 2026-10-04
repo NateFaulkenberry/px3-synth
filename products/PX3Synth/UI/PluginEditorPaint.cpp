@@ -60,10 +60,14 @@ void PX3SynthAudioProcessorEditor::paint(juce::Graphics& g)
             if (cell.isEmpty()) { return; }
             // Whole pixels: a 1 px outline on a half-pixel edge smears into two
             // soft lines, which read as an inset.
-            g.setColour(tc::panelEdge);
-            g.drawRect(cell, 1);
+            const auto inset = px3::ui::theme::space::moduleOutlines ? 1 : 0;
+            if (inset > 0)
+            {
+                g.setColour(tc::panelEdge);
+                g.drawRect(cell, 1);
+            }
             g.setColour(juce::Colour(0xff1b1f23)); // TopMenuTabButton's unselected face
-            g.fillRect(cell.reduced(1));
+            g.fillRect(cell.reduced(inset));
         };
         drawFace(logoPanelArea);
         drawFace(topMenuGainArea);

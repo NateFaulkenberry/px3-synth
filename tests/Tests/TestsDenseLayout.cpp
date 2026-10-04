@@ -111,14 +111,16 @@ void testDenseLayout()
             const auto mods = doc.rectOf("voice.mods");
             const auto amp = doc.rectOf("primary.amp");
             const auto keys = doc.rectOf("keys");
-            // Outline + 1 px + outline between modules; 2 px + one outline at
-            // the window edge, so the edge seam reads the same width.
-            constexpr auto edge = 2.0f;
-            if (! near(header.getX(), edge) || ! near(header.getY(), edge) || ! near(header.getRight(), w - edge)
-                || ! near(macros.getX(), edge) || ! near(keys.getBottom(), h - edge)
-                || ! near(keys.getX(), edge) || ! near(keys.getRight(), w - edge)
-                || ! near(mods.getBottom(), keys.getY() - 1.0f)
-                || ! near(amp.getRight(), w - edge) || ! near(doc.rectOf("views").getRight(), w - edge))
+            // Every seam reads the same width. With module outlines: outline +
+            // 1 px + outline between modules, 2 px + one outline at the edge.
+            // Without (the shipped look): one 1 px line everywhere.
+            constexpr auto edge = px3::ui::theme::space::moduleOutlines ? 2.0f : 1.0f;
+            const auto at = [](float a, float b) { return std::abs(a - b) < 0.51f; };
+            if (! at(header.getX(), edge) || ! at(header.getY(), edge) || ! at(header.getRight(), w - edge)
+                || ! at(macros.getX(), edge) || ! at(keys.getBottom(), h - edge)
+                || ! at(keys.getX(), edge) || ! at(keys.getRight(), w - edge)
+                || ! at(mods.getBottom(), keys.getY() - 1.0f)
+                || ! at(amp.getRight(), w - edge) || ! at(doc.rectOf("views").getRight(), w - edge))
             {
                 padding.add(where);
             }
@@ -161,7 +163,7 @@ void testDenseLayout()
         auto& wheels = editor->debugPerformanceControls();
         const auto shown = editor->debugPerformanceSectionShown() && keyboard.isVisible() && wheels.isVisible()
                            && keyboard.getHeight() > 40 && wheels.getWidth() > 40
-                           && near(doc.rectOf("keys").getBottom(), 936.0f);
+                           && near(doc.rectOf("keys").getBottom(), 938.0f - (px3::ui::theme::space::moduleOutlines ? 2.0f : 1.0f), 0.51f);
         check("Dense_KeyboardAndWheelsRunAlongTheBottomEdge", shown,
               keyboard.getBounds().toString() + " " + wheels.getBounds().toString());
 
@@ -177,7 +179,7 @@ void testDenseLayout()
         const auto hid = doc.setVisible("keys", false, error);
         editor->relayoutScene();
         const auto gone = hid && ! editor->debugPerformanceSectionShown() && ! keyboard.isVisible()
-                          && ! wheels.isVisible() && near(doc.rectOf("controls").getBottom(), 936.0f);
+                          && ! wheels.isVisible() && near(doc.rectOf("controls").getBottom(), 938.0f - (px3::ui::theme::space::moduleOutlines ? 2.0f : 1.0f), 0.51f);
         doc.setVisible("keys", true, error);
         editor->relayoutScene();
         check("Dense_SceneFlagRetiresThePerformanceRow", gone && keyboard.isVisible(), error);

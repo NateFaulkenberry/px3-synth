@@ -88,6 +88,10 @@ inline constexpr float powerButton = 20.0f;  // every card's power toggle, one s
 inline constexpr float powerInset = 6.0f;    // from the card's left edge
 inline constexpr float powerPadding = 4.0f;  // clear above and below it inside the title band
 inline constexpr float powerNudge = 1.0f;    // optical drop: sits 1 px below true centre in the band
+// Every module's 1 px outline. Off: the seam between two modules is then just
+// the 1 px scene gap, a single dark line, rather than outline + gap + outline
+// (3 px). One switch for every place that draws the outline.
+inline constexpr bool moduleOutlines = false;
 // The title band is at least this tall, so the power button never touches its
 // edges; the header grows to fit the button, the button never shrinks.
 inline constexpr float minTitleBand = accentBar + powerButton + 2.0f * powerPadding;
