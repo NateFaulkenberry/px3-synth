@@ -98,7 +98,7 @@
     }
   },
   "performanceStrip": {
-    "enabled": true,
+    "enabled": false,
     "radius": 12,
     "radiusTopLeft": 12,
     "radiusTopRight": 12,
@@ -121,7 +121,7 @@
   "performance": {
     "background": {
       "color": "#1B1E21",
-      "opacity": 1
+      "opacity": 0
     },
     "border": {
       "inset": 0,
@@ -167,21 +167,25 @@
       "color": "#FFFFFF",
       "opacity": 0.15,
       "inset": 4,
-      "width": 1
+      "width": 0
     },
     "pitch": {
       "accent": "#529BFF",
       "background": {
-        "color": "#0F1113",
+        "color": "#1B1E21",
         "opacity": 1
       }
     },
     "mod": {
       "accent": "#E8544E",
       "background": {
-        "color": "#0F1113",
+        "color": "#1B1E21",
         "opacity": 1
       }
+    },
+    "layout": {
+      "panelInset": 0,
+      "panelGap": 0
     }
   },
   "topMenu": {
@@ -199,12 +203,12 @@
       "rows": {
         "row1": {
           "height": "auto",
-          "paddingTop": 3,
+          "paddingTop": 6,
           "fontSize": 13
         },
         "row2": {
-          "height": 14,
-          "paddingBottom": 3,
+          "height": 18,
+          "paddingBottom": 7,
           "fontSize": 9
         }
       },

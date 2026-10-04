@@ -74,6 +74,25 @@ void PX3SynthAudioProcessorEditor::buildImagesAndMasks()
 
     logoFrame = juce::ImageFileFormat::loadFrom(BinaryData::px3_gif, BinaryData::px3_gifSize);
 
+    // The GIF carries an opaque near-black background. Drawn on the header face
+    // it showed as a darker box inset in the cell, so the dark is keyed out:
+    // alpha follows brightness, and the white letterforms keep their edges.
+    if (logoFrame.isValid())
+    {
+        juce::Image keyed(juce::Image::ARGB, logoFrame.getWidth(), logoFrame.getHeight(), true);
+        for (int y = 0; y < logoFrame.getHeight(); ++y)
+        {
+            for (int x = 0; x < logoFrame.getWidth(); ++x)
+            {
+                const auto px = logoFrame.getPixelAt(x, y);
+                const auto alpha = juce::jlimit(0.0f, 1.0f, (px.getPerceivedBrightness() - 0.16f) / 0.5f)
+                                   * px.getFloatAlpha();
+                if (alpha > 0.0f) { keyed.setPixelAt(x, y, px.withAlpha(alpha)); }
+            }
+        }
+        logoFrame = keyed;
+    }
+
     if (logoFrame.isValid())
     {
         const auto w = logoFrame.getWidth();

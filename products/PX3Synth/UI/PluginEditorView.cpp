@@ -29,6 +29,16 @@ using namespace px3::ui;
 
 void PX3SynthAudioProcessorEditor::paintOverChildren(juce::Graphics& g)
 {
+    // The performance row is one module, so it carries the same 1 px outline
+    // every card does - drawn over the wheels and keys, which fill their bounds.
+    // Without it the bottom seam read a pixel narrower than the others.
+    if (isPerformanceSectionShown())
+    {
+        const auto row = performanceControls.getBounds().getUnion(pianoKeyboard.getBounds());
+        g.setColour(px3::ui::theme::colour::panelEdge);
+        g.drawRect(row, 1);
+    }
+
     // The bus insert sheets draw their backdrop on the SCRIM, which is a
     // component below them, rather than over the top of everything with a hole
     // cut for the sheet. Their faces are translucent, and a hole would let the

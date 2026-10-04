@@ -7,7 +7,6 @@
 
 namespace
 {
-constexpr float kPanelGap = 14.0f;
 constexpr float kTrackWidth = 10.0f;
 
 inline float clamp01(float value)
@@ -260,6 +259,8 @@ PerformanceControls::Style PerformanceControls::Style::fromConfig(const UIConfig
     s.dividerOpacity = cfgFloat(config, prefix + ".divider.opacity", s.dividerOpacity);
     s.dividerInset = cfgFloat(config, prefix + ".divider.inset", s.dividerInset);
     s.dividerWidth = cfgFloat(config, prefix + ".divider.width", s.dividerWidth);
+    s.panelInset = cfgFloat(config, prefix + ".layout.panelInset", s.panelInset);
+    s.panelGap = cfgFloat(config, prefix + ".layout.panelGap", s.panelGap);
 
     s.pitchAccent = cfgColour(config, prefix + ".pitch.accent", s.pitchAccent);
     s.modAccent = cfgColour(config, prefix + ".mod.accent", s.modAccent);
@@ -637,11 +638,14 @@ void PerformanceControls::updateFromMousePosition(juce::Point<float> position)
 
 PerformanceControls::WheelVisual PerformanceControls::getPitchVisual() const
 {
-    auto area = controlsArea().toFloat().reduced(5.0f);
-    const auto panelWidth = (area.getWidth() - kPanelGap) * 0.5f;
+    // Whole pixels, so the seam between the panels is exactly panelGap wide
+    // and matches the 1 px seams between every other module.
+    auto area = controlsArea().reduced(juce::roundToInt(style.panelInset));
+    const auto gap = juce::roundToInt(style.panelGap);
+    const auto panelWidth = (area.getWidth() - gap) / 2;
 
     WheelVisual visual;
-    visual.panel = area.removeFromLeft(panelWidth);
+    visual.panel = area.removeFromLeft(panelWidth).toFloat();
     const auto trackArea = visual.panel.reduced(12.0f, 22.0f);
     visual.track = juce::Rectangle<float>(trackArea.getCentreX() - kTrackWidth * 0.5f,
                                           trackArea.getY(),
@@ -652,12 +656,13 @@ PerformanceControls::WheelVisual PerformanceControls::getPitchVisual() const
 
 PerformanceControls::WheelVisual PerformanceControls::getModVisual() const
 {
-    auto area = controlsArea().toFloat().reduced(5.0f);
-    const auto panelWidth = (area.getWidth() - kPanelGap) * 0.5f;
-    area.removeFromLeft(panelWidth + kPanelGap);
+    auto area = controlsArea().reduced(juce::roundToInt(style.panelInset));
+    const auto gap = juce::roundToInt(style.panelGap);
+    const auto panelWidth = (area.getWidth() - gap) / 2;
+    area.removeFromLeft(panelWidth + gap);
 
     WheelVisual visual;
-    visual.panel = area;
+    visual.panel = area.toFloat();
     const auto trackArea = visual.panel.reduced(12.0f, 22.0f);
     visual.track = juce::Rectangle<float>(trackArea.getCentreX() - kTrackWidth * 0.5f,
                                           trackArea.getY(),

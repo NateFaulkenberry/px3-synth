@@ -47,30 +47,26 @@ void PX3SynthAudioProcessorEditor::paint(juce::Graphics& g)
     }
     g.fillAll(bg);
 
-    // The header is the instrument's top rail: a flat strip with a lit lower
-    // edge, the same depth language as the module faceplates below it. No
-    // screws or outlines around the window - the modules carry the structure.
+    // The header is a row of faces on the chassis, like the modules below it:
+    // the logo and master-gain cells wear the same face and outline as an
+    // unselected section tab, and the 1 px seams between them show the chassis.
+    // There used to be one rail behind everything with hairline dividers, which
+    // left the gain knob sitting on a different surface from the tabs.
     namespace tc = px3::ui::theme::colour;
     if (! headerArea.isEmpty())
     {
-        const auto rail = headerArea.toFloat();
-        g.setColour(tc::rail);
-        g.fillRoundedRectangle(rail, px3::ui::theme::space::panelRadius);
-        g.setColour(tc::panelEdge);
-        g.drawRoundedRectangle(rail.reduced(0.5f), px3::ui::theme::space::panelRadius, 1.0f);
-        g.setColour(tc::panelLight);
-        g.drawHorizontalLine(juce::roundToInt(rail.getY()) + 1, rail.getX() + 4.0f, rail.getRight() - 4.0f);
-
-        // Hairline dividers either side of the logo and the master gain.
-        g.setColour(tc::railEdge);
-        if (! logoPanelArea.isEmpty())
+        const auto drawFace = [&g](juce::Rectangle<int> cell)
         {
-            g.drawVerticalLine(logoPanelArea.getRight(), rail.getY() + 6.0f, rail.getBottom() - 6.0f);
-        }
-        if (! topMenuGainArea.isEmpty())
-        {
-            g.drawVerticalLine(topMenuGainArea.getX() - 1, rail.getY() + 6.0f, rail.getBottom() - 6.0f);
-        }
+            if (cell.isEmpty()) { return; }
+            // Whole pixels: a 1 px outline on a half-pixel edge smears into two
+            // soft lines, which read as an inset.
+            g.setColour(tc::panelEdge);
+            g.drawRect(cell, 1);
+            g.setColour(juce::Colour(0xff1b1f23)); // TopMenuTabButton's unselected face
+            g.fillRect(cell.reduced(1));
+        };
+        drawFace(logoPanelArea);
+        drawFace(topMenuGainArea);
     }
 
     if (logoFrame.isValid())

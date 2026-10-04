@@ -100,7 +100,9 @@ void testDenseLayout()
             const auto mods = doc.rectOf("voice.mods");
             const auto amp = doc.rectOf("primary.amp");
             const auto keys = doc.rectOf("keys");
-            constexpr auto edge = 1.0f; // the module seam, so nothing meets the window frame
+            // Outline + 1 px + outline between modules; 2 px + one outline at
+            // the window edge, so the edge seam reads the same width.
+            constexpr auto edge = 2.0f;
             if (! near(header.getX(), edge) || ! near(header.getY(), edge) || ! near(header.getRight(), w - edge)
                 || ! near(macros.getX(), edge) || ! near(keys.getBottom(), h - edge)
                 || ! near(keys.getX(), edge) || ! near(keys.getRight(), w - edge)
@@ -148,16 +150,23 @@ void testDenseLayout()
         auto& wheels = editor->debugPerformanceControls();
         const auto shown = editor->debugPerformanceSectionShown() && keyboard.isVisible() && wheels.isVisible()
                            && keyboard.getHeight() > 40 && wheels.getWidth() > 40
-                           && near(doc.rectOf("keys").getBottom(), 937.0f);
+                           && near(doc.rectOf("keys").getBottom(), 936.0f);
         check("Dense_KeyboardAndWheelsRunAlongTheBottomEdge", shown,
               keyboard.getBounds().toString() + " " + wheels.getBounds().toString());
+
+        // Wheels and keyboard are one panel: they meet with no seam, and the
+        // wheel panels share the keyboard's fill.
+        check("Dense_WheelsAndKeyboardReadAsOnePanel",
+              wheels.getRight() == keyboard.getX() && wheels.getY() == keyboard.getY()
+                  && wheels.getHeight() == keyboard.getHeight(),
+              wheels.getBounds().toString() + " | " + keyboard.getBounds().toString());
 
         // Flip the scene flag: the row goes and the controls take its height.
         juce::String error;
         const auto hid = doc.setVisible("keys", false, error);
         editor->relayoutScene();
         const auto gone = hid && ! editor->debugPerformanceSectionShown() && ! keyboard.isVisible()
-                          && ! wheels.isVisible() && near(doc.rectOf("controls").getBottom(), 937.0f);
+                          && ! wheels.isVisible() && near(doc.rectOf("controls").getBottom(), 936.0f);
         doc.setVisible("keys", true, error);
         editor->relayoutScene();
         check("Dense_SceneFlagRetiresThePerformanceRow", gone && keyboard.isVisible(), error);

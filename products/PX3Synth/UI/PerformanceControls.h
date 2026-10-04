@@ -33,6 +33,10 @@ public:
     struct Style
     {
         juce::Colour background { juce::Colour::fromRGB(20, 20, 20) };
+        // The wheel panels tile the strip like modules: panelInset clear of the
+        // strip's edge, panelGap between PITCH and MOD.
+        float panelInset { 0.0f };
+        float panelGap { 1.0f };
         float backgroundOpacity { 1.0f };
         // The outer frame, inset from the component edge.
         float borderInset { 2.0f };
