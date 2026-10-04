@@ -110,6 +110,7 @@ void PX3SynthAudioProcessorEditor::buildImagesAndMasks()
     addAndMakeVisible(performanceControls);
     addAndMakeVisible(pianoKeyboard);
     addAndMakeVisible(sparkOverlay);
+    addChildComponent(noticeBanner);
 
 }
 
@@ -974,11 +975,11 @@ void PX3SynthAudioProcessorEditor::buildSettingsAndOverlays()
     oscPanelViewport.setScrollBarThickness(10);
     oscPanelViewport.setSingleStepSizes(16, 24);
     addAndMakeVisible(oscPanelViewport);
-    modPanelViewport.setViewedComponent(modPanel.get(), false);
-    modPanelViewport.setScrollBarsShown(true, true);
-    modPanelViewport.setScrollBarThickness(10);
-    modPanelViewport.setSingleStepSizes(16, 24);
-    addAndMakeVisible(modPanelViewport);
+    // The six modulators are modules of the VOICE surface (scene node
+    // "voice.mods"), laid out by the scene like every other card - no
+    // viewport, no scrolling.
+    addChildComponent(*modPanel);
+    modPanel->setSceneManaged(true);
     buildModRouting();
     addAndMakeVisible(*ampPanel);
     addAndMakeVisible(*fltPanel);

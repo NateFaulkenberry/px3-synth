@@ -865,6 +865,9 @@ void testEditorLifecycle()
 
         auto keyboardOf = [](juce::AudioProcessorEditor& e)
         {
+            // 0.8.0: the performance section ships hidden; these tests cover its
+            // implementation, so they bring it back the way the scene would.
+            showPerformanceSection(e);
             PianoKeyboard* keys = nullptr;
             std::function<void(juce::Component&)> walk = [&](juce::Component& c)
             {

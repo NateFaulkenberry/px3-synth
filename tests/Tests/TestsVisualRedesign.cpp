@@ -369,7 +369,7 @@ void testVisualRedesign()
         PX3SynthAudioProcessor processor;
         auto base = makeEditor(processor, 1518, 918);
         auto* editor = dynamic_cast<PX3SynthAudioProcessorEditor*>(base.get());
-        editor->debugSelectSectionPersisted(1);
+        editor->debugSelectSectionPersisted(0);   // dense layout: the ENV modules are on VOICE
         auto* sync = editor->debugModPanel() != nullptr ? editor->debugModPanel()->getEnvelopeSyncButton(0) : nullptr;
         auto ok = sync != nullptr && showingIn(*sync, *editor) && sync->getWidth() > 20;
         if (ok)

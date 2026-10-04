@@ -105,11 +105,21 @@ void testEditorLayout()
 
             editor->debugSelectSection(0);   // OSC composite: OSC + FILTER + AMP
             editor->debugRefreshModRouting();
+            // 0.8.0 dense layout: the bottom patch bar is retired with the
+            // performance section (still built, hidden by the scene); the
+            // sources live on the LFO/ENV modules of VOICE and in the matrix.
             auto* bar = editor->debugModPatchBar();
+            auto* modules = editor->debugModPanel();
             auto* cutoff = knobFor("voice.filter1.cutoff");
-            check("ModRouteUi_PatchBarShowsAllElevenSourcesOnTheVoicePage",
-                  bar->isVisible() && bar->getWidth() > 0 && bar->getSocket(10).getWidth() > 0);
-            if (cutoff != nullptr) { drag(bar->getSocket(0), *cutoff); }
+            auto modulesHaveJacks = modules != nullptr && modules->isVisible();
+            for (int s = 0; s < 6 && modulesHaveJacks; ++s)
+            {
+                modulesHaveJacks = modules->getCardSocket(s) != nullptr && modules->getCardSocket(s)->isVisible()
+                                   && modules->getCardSocket(s)->getWidth() > 0;
+            }
+            check("ModRouteUi_VoiceModulesCarryTheSourceJacksAndThePatchBarIsRetired",
+                  bar != nullptr && ! bar->isVisible() && modulesHaveJacks);
+            if (cutoff != nullptr && modulesHaveJacks) { drag(*modules->getCardSocket(0), *cutoff); }
             const auto routed = processor.getGraphRoute(0);
             check("ModRouteUi_DragFromAJackOntoAKnobCreatesTheRoute",
                   cutoff != nullptr && routed.source == 0 && routed.destination == "voice.filter1.cutoff"
@@ -145,24 +155,19 @@ void testEditorLayout()
 
             // Fine tuning is a destination: ENV 1 onto OSC 1 FINE.
             auto* fine = knobFor("voice.osc1.tuning.cents");
-            if (fine != nullptr) { drag(bar->getSocket(3), *fine); }
+            if (fine != nullptr && modulesHaveJacks) { drag(*modules->getCardSocket(3), *fine); }
             const auto fineRoute = processor.getGraphRoute(1);
             check("ModRouteUi_EnvelopeCanBePatchedToFineTune",
                   fine != nullptr && fineRoute.source == 3 && fineRoute.destination == "voice.osc1.tuning.cents");
 
             // Dropping on something that is not a modulatable knob does nothing.
-            drag(bar->getSocket(1), *bar);
+            if (auto* menu = editor->debugTopMenuBar(); menu != nullptr && modulesHaveJacks)
+            {
+                drag(*modules->getCardSocket(1), *menu);
+            }
             check("ModRouteUi_DropOnNothingCreatesNoRoute", processor.getGraphRoute(2).source == -1);
 
-            // MOD page: the card jacks, the patch view and the route list.
-            editor->debugSelectSection(1);
-            editor->debugRefreshModRouting();
-            auto* panel = editor->debugModRoutingPanel();
-            check("ModRouteUi_RoutingPanelIsInTheModPage",
-                  panel->isVisible() && panel->getParentComponent() == editor && panel->getWidth() > 300
-                      && panel->getPatchView().getHeight() > 100 && panel->getList().getHeight() > 100);
-            check("ModRouteUi_ListShowsEveryRoute", panel->getRowCount() == 2);
-
+            // A module's jack patches a knob on the same (VOICE) page.
             auto* cardJack = editor->debugModPanel()->getCardSocket(1);
             auto* rate = knobFor(processor.getLfoFrequencyParam(0).getParameterID());
             if (cardJack != nullptr && rate != nullptr && processor.isGraphDestination(processor.getLfoFrequencyParam(0).getParameterID()))
@@ -171,6 +176,14 @@ void testEditorLayout()
             }
             check("ModRouteUi_CardJackPatchesAKnobOnTheSamePage",
                   cardJack != nullptr && rate != nullptr && processor.getGraphRoute(2).source == 1);
+
+            // MOD page: the matrix (sources, routes, destinations).
+            editor->debugSelectSection(1);
+            editor->debugRefreshModRouting();
+            auto* panel = editor->debugModRoutingPanel();
+            check("ModRouteUi_RoutingPanelIsInTheModPage",
+                  panel->isVisible() && panel->getParentComponent() == editor && panel->getWidth() > 300
+                      && panel->getPatchView().getHeight() > 100 && panel->getList().getHeight() > 100);
             editor->debugRefreshModRouting();
             check("ModRouteUi_NewRouteAppearsInTheList", panel->getRowCount() == 3);
 
@@ -344,6 +357,18 @@ void testEditorLayout()
                     const auto bar = editor->debugTopMenuBar() != nullptr
                                          ? editor->debugTopMenuBar()->getBounds()
                                          : juce::Rectangle<int>();
+
+                    // 0.8.0 dense layout: the keyboard is hidden in the release
+                    // scene and reserves nothing - the panels run to the bottom.
+                    if (! editor->debugPerformanceSectionShown())
+                    {
+                        if (panel.isEmpty() || bar.isEmpty() || panel.intersects(bar)
+                            || ! editorBounds.contains(panel) || panel.getBottom() != editorBounds.getBottom())
+                        {
+                            faults.add(where + ": panel " + panel.toString() + " under bar " + bar.toString());
+                        }
+                        continue;
+                    }
 
                     if (panel.isEmpty() || keys.isEmpty() || bar.isEmpty())
                     {
@@ -627,6 +652,7 @@ void testEditorLayout()
                             {
                                 if (dynamic_cast<OscPanel*>(child))      { addPanel("OSC"); }
                                 else if (dynamic_cast<ModPanel*>(child)) { addPanel("MOD"); }
+                                else if (dynamic_cast<px3::ui::modrouting::ModRoutingPanel*>(child)) { addPanel("MATRIX"); }
                                 else if (dynamic_cast<AmpPanel*>(child)) { addPanel("AMP"); }
                                 else if (dynamic_cast<FltPanel*>(child)) { addPanel("FLT"); }
                                 else if (dynamic_cast<FxPanel*>(child))  { addPanel("FX"); }
@@ -644,7 +670,9 @@ void testEditorLayout()
                 const auto primary = visiblePanelsFor(0);
                 // 0.8.0: AMP and FILTER are part of the VOICE page, so selecting
                 // either shows the whole OSC + FILTER + AMP strip.
-                const juce::StringArray sections { "MOD", "OSC+AMP+FLT", "OSC+AMP+FLT", "FX", "MIX", "SETTINGS" };
+                // Dense layout: the LFO/ENV modulators (ModPanel) are VOICE's
+                // second row and the MOD page is the modulation matrix.
+                const juce::StringArray sections { "MATRIX", "OSC+MOD+AMP+FLT", "OSC+MOD+AMP+FLT", "FX", "MIX", "SETTINGS" };
                 juce::StringArray actual;
                 for (int section = 1; section <= 6; ++section)
                 {

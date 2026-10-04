@@ -203,19 +203,19 @@ void TopMenuTabButton::paintButton(juce::Graphics& g,
     namespace tc = px3::ui::theme::colour;
     const auto face = on ? juce::Colour(0xff2a3036) : juce::Colour(0xff1b1f23);
     g.setColour(face);
-    g.fillRoundedRectangle(area.reduced(0.5f), 3.0f);
+    g.fillRoundedRectangle(area.reduced(0.5f), 0.0f);
     if (shouldDrawButtonAsHighlighted || shouldDrawButtonAsDown)
     {
         g.setColour(juce::Colours::white.withAlpha(shouldDrawButtonAsDown ? 0.10f : 0.05f));
-        g.fillRoundedRectangle(area.reduced(0.5f), 3.0f);
+        g.fillRoundedRectangle(area.reduced(0.5f), 0.0f);
     }
     if (attention)
     {
         g.setColour(attentionColour.withAlpha(0.18f + 0.30f * attentionPhase));
-        g.drawRoundedRectangle(area.reduced(1.0f), 3.0f, 1.5f);
+        g.drawRoundedRectangle(area.reduced(1.0f), 0.0f, 1.5f);
     }
     g.setColour(on ? juce::Colours::white.withAlpha(0.10f) : tc::panelEdge);
-    g.drawRoundedRectangle(area.reduced(0.5f), 3.0f, 1.0f);
+    g.drawRoundedRectangle(area.reduced(0.5f), 0.0f, 1.0f);
     if (on && showLed)
     {
         // The section's identity stripe across the full top edge, the same

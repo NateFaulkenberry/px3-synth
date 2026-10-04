@@ -80,8 +80,8 @@ float tracking(Type type) noexcept;
 namespace space
 {
 inline constexpr float unit = 4.0f;          // the grid everything sits on
-inline constexpr float panelRadius = 4.0f;   // module faceplate corners
-inline constexpr float insetRadius = 3.0f;   // displays, wells, chips
+inline constexpr float panelRadius = 0.0f;   // module faceplate corners: square (dense modular surface)
+inline constexpr float insetRadius = 0.0f;   // displays, wells, chips: square
 inline constexpr float headerHeight = 22.0f; // module title band
 inline constexpr float accentBar = 2.0f;     // identity stripe on a module
 inline constexpr float powerButton = 20.0f;  // every card's power toggle, one size

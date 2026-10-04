@@ -83,7 +83,7 @@ void PX3SynthAudioProcessorEditor::paint(juce::Graphics& g)
                 // How much shorter than its panel the logo sits - its breathing
                 // room inside the section.
                 const auto logoInset = uiConfig != nullptr ? uiConfig->getInt("editor.logo.heightInset", 20) : 20;
-                const auto logoSize = static_cast<float>(juce::jlimit(40, 120, logoPanelArea.getHeight() - logoInset));
+                const auto logoSize = static_cast<float>(juce::jlimit(16, 120, logoPanelArea.getHeight() - juce::jmin(logoInset, logoPanelArea.getHeight() / 4)));
                 // Centred on the panel outright, rather than derived from a content
                 // height and a top offset. One expression, so changing the size
                 // cannot move it off centre.

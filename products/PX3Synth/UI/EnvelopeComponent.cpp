@@ -1,5 +1,6 @@
 #include "ParameterKnob.h"
 #include "EnvelopeComponent.h"
+#include "CompactModuleLayout.h"
 
 #include "BypassButton.h"
 #include "CardInner.h"
@@ -285,7 +286,7 @@ void EnvelopeComponent::mouseUp(const juce::MouseEvent& event)
     // The GRAPH's row, which is no longer the last one now that the knobs sit
     // below it. Asking for the last row made a click on the graph read as a
     // click on the card background - which toggles the envelope off.
-    const auto onGraph = inner.rowContent(graphRowIndex()).contains(event.getPosition());
+    const auto onGraph = graphRowArea().contains(event.getPosition());
 
     if (! forceEnabled && ! onGraph && px3::ui::isCardBackgroundToggleClick(event))
     {
@@ -303,7 +304,7 @@ EnvelopeComponent::Geometry EnvelopeComponent::computeGeometry() const
     // Deriving it here a second time, by replaying the same sequence of
     // removeFromTop calls resized() used, is what let the drawn graph and the
     // draggable graph disagree.
-    const auto graphLayout = inner.rowContent(graphRowIndex()).toFloat();
+    const auto graphLayout = graphRowArea().toFloat();
 
     geom.left = graphLayout.getX() + 6.0f;
     geom.right = graphLayout.getRight() - 6.0f;
@@ -332,7 +333,7 @@ juce::Rectangle<int> EnvelopeComponent::graphBounds() const
     // hard against each other. The row's own gap and padding cannot do this:
     // the editor fills its row, and the knob stack is centred in the next one,
     // so both only move the caption by a fraction of what they are given.
-    if (adsrKnobsWanted())
+    if (adsrKnobsWanted() && ! compactLayout)
     {
         const auto gap = uiConfig != nullptr
                            ? uiConfig->getInt(configPrefix + ".visual.graph.bottomGap", 12)
@@ -351,6 +352,14 @@ void EnvelopeComponent::setShapedEnvelope(const px3::BreakpointEnvelope& envelop
 void EnvelopeComponent::resized()
 {
     layoutCardInner();
+
+    if (compactLayout && ! isFullHeightGraph())
+    {
+        buildAdsrKnobs();
+        layoutCompact();
+        breakpointEditor.setBounds(graphBounds());
+        return;
+    }
 
     // AFTER layoutCardInner, not before it. computeGeometry reads
     // inner.rowContent, which only holds the right values once the card has
@@ -490,6 +499,11 @@ void EnvelopeComponent::setEnvelopeMode(px3::BreakpointEnvelope::Mode mode)
 {
     if (adsrOnly) { mode = px3::BreakpointEnvelope::Mode::adsr; }
 
+    // The 30 Hz refresh calls this with the processor's mode every tick; an
+    // unchanged mode must not re-lay-out and repaint the whole card.
+    if (modeApplied && mode == envelopeMode) { return; }
+    modeApplied = true;
+
     envelopeMode = mode;
     modeBox.setSelectedId(mode == px3::BreakpointEnvelope::Mode::breakpoint ? 2 : 1,
                           juce::dontSendNotification);
@@ -591,6 +605,81 @@ void EnvelopeComponent::setKnobLookAndFeel(juce::LookAndFeel* lookAndFeel)
 bool EnvelopeComponent::adsrKnobsWanted() const
 {
     return showAdsrKnobs;
+}
+
+juce::Rectangle<int> EnvelopeComponent::graphRowArea() const
+{
+    return compactLayout && ! isFullHeightGraph() ? compactGraph : inner.rowContent(graphRowIndex());
+}
+
+void EnvelopeComponent::layoutCompact()
+{
+    namespace c = px3::ui::compact;
+    auto area = card.contentBelowTitle().reduced(c::pad, c::pad - 1);
+    const auto rowH = c::captionHeight + c::boxHeight;
+
+    // ASSIGN | LOOP | SYNC
+    {
+        auto row = area.removeFromTop(rowH);
+        const auto chipW = juce::jlimit(36, 52, row.getWidth() / 5);
+        if (syncButton != nullptr)
+        {
+            c::boxCell(row.removeFromRight(chipW), nullptr, *syncButton);
+            row.removeFromRight(c::gap);
+        }
+        if (loopButton != nullptr)
+        {
+            c::boxCell(row.removeFromRight(chipW), nullptr, *loopButton);
+            row.removeFromRight(c::gap);
+        }
+        c::boxCell(row, &assignLabel, assignBox);
+    }
+    area.removeFromTop(c::gap);
+
+    // Two knob rows under the display; the knobs give way before the display does.
+    const auto knob = juce::jlimit(20, 40, (area.getHeight() - 56 - 2 * (c::captionHeight + c::readoutHeight + 2) - c::gap * 2) / 2);
+    const auto knobRow = c::knobRowHeight(knob);
+
+    // MODE | AMOUNT | KEY
+    {
+        auto row = area.removeFromBottom(knobRow);
+        // TYPE gets the wider share so "BREAKPOINT" / "ADSR" read in full.
+        auto typeCell = row.removeFromLeft(row.getWidth() * 2 / 5);
+        row.removeFromLeft(c::gap);
+        auto knobs = c::cells(row, 2);
+        const std::array<juce::Rectangle<int>, 3> cell { typeCell, knobs[0], knobs[1] };
+        if (adsrOnly)
+        {
+            modeBox.setVisible(false);
+            modeLabel.setVisible(false);
+        }
+        else
+        {
+            modeBox.setVisible(true);
+            modeLabel.setVisible(true);
+            c::boxCell(cell[0].withSizeKeepingCentre(cell[0].getWidth(), c::captionHeight + c::boxHeight), &modeLabel, modeBox);
+        }
+        if (amountKnob != nullptr) { c::knobCell(cell[1], amountLabel, *amountKnob, amountValueLabel, knob); }
+        if (keyKnob != nullptr) { c::knobCell(cell[2], keyLabel, *keyKnob, keyValueLabel, knob); }
+    }
+    area.removeFromBottom(c::gap);
+
+    // A D S R
+    if (adsrKnobsBuilt)
+    {
+        const auto cell = c::cells(area.removeFromBottom(knobRow), 4);
+        constexpr const char* names[] { "ATK", "DEC", "SUS", "REL" };
+        for (int i = 0; i < 4; ++i)
+        {
+            auto& entry = adsrKnobs[static_cast<std::size_t>(i)];
+            entry.label.setText(names[i], juce::dontSendNotification);
+            c::knobCell(cell[static_cast<std::size_t>(i)], &entry.label, entry.knob, &entry.readout, knob);
+        }
+        // Clear of the display, so the captions do not read as part of it.
+        area.removeFromBottom(6);
+    }
+
+    compactGraph = area;
 }
 
 int EnvelopeComponent::graphRowIndex() const
@@ -747,7 +836,7 @@ void EnvelopeComponent::updateCursorFor(juce::Point<float> position)
 {
     // Inside the graph the breakpoint editor is a child and sets its own
     // cursor over its own handles; this card has nothing draggable there.
-    if (inner.rowContent(graphRowIndex()).contains(position.toInt()))
+    if (graphRowArea().contains(position.toInt()))
     {
         setMouseCursor(juce::MouseCursor::NormalCursor);
         return;

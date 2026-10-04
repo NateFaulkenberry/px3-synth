@@ -21,7 +21,7 @@
     },
     "topStrip": {
       "fillColour": "$bgTopStrip",
-      "cornerRadius": 12
+      "cornerRadius": 0
     },
     "layout": {
       "headerHeight": 80,
@@ -333,13 +333,13 @@
       }
     },
     "signalFlow": {
-      "height": 34,
-      "gapBelow": 6,
+      "height": 30,
+      "gapBelow": 1,
       "nodeGap": 26,
       "minNodeWidth": 48,
-      "insetX": 4,
+      "insetX": 0,
       "insetY": 6,
-      "cornerRadius": 3,
+      "cornerRadius": 0,
       "reflowRate": 0.35,
       "fontSize": 11,
       "accentBarHeight": 3,
@@ -356,7 +356,7 @@
     "grid": {
       "columns": 5,
       "standaloneWidth": 318,
-      "gap": 8,
+      "gap": 1,
       "rowHeight": 500,
       "minRowHeight": 330,
       "minCardWidth": 262
@@ -375,7 +375,7 @@
     "wavetable": {
       "graph": {
         "inset": 6.0,
-        "cornerRadius": 7,
+        "cornerRadius": 0,
         "background": "#0C0C0E",
         "borderWidth": 1.0,
         "depthX": 0.28,
@@ -398,7 +398,7 @@
     "panel": {
       "fillAlpha": 0,
       "strokeAlpha": 0,
-      "cornerRadius": 10,
+      "cornerRadius": 0,
       "layout": {
         "padX": 0,
         "padY": 0
@@ -422,7 +422,7 @@
         "width": 36,
         "height": 36
       },
-      "cornerRadius": 4,
+      "cornerRadius": 0,
       "textSize": 9,
       "textColour": "#DCE2EC",
       "normalColour": "#2C2E34D2",
@@ -455,7 +455,7 @@
     },
     "channel": {
       "width": 84,
-      "spacing": 8,
+      "spacing": 1,
       "titleSize": 11.5,
       "labelSize": 9.5
     },
@@ -485,7 +485,7 @@
         "width": 51,
         "height": 42
       },
-      "cornerRadius": 4,
+      "cornerRadius": 0,
       "textSize": 9.5,
       "textColour": "#DCE2EC",
       "normalColour": "#2C2E34D2",
@@ -508,7 +508,7 @@
         "width": 51,
         "height": 42
       },
-      "cornerRadius": 4,
+      "cornerRadius": 0,
       "textSize": 9.5,
       "textColour": "#DCE2EC",
       "normalColour": "#2C2E34D2",
@@ -539,7 +539,7 @@
         "width": 51,
         "height": 42
       },
-      "cornerRadius": 4,
+      "cornerRadius": 0,
       "textSize": 9.5,
       "textColour": "#DCE2EC",
       "normalColour": "#2C2E34D2",
@@ -570,7 +570,7 @@
     "env1": {
       "visual": {
         "graph": {
-          "cornerRadius": 7,
+          "cornerRadius": 0,
           "fillColour": "#0E0E12",
           "fillAlpha": 170,
           "strokeThickness": 1,
@@ -611,7 +611,7 @@
     "env2": {
       "visual": {
         "graph": {
-          "cornerRadius": 7,
+          "cornerRadius": 0,
           "fillColour": "#0E0E12",
           "fillAlpha": 170,
           "strokeThickness": 1,
@@ -652,7 +652,7 @@
     "env3": {
       "visual": {
         "graph": {
-          "cornerRadius": 7,
+          "cornerRadius": 0,
           "fillColour": "#0E0E12",
           "fillAlpha": 170,
           "strokeThickness": 1,
@@ -693,7 +693,7 @@
     "env": {
       "visual": {
         "graph": {
-          "cornerRadius": 7,
+          "cornerRadius": 0,
           "fillColour": "#0E0E12",
           "fillAlpha": 170,
           "strokeThickness": 1
@@ -722,7 +722,7 @@
       },
       "visual": {
         "graph": {
-          "cornerRadius": 7,
+          "cornerRadius": 0,
           "fillColour": "#0E0E12",
           "fillAlpha": 170,
           "strokeThickness": 1,
@@ -786,7 +786,7 @@
       "size": {
         "height": 40
       },
-      "cornerRadius": 4,
+      "cornerRadius": 0,
       "textSize": 10.5,
       "textColour": "#333333",
       "normalColour": "#2C2E34D2",
@@ -894,7 +894,7 @@
     "defaults": {
       "width": "auto",
       "height": "auto",
-      "margin": 2,
+      "margin": 0,
       "padding": 8,
       "shadow": {
         "color": "#000000",
@@ -908,7 +908,7 @@
         "width": 1.2,
         "color": "#DCE8FC",
         "opacity": 0.35,
-        "radius": 8
+        "radius": 0
       },
       "background": {
         "color": "#68C2FF",
@@ -917,8 +917,8 @@
       "gloss": {
         "margin": 6,
         "split": 0.5,
-        "topRadius": 6,
-        "bottomRadius": 6,
+        "topRadius": 0,
+        "bottomRadius": 0,
         "topFill": {
           "color": "#68C2FF",
           "opacity": 0
@@ -1121,7 +1121,7 @@
       "border": {
         "color": "#EDF1F7",
         "opacity": 0.28,
-        "radius": 10
+        "radius": 0
       },
       "title": {
         "color": "#333333",
@@ -1132,7 +1132,7 @@
       },
       "innerOverlay": {
         "margin": 4,
-        "radius": 6,
+        "radius": 0,
         "color": "#101318",
         "opacity": 1
       }
@@ -1158,7 +1158,7 @@
       "border": {
         "color": "#EDF1F7",
         "opacity": 0.28,
-        "radius": 10
+        "radius": 0
       },
       "title": {
         "color": "#333333",
@@ -1169,13 +1169,13 @@
       },
       "innerOverlay": {
         "margin": 4,
-        "radius": 6,
+        "radius": 0,
         "color": "#C6C8CB",
         "opacity": 1
       }
     },
     "mixerChannel": {
-      "margin": 2,
+      "margin": 0,
       "padding": 6,
       "background": {
         "color": "#EDF1F7",
@@ -1441,7 +1441,7 @@
         "labelOutline": "#ED9D9D",
         "labelOutlineOpacity": 0.45,
         "labelOutlineWidth": 1,
-        "labelCornerRadius": 7,
+        "labelCornerRadius": 0,
         "knobSize": 54,
         "featureKnobSize": 66,
         "choiceWidth": 76,
@@ -1563,7 +1563,7 @@
         "labelOutline": "#9FD8E2",
         "labelOutlineOpacity": 0.45,
         "labelOutlineWidth": 1,
-        "labelCornerRadius": 7,
+        "labelCornerRadius": 0,
         "knobSize": 54,
         "featureKnobSize": 77,
         "choiceWidth": 72,
@@ -2475,7 +2475,7 @@
       }
     },
     "mixerSub": {
-      "margin": 2,
+      "margin": 0,
       "padding": 10,
       "background": {
         "color": "#EDF1F7",
@@ -2529,7 +2529,7 @@
       }
     },
     "mixerOsc1": {
-      "margin": 2,
+      "margin": 0,
       "padding": 10,
       "background": {
         "color": "#EDF1F7",
@@ -2583,7 +2583,7 @@
       }
     },
     "mixerOsc2": {
-      "margin": 2,
+      "margin": 0,
       "padding": 10,
       "background": {
         "color": "#EDF1F7",
@@ -2637,7 +2637,7 @@
       }
     },
     "mixerOsc3": {
-      "margin": 2,
+      "margin": 0,
       "padding": 10,
       "background": {
         "color": "#EDF1F7",
@@ -2691,7 +2691,7 @@
       }
     },
     "mixerFx": {
-      "margin": 2,
+      "margin": 0,
       "padding": 10,
       "background": {
         "color": "#EDF1F7",
@@ -2745,7 +2745,7 @@
       }
     },
     "mixerDry": {
-      "margin": 2,
+      "margin": 0,
       "padding": 10,
       "background": {
         "color": "#EDF1F7",
@@ -2921,7 +2921,7 @@
     },
     "layout": {
       "padding": 10,
-      "cornerRadius": 8,
+      "cornerRadius": 0,
       "borderWidth": 1,
       "headerHeight": 26,
       "headerFontSize": 13,
@@ -2977,7 +2977,7 @@
       "offsetY": 6,
       "width": 234,
       "textHeight": 18,
-      "cornerRadius": 6,
+      "cornerRadius": 0,
       "borderWidth": 1,
       "arrowWidth": 14,
       "arrowHeight": 8,

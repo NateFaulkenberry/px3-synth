@@ -127,6 +127,14 @@ bool PX3SynthAudioProcessorEditor::keyPressed(const juce::KeyPress& key)
     return false;
 }
 
+juce::RangedAudioParameter* PX3SynthAudioProcessorEditor::cachedParameter(const juce::String& id)
+{
+    if (const auto found = parameterLookup.find(id); found != parameterLookup.end()) { return found->second; }
+    auto* parameter = audioProcessor.findRangedParameterById(id);
+    parameterLookup.emplace(id, parameter);
+    return parameter;
+}
+
 void PX3SynthAudioProcessorEditor::refreshMidiMappingUI()
 {
     // Walks the tree rather than holding a list built at construction: panels
@@ -166,12 +174,12 @@ void PX3SynthAudioProcessorEditor::refreshMidiMappingUI()
         auto* slider = knob.getComponent();
         if (slider == nullptr) { continue; }
 
-        const auto alreadyKnown = std::any_of(midiKnobs.begin(), midiKnobs.end(),
-                                              [slider](const auto& known)
-                                              { return known.getComponent() == slider; });
-
-        if (! alreadyKnown)
+        // Keyed by address, validated by a SafePointer: a slider freed and
+        // another allocated at the same address is still registered.
+        auto& known = midiKnobSet[slider];
+        if (known.getComponent() != slider)
         {
+            known = slider;
             slider->addMouseListener(&midiSelectListener, false);
             midiKnobs.push_back(knob);
         }
@@ -214,7 +222,7 @@ void PX3SynthAudioProcessorEditor::refreshMidiMappingUI()
         // assigned to any knob in the synth, so any knob has to be able to
         // show that something is moving it - the AMP ENV knobs had no ring at
         // all, which made a macro assigned to them look like it did nothing.
-        if (auto* parameter = knobShown ? audioProcessor.findRangedParameterById(parameterId) : nullptr)
+        if (auto* parameter = knobShown ? cachedParameter(parameterId) : nullptr)
         {
             const auto modulated = audioProcessor.getModulatedNormalisedValue(*parameter);
             const auto shown = static_cast<double>(
@@ -281,6 +289,7 @@ void PX3SynthAudioProcessorEditor::refreshMidiMappingUI()
     {
         pianoKeyboard.setNotice({});
     }
+    updateNoticeBanner();
 }
 
 //==============================================================================

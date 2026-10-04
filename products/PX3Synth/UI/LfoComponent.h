@@ -51,6 +51,10 @@ public:
     void attachClock(juce::AudioParameterChoice& mode, juce::AudioParameterChoice& division);
     void setClockAvailable(bool available);
 
+    // Dense module interior (VOICE's modulator row): stacked rows of cells,
+    // the wave display takes what is left. Off: the CardInner rows from UIConfig.
+    void setCompactLayout(bool shouldBeCompact) { if (compactLayout != shouldBeCompact) { compactLayout = shouldBeCompact; resized(); } }
+
     void resized() override;
     void mouseUp(const juce::MouseEvent& event) override;
     void mouseMove(const juce::MouseEvent& event) override;
@@ -113,4 +117,10 @@ private:
     bool clockAvailable { true };
     px3::ui::CardHost card;
     px3::ui::CardInner inner;
+    bool compactLayout { false };
+    juce::Rectangle<int> compactGraph;
+    void layoutCompact();
+    // The wave display's area (and the band the display ignores clicks in).
+    juce::Rectangle<int> graphArea() const;
+    juce::Rectangle<int> graphHitArea() const;
 };

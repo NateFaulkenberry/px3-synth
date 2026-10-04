@@ -2,6 +2,7 @@
 #include "ModPanel.h"
 
 #include "UIConfig.h"
+#include "Theme.h"
 
 #include <cmath>
 
@@ -379,8 +380,63 @@ void ModPanel::configureOwnedEnvBundle(int envIndex, EnvBundle& bundle)
     };
 }
 
+void ModPanel::setSceneManaged(bool managed)
+{
+    sceneManaged = managed;
+    // Placed by the scene as compact modules: their interiors go dense too.
+    // Six modules on the always-visible VOICE page: each is cached, so the
+    // 30 Hz tick redraws only what moved (the LFO wave, an envelope playhead).
+    for (int i = 0; i < 6; ++i) { if (auto* card = getCard(i)) { card->setBufferedToImage(managed); } }
+    if (lfoComponent != nullptr) { lfoComponent->setCompactLayout(managed); }
+    for (auto& bundle : extraLfos) { if (bundle.component != nullptr) { bundle.component->setCompactLayout(managed); } }
+    for (auto& bundle : envelopes) { if (bundle.component != nullptr) { bundle.component->setCompactLayout(managed); } }
+}
+
+juce::Component* ModPanel::getCard(int index)
+{
+    if (index == 0) { return lfoComponent.get(); }
+    if (index == 1 || index == 2) { return extraLfos[static_cast<std::size_t>(index - 1)].component.get(); }
+    if (juce::isPositiveAndBelow(index - 3, static_cast<int>(envelopes.size())))
+    {
+        return envelopes[static_cast<std::size_t>(index - 3)].component.get();
+    }
+    return nullptr;
+}
+
+void ModPanel::layoutSockets()
+{
+    // Each card's jack sits at the right end of its title band, across from
+    // the power button (CardHost::powerBounds, left end of the same band).
+    const juce::ScopedValueSetter<bool> guard(placingSockets, true);
+    for (int i = 0; i < static_cast<int>(cardSockets.size()); ++i)
+    {
+        auto* socket = cardSockets[static_cast<std::size_t>(i)].get();
+        auto* card = getCard(i);
+        if (socket == nullptr || card == nullptr) { continue; }
+        // The power button's own rectangle mirrored to the right edge, so the
+        // two are the same size and sit level in the title band.
+        const auto power = i < 3 ? static_cast<const LfoComponent*>(card)->powerBoundsInParent()
+                                 : static_cast<const EnvelopeComponent*>(card)->powerBoundsInParent();
+        const auto inset = power.getX() - card->getX();
+        socket->setBounds(card->getRight() - inset - power.getWidth(), power.getY(), power.getWidth(), power.getHeight());
+        socket->toFront(false);
+    }
+}
+
+void ModPanel::childBoundsChanged(juce::Component* child)
+{
+    if (sceneManaged && ! placingSockets && child != nullptr
+        && dynamic_cast<px3::ui::modrouting::ModSourceSocket*>(child) == nullptr)
+    {
+        layoutSockets();
+    }
+}
+
 void ModPanel::paint(juce::Graphics& g)
 {
+    // Scene-managed, the cards tile the panel with 1 px seams; the chassis
+    // behind shows through the seams, so there is nothing to draw here.
+    if (sceneManaged) { return; }
     const auto fillAlpha = uiConfig != nullptr ? uiConfig->getFloat("mod.panel.fillAlpha", 0.14f) : 0.14f;
     const auto strokeAlpha = uiConfig != nullptr ? uiConfig->getFloat("mod.panel.strokeAlpha", 0.75f) : 0.75f;
     const auto panelRadius = uiConfig != nullptr ? uiConfig->getFloat("mod.panel.cornerRadius", 10.0f) : 10.0f;
@@ -439,6 +495,11 @@ void ModPanel::resized()
 {
     if (lfoComponent == nullptr)
     {
+        return;
+    }
+    if (sceneManaged)
+    {
+        layoutSockets();
         return;
     }
 

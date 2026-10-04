@@ -56,7 +56,7 @@ void PX3SynthAudioProcessorEditor::refreshModRouting()
 
     modRoutes = collectRoutes(audioProcessor);
     if (modPatchBar != nullptr && modPatchBar->isVisible()) { modPatchBar->refresh(modRoutes); }
-    if (modPanel != nullptr && isPanelVisible(kSectionMod)) { modPanel->refreshModSources(modRoutes); }
+    if (modPanel != nullptr && modPanel->isVisible()) { modPanel->refreshModSources(modRoutes); }
     if (modRoutingPanel != nullptr && modRoutingPanel->isVisible()) { modRoutingPanel->refresh(); }
 
     // The rings every routed knob draws, keyed by parameter id. Built once
