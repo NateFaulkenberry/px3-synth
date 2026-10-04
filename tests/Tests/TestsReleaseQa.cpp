@@ -1024,6 +1024,9 @@ void testReleaseQa()
         const auto allPass = static_cast<float>(px3::FilterMode::allPass);
         const auto d1 = f1 != nullptr ? f1->convertFrom0to1(f1->getDefaultValue()) : -1.0f;
         const auto d2 = f2 != nullptr ? f2->convertFrom0to1(f2->getDefaultValue()) : -1.0f;
+        const auto drive = findParameter(processor, "fx.distortion.enabled");
+        check("Qa_InitDriveIsBypassed", drive != nullptr && drive->getDefaultValue() < 0.5f,
+              "fx.distortion.enabled defaults to " + juce::String(drive != nullptr ? drive->getDefaultValue() : -1.0f, 0));
         check("Qa_InitFiltersAreAllPass", std::abs(d1 - allPass) < 0.5f && std::abs(d2 - allPass) < 0.5f,
               "default types: filter 1 " + juce::String(d1, 0) + ", filter 2 " + juce::String(d2, 0)
                   + " (AllPass is " + juce::String(allPass, 0) + ")");

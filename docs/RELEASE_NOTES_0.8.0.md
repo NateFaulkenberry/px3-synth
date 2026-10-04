@@ -12,8 +12,10 @@ PX3 v0.8.0 rebuilds the Synth's interface into a single, dense modular window an
 
 * **Everything in one window.** VOICE shows the oscillators, filters and AMP envelope side by side, with the LFOs and envelopes in a row beneath them. MOD, FX and MIX each have a page of their own. No feature opens a separate window.
 * **A dense, modular look.** Square modules with a coloured identity stripe, uniform 1-pixel seams, and the same title band, power button and controls on every card. LFOs are purple, envelopes yellow, the AMP envelope green.
-* **The keyboard and wheels are back**, as one panel along the bottom. The PITCH and MOD wheels are drawn as hardware wheels: ribbed cylinders in a recessed slot that roll as you move them, with a stripe that marks the position.
-* **Flat, modern controls.** Mixer switches (M / S / Ø, EQ / COMP) are flat keys with the name on the key. Level meters are clean bar meters coloured green, amber and red. The preset browser, the EQ and COMP sheets and SETTINGS all share the same panel style.
+* **The keyboard and wheels are back**, as one panel along the bottom, finished with a keyboard-case end at each side. The PITCH and MOD wheels are drawn as hardware wheels: ribbed cylinders in a recessed slot that roll as you move them, with a stripe that marks the position.
+* **Flat, modern controls.** Mixer switches (M / S / Ø, EQ / COMP) are flat keys with the name on the key. Level meters are clean bar meters coloured green, amber and red. The preset browser, the EQ and COMP sheets and SETTINGS all share the same panel style, and the preset, EQ and COMP sheets can be dragged by their title bar.
+* **A refreshed COMP.** Theme switch keys for RATIO, the meter mode and LINK, consistent labels, and a dark display-style VU meter.
+* **Knob readouts** show at most two decimal places.
 * **Resizable** from 1100 × 700 up to 2400 × 1400, and laid out from a data-driven scene, so every module scales cleanly.
 
 ## 🔌 Modulation Patch Bay
@@ -49,7 +51,7 @@ PX3 v0.8.0 rebuilds the Synth's interface into a single, dense modular window an
 * **Envelopes**: LOOP, keyboard tracking (KEY) and tempo SYNC.
 
 **Effects**
-* **DRIVE**: a new distortion stage with SOFT, HARD and ASYM clippers, TIGHT, TONE and automatic level matching.
+* **DRIVE**: a new distortion stage with SOFT, HARD and ASYM clippers, TIGHT, TONE and automatic level matching. It runs 8× oversampled with anti-derivative anti-aliasing (4× at 96 kHz), with aliasing below −66 dB even at full HARD drive on a 5 kHz tone, and its dry signal is phase-aligned, so MIX never combs.
 * **Uni-Vibe**: a real four-stage photocell phaser at VIBE's place in the chain.
 * **Chorus**: Juno-style modes I, II and I+II.
 * **Delay**: tape WOBBLE, QUALITY and SLIP, and a MOD DEPTH control.
@@ -59,14 +61,18 @@ PX3 v0.8.0 rebuilds the Synth's interface into a single, dense modular window an
 
 ## 🧠 Presets and State
 
-* **INIT** is the default state rather than a preset. It cannot be overwritten, favourited or exported, and appears only under All.
+* **INIT** is the default state rather than a preset. It cannot be overwritten, favourited or exported, and appears only under All. Both filters start on AllPass and DRIVE starts bypassed.
+* **Unsaved changes are protected.** Switching presets with unsaved edits asks first: SAVE, DON'T SAVE or CANCEL.
+* **A freshly loaded preset is no longer marked as edited** (*) straight away.
 * **Preset browser**: one LOAD PRESET button, a search field and category and source filters.
 * **Saving an unedited project reproduces it exactly**, so hosts no longer mark a reopened project as changed.
 
 ## ⚡ Performance
 
 * **Audio CPU is on par with v0.7.6** (within ±3% in every measured scenario at 48 kHz / 512) **with zero real-time allocations**, despite the new features.
-* **The editor is far lighter**: about 4% of one CPU core while idle, where v0.7.6 redrew the whole window 30 times a second.
+* **The editor is far lighter**: about 4% of one CPU core while idle, where v0.7.6 redrew the whole window 30 times a second. With animations on, the animated displays repaint only themselves.
+* **Sheets open instantly.** The blurred backdrop behind the preset, EQ and COMP sheets used to take seconds on a Retina display.
+* **Envelope modulation inside each voice is updated every 32 samples**, so a fast filter pluck sounds the same at any host buffer size.
 
 ## 🐞 Fixes Worth Knowing
 
@@ -78,9 +84,10 @@ PX3 v0.8.0 rebuilds the Synth's interface into a single, dense modular window an
 * Modulating delay WOBBLE / MOD DEPTH or the compressor's INPUT, OUTPUT and MIX no longer clicks.
 * Shimmer and DRIVE sound the same at 44.1, 48 and 96 kHz.
 * MENU › Settings works in every build, and the version number is shown in the menu.
+* The master output can no longer exceed full scale: the reverb's level matching used to act after the output ceiling.
+* Host automation of the AMP envelope's enable is no longer overridden while the editor is open.
 
 ## Known Limits
 
-* DRIVE has no oversampling. At full HARD drive a fundamental around 5 kHz produces audible aliasing; at the pitches people play (up to about 3 kHz) aliasing stays below −59 dB.
 * The CLOUD reverb's level is about 1.7 dB higher at 96 kHz than at 48 kHz.
-* With the Analog Engine on and every source, every mixer fader and the master all at maximum, a dense chord can peak about 1 dB above full scale. This is unchanged from v0.7.6. Inside a DAW's floating-point mix it is harmless; leave a little headroom on the master when you play the standalone straight into an interface.
+* With animations on, holding a large chord costs about 40% of one CPU core on the interface thread, most of it drawing the keyboard sparks. Turning animations off in SETTINGS removes it.

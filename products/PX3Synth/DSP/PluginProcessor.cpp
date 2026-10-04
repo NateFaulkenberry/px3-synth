@@ -684,7 +684,9 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
 
     // ---- DRIVE (distortion / overdrive) -----------------------------------
     // MIX defaults to zero: adding the stage changes no existing patch.
-    distortionEnabledParam = parameterCatalog.createBool("fx.distortion.enabled", "Drive Enabled", true);
+    // Bypassed in INIT. MIX defaults to 0, so a DRIVE that was "on" by default
+    // was silent anyway - on in name only, and lit on the card.
+    distortionEnabledParam = parameterCatalog.createBool("fx.distortion.enabled", "Drive Enabled", false);
     distortionDriveParam = parameterCatalog.createFloat("fx.distortion.drive", "Drive Amount", juce::NormalisableRange<float>(0.0f, 1.0f), 0.35f);
     distortionTypeParam = parameterCatalog.createChoice("fx.distortion.type", "Drive Type", juce::StringArray { "SOFT", "HARD", "ASYM" }, 0);
     distortionTightParam = parameterCatalog.createFloat("fx.distortion.tight", "Drive Tight", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
