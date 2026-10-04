@@ -767,11 +767,9 @@ void testUpdater()
             check("UpdateUi_AnUpdateIsAskedAboutInTheSheet",
                   prompt.isAsking() && prompt.debugTitle() == "UPDATE AVAILABLE"
                       && prompt.debugMessage().contains("PX3 Synth") && prompt.debugMessage().contains("0.9.0")
-                      && keys == juce::StringArray { "CANCEL", "UPDATE" }
-                      && bar != nullptr && ! bar->isUpdateAvailable(),
+                      && keys == juce::StringArray { "CANCEL", "UPDATE" } && bar != nullptr,
                   (prompt.isAsking() ? "'" + prompt.debugMessage() + "' [" + keys.joinIntoString(" / ") + "]"
-                                     : juce::String("NOT ASKED"))
-                      + "; gear " + (bar != nullptr && bar->isUpdateAvailable() ? "GLOWING" : "quiet"));
+                                     : juce::String("NOT ASKED")));
 
             prompt.keyPressed(juce::KeyPress(juce::KeyPress::returnKey));   // UPDATE
             check("UpdateUi_UpdateOpensSettings",

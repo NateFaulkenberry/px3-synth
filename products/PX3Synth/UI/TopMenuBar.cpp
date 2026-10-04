@@ -1,7 +1,6 @@
 #include "TopMenuBar.h"
 #include "Theme.h"
 
-#include "GlobalSettings.h"
 
 #include <cmath>
 #include <vector>
@@ -132,61 +131,6 @@ juce::Path TopMenuTabButton::gearIcon()
     return gear;
 }
 
-void TopMenuBar::setUpdateAvailable(bool isAvailable)
-{
-    if (updateAvailable == isAvailable) { return; }
-
-    updateAvailable = isAvailable;
-    settingsButton.setAttention(isAvailable);
-
-    if (! isAvailable)
-    {
-        stopTimer();
-        pulsePhase = 0.0f;
-        return;
-    }
-
-    // With animations off the glow is steady rather than absent. Turning
-    // animations off is a statement about movement, not about wanting to miss
-    // things - the keyboard's key highlight makes the same distinction.
-    if (! px3::GlobalSettings::getInstance().areAnimationsEnabled())
-    {
-        settingsButton.setAttentionPhase(0.65f);
-        return;
-    }
-
-    startTimerHz(30);
-}
-
-void TopMenuBar::timerCallback()
-{
-    // A slow breath rather than a blink: about one cycle every two seconds,
-    // which reads as "look here" without competing with the meters.
-    pulsePhase += 1.0f / 60.0f;
-    if (pulsePhase > 1.0f) { pulsePhase -= 1.0f; }
-
-    const auto eased = 0.5f - 0.5f * std::cos(pulsePhase * juce::MathConstants<float>::twoPi);
-    settingsButton.setAttentionPhase(eased);
-}
-
-void TopMenuTabButton::setAttention(bool shouldWantAttention)
-{
-    if (attention == shouldWantAttention) { return; }
-
-    attention = shouldWantAttention;
-    if (! attention) { attentionPhase = 0.0f; }
-    repaint();
-}
-
-void TopMenuTabButton::setAttentionPhase(float phase01)
-{
-    const auto next = juce::jlimit(0.0f, 1.0f, phase01);
-    if (! attention || juce::approximatelyEqual(attentionPhase, next)) { return; }
-
-    attentionPhase = next;
-    repaint();
-}
-
 void TopMenuTabButton::paintButton(juce::Graphics& g,
                                    bool shouldDrawButtonAsHighlighted,
                                    bool shouldDrawButtonAsDown)
@@ -212,11 +156,6 @@ void TopMenuTabButton::paintButton(juce::Graphics& g,
     {
         g.setColour(juce::Colours::white.withAlpha(shouldDrawButtonAsDown ? 0.10f : 0.05f));
         g.fillRect(faceArea);
-    }
-    if (attention)
-    {
-        g.setColour(attentionColour.withAlpha(0.18f + 0.30f * attentionPhase));
-        g.drawRoundedRectangle(area.reduced(1.0f), 0.0f, 1.5f);
     }
     if (on || px3::ui::theme::space::moduleOutlines)
     {

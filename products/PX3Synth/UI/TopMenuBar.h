@@ -145,20 +145,6 @@ public:
     // instead of a filled disc.
     static juce::Path gearIcon();
 
-    // "There is something here you have not seen."
-    //
-    // A glow over the tab's own face, in the attention colour, on top of
-    // whatever the tab is already doing. It PULSES when animations are on and
-    // sits at a steady glow when they are off - the same rule the keyboard's
-    // key highlight follows, so a user who has turned animations off still
-    // gets the signal rather than losing it.
-    //
-    // The phase is driven from outside: one timer in the bar rather than one
-    // per tab, and nothing running at all when no tab is asking for attention.
-    void setAttention(bool shouldWantAttention);
-    bool wantsAttention() const noexcept { return attention; }
-    void setAttentionPhase(float phase01);
-    void setAttentionColour(juce::Colour colour) { attentionColour = colour; }
 
 private:
     void paintButton(juce::Graphics& g,
@@ -175,13 +161,9 @@ private:
     ContentStyle content;
     juce::Path icon;
     float iconScale { 0.46f };
-    bool attention { false };
-    float attentionPhase { 0.0f };
-    juce::Colour attentionColour { juce::Colour::fromRGB(120, 220, 170) };
 };
 
-class TopMenuBar final : public juce::Component,
-                        private juce::Timer
+class TopMenuBar final : public juce::Component
 {
 public:
     TopMenuBar();
@@ -209,15 +191,6 @@ public:
     void setPresetDetails(const juce::String& category, const juce::String& author);
     void setUIConfig(std::shared_ptr<const UIConfig> configIn);
 
-    // Marks the gear as having something to show. Runs the pulse while it is
-    // set and stops entirely when it is not, so a bar with nothing to announce
-    // costs no timer at all.
-    void setUpdateAvailable(bool isAvailable);
-    bool isUpdateAvailable() const noexcept { return updateAvailable; }
-
-    // For the tests: the gear, and whether it is currently glowing.
-    TopMenuTabButton& debugSettingsButton() { return settingsButton; }
-
     const juce::Rectangle<int>& getSectionButtonsArea() const;
     const juce::Rectangle<int>& getPresetClusterArea() const;
     juce::Rectangle<int> getPresetMenuButtonBounds() const;
@@ -241,10 +214,6 @@ private:
     TopMenuTabButton presetNextButton { "" };
     TopMenuTabButton presetMenuButton { "MENU" };
     TopMenuTabButton settingsButton { "SETTINGS" };
-    bool updateAvailable { false };
-    float pulsePhase { 0.0f };
-
-    void timerCallback() override;
     TopMenuTabButton topMenuOscButton { "OSC" };
     TopMenuTabButton topMenuModButton { "MOD" };
     TopMenuTabButton topMenuAmpButton { "AMP" };
