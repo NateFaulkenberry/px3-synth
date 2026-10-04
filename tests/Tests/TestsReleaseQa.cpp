@@ -745,7 +745,9 @@ void testReleaseQa()
             for (int tick = 0; tick < 10; ++tick) { editor->debugTimerTick(); }
             for (int press = 0; press < 4; ++press)   // the first few presets, as a user steps through them
             {
-                editor->debugTopMenuBar()->getPresetNextButton().triggerClick();
+                // The button's own handler, run now: triggerClick() posts the click,
+                // and under load the snapshot below could be taken before it ran.
+                if (auto& next = editor->debugTopMenuBar()->getPresetNextButton(); next.onClick) { next.onClick(); }
                 juce::MessageManager::getInstance()->runDispatchLoopUntil(30);
                 const auto loaded = processor.createPresetStateTree().createXml()->toString();
                 juce::AudioBuffer<float> buffer(2, kBlockSize);
