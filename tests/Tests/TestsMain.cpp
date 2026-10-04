@@ -2980,6 +2980,7 @@ int main(int argc, char* argv[])
     if (wants("modenv")) testModEnvelopes();
     if (wants("lfo")) testLfo();
     if (wants("modupgrade")) testModulationUpgrade();
+    if (wants("modmatrix")) testModulationMatrix();
     if (wants("keyboardnotes")) testKeyboardNotes();
     if (wants("tuning")) testOscillatorTuning();
     if (wants("oscquality")) testOscillatorQuality();

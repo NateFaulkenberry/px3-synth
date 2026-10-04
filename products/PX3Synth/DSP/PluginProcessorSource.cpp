@@ -78,7 +78,10 @@ std::array<FilterSettings, kFilterInstanceCount> PX3SynthAudioProcessor::current
         }
         if (auto* key = filterKeyTrackKeyParams[static_cast<std::size_t>(filterIndex)])
         {
-            settings.keyTrackReference = key->get();
+            // Through the graph like KEY TRK beside it: read raw, a route into
+            // KEY showed on its ring and moved nothing.
+            settings.keyTrackReference = key->convertFrom0to1(applyModulationToNormalizedValue(
+                key, static_cast<juce::RangedAudioParameter&>(*key).getValue()));
         }
 
         // Comb controls take the same modulation path as cutoff and resonance,

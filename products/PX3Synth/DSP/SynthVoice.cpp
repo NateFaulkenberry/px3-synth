@@ -1366,18 +1366,25 @@ void SynthVoice::setOscillatorLayerSettings(const std::array<OscillatorLayerSett
     oscillatorLayerSettings = settings;
     for (int oscIndex = 0; oscIndex < kOscillatorSourceCount; ++oscIndex)
     {
-        oscillatorUnits[static_cast<std::size_t>(oscIndex)].setSettings(
-            oscillatorLayerSettings[static_cast<std::size_t>(oscIndex)].oscillator, controlBlockLength);
+        // An oscillator the envelope plan modulates is pushed once, by
+        // setVoiceModulationPlan, with the modulated values. Pushing the
+        // unmodulated settings here as well restarted its macro ramp from the
+        // base value every block, so a ramped control (DIGITAL RATE and FOLD,
+        // and every other mode's ramped macros) swung from base to target and
+        // back each block instead of sitting at the modulated value.
+        if (! oscillatorModulatedByPlan[static_cast<std::size_t>(oscIndex)])
+        {
+            oscillatorUnits[static_cast<std::size_t>(oscIndex)].setSettings(
+                oscillatorLayerSettings[static_cast<std::size_t>(oscIndex)].oscillator, controlBlockLength);
+        }
     }
 }
 
 void SynthVoice::setVoiceModulationPlan(const px3::synth::VoiceModulationPlan& plan)
 {
-    if (! plan.active) { return; }
-
     using T = px3::synth::VoiceModTarget;
     std::array<bool, kOscillatorSourceCount> oscillatorChanged { { false, false, false } };
-    for (int target = 0; target < px3::synth::kVoiceModTargetCount; ++target)
+    for (int target = 0; plan.active && target < px3::synth::kVoiceModTargetCount; ++target)
     {
         const auto& d = plan.destinations[static_cast<std::size_t>(target)];
         if (d.routeCount == 0) { continue; }
@@ -1422,11 +1429,14 @@ void SynthVoice::setVoiceModulationPlan(const px3::synth::VoiceModulationPlan& p
 
     for (int oscIndex = 0; oscIndex < kOscillatorSourceCount; ++oscIndex)
     {
-        if (oscillatorChanged[static_cast<std::size_t>(oscIndex)])
+        const auto idx = static_cast<std::size_t>(oscIndex);
+        // Pushed when the plan modulates it, and once more on the block the
+        // plan stops doing so, since setOscillatorLayerSettings skipped it.
+        if (oscillatorChanged[idx] || oscillatorModulatedByPlan[idx])
         {
-            oscillatorUnits[static_cast<std::size_t>(oscIndex)].setSettings(
-                oscillatorLayerSettings[static_cast<std::size_t>(oscIndex)].oscillator, controlBlockLength);
+            oscillatorUnits[idx].setSettings(oscillatorLayerSettings[idx].oscillator, controlBlockLength);
         }
+        oscillatorModulatedByPlan[idx] = oscillatorChanged[idx];
     }
 }
 

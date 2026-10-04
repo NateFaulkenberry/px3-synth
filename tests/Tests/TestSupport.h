@@ -1513,6 +1513,7 @@ int runUISnapshot(const juce::String& outDir, int width, int height);
 void testBreakpointEnvelope();
 void testWavetable();
 void testSubOscillator();
+void testModulationMatrix();
 void testOscillators();
 void testAmpEnvelope();
 void testModEnvelopes();

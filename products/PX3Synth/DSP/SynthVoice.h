@@ -161,6 +161,9 @@ private:
     SubtractiveSettings subtractiveSettings;
     SubOscSettings subOscillatorSettings;
     std::array<OscillatorLayerSettings, kOscillatorSourceCount> oscillatorLayerSettings;
+    // Which oscillators the envelope plan modulated last block: their settings
+    // are pushed by setVoiceModulationPlan alone (see setOscillatorLayerSettings).
+    std::array<bool, kOscillatorSourceCount> oscillatorModulatedByPlan { { false, false, false } };
 
     AmpEnvelope ampEnvelope;
     std::array<EnvelopeGenerator, 3> modEnvelopeGenerators;

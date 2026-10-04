@@ -2480,6 +2480,24 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
                                  : 0.0f;
     fxReturnPanSmoother.setTargetValue(fxPanTarget);
 
+    // The dry bus, through the modulation graph like the FX return beside it.
+    // It read its raw parameters, so a route into DRY LEVEL or DRY PAN showed
+    // on the knob's ring and did nothing to the sound.
+    const auto dryGainTarget = dryBusGainParam != nullptr
+                                   ? juce::jlimit(0.0f,
+                                                  px3::processor_internal::channelFaderMaxGain(),
+                                                  dryBusGainParam->convertFrom0to1(applyModulationToNormalizedValue(
+                                                      dryBusGainParam,
+                                                      static_cast<juce::RangedAudioParameter*>(dryBusGainParam)->getValue())))
+                                   : 1.0f;
+    const auto dryPanTarget = dryBusPanParam != nullptr
+                                  ? juce::jlimit(-1.0f,
+                                                 1.0f,
+                                                 dryBusPanParam->convertFrom0to1(applyModulationToNormalizedValue(
+                                                     dryBusPanParam,
+                                                     static_cast<juce::RangedAudioParameter*>(dryBusPanParam)->getValue())))
+                                  : 0.0f;
+
     std::array<float, kMixerSourceCount> sourceLevelValues { { 1.0f, 1.0f, 1.0f, 1.0f } };
     std::array<float, kMixerSourceCount> sourcePanValues { { 0.0f, 0.0f, 0.0f, 0.0f } };
     std::array<float, kMixerSourceCount> sourceSendValues { { 0.0f, 0.0f, 0.0f, 0.0f } };
@@ -2523,9 +2541,7 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
 
     const auto drySolo = dryBusSoloParam != nullptr && dryBusSoloParam->get();
     dryBusGateSmoother.setTarget(dryBusAudible(anySolo, anySourceSolo, drySolo));
-    dryBusPanSmoother.setTargetValue(dryBusPanParam != nullptr
-                                         ? juce::jlimit(-1.0f, 1.0f, dryBusPanParam->get())
-                                         : 0.0f);
+    dryBusPanSmoother.setTargetValue(dryPanTarget);
 
     auto panToGains = [](float pan, float& leftGain, float& rightGain)
     {
@@ -2693,7 +2709,7 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         // source. Its pan is a bus pan: it moves the already-panned mix, which
         // is what a mixer's dry return does.
         {
-            const auto dryGain = dryBusGainSmoother.next(dryBusGainParam != nullptr ? dryBusGainParam->get() : 1.0f);
+            const auto dryGain = dryBusGainSmoother.next(dryGainTarget);
             const auto dryPhase = dryBusPhaseSmoother.next(
                 (dryBusPhaseInvertParam != nullptr && dryBusPhaseInvertParam->get()) ? -1.0f : 1.0f);
             const auto dryGate = dryBusGateSmoother.next();

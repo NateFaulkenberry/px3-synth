@@ -378,6 +378,15 @@ public:
     // what headroom scaling exists to prevent - so the gap between them is the
     // measurement that matters.
     float getUnclampedModulatedNormalisedValue(juce::RangedAudioParameter& parameter) const;
+    // True for a destination that lives inside the voice: per-voice sources
+    // (the envelopes) are applied to it by each voice, so the global readout
+    // above leaves them out. Tests use it to know which check applies.
+    bool isVoiceLocalDestination(const juce::RangedAudioParameter& parameter) const
+    {
+        const auto index = parameter.getParameterIndex();
+        return index >= 0 && static_cast<std::size_t>(index) < voiceModulatedParameter.size()
+               && voiceModulatedParameter[static_cast<std::size_t>(index)];
+    }
     juce::AudioParameterFloat& getOscillatorHarmonicParam(int oscIndex, int harmonicIndex) const;
     juce::AudioParameterBool& getSubOscEnabledParam() const;
     juce::AudioParameterFloat& getSubOscCoarseParam() const;
