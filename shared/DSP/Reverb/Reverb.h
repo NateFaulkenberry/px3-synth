@@ -25,7 +25,11 @@ public:
 
     void updateForBlock(const ReverbSettings& settings, int numSamples);
     void processSampleFrame(float inL, float inR, float& outL, float& outR);
-    void applyPostBlockCompensation(juce::AudioBuffer<float>& buffer);
+    // The reverb's level match is applied inside processSampleFrame, to the
+    // reverb stage's own output. It used to be a separate call that scaled the
+    // whole master buffer - dry and every other effect included - AFTER the
+    // output ceiling, in steps of a block: up to +3.2 dB past the ceiling's
+    // guarantee, which is what made full patches peak above full scale.
 
 private:
     struct DelayLine
@@ -150,7 +154,9 @@ private:
     bool bypassCleared { false };
     float amountSmoothed { 0.0f };
     float amountSmoothingCoeff { 0.0f };
-    float outputCompGain { 1.0f };
+    float outputCompGain { 1.0f };      // this block's target, from the last block's energies
+    float compGainCurrent { 1.0f };     // per-sample ramp toward it
+    float compGainStep { 0.0f };
     double blockPreEnergy { 0.0 };
     double blockPostEnergy { 0.0 };
 };

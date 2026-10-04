@@ -508,5 +508,43 @@ void testReleaseQa()
         check("Qa_HostStateRoundTripsExactly", first == second && second == third,
               first == second && second == third ? juce::String(static_cast<int>(first.getSize())) + " bytes, identical across two reloads" : where);
     }
+
+    // ---- nothing leaves the plugin above full scale ---------------------------------
+    // The output ceiling is the instrument's guarantee, and it is last. The
+    // reverb's level match ran after it, scaling the whole master by up to
+    // 1.45x a block at a time: every source, fader and the master at the top,
+    // with the reverb and the Analog Engine on (both defaults), peaked 1.14.
+    {
+        Processor processor;
+        makePlainPatch(processor);
+        setParam(processor, "global.character.enabled", 1.0f);   // the default
+        for (const auto* osc : { "voice.osc1", "voice.osc2", "voice.osc3" })
+        {
+            setParam(processor, juce::String(osc) + ".enabled", 1.0f);
+            setChoice(processor, juce::String(osc) + ".mode", 1);   // SAW
+        }
+        setParam(processor, "voice.sub.enabled", 1.0f);
+        for (const auto* id : { "sub", "osc1", "osc2", "osc3" })
+        {
+            if (auto* p = findParameter(processor, juce::String("mix.") + id + ".level")) { p->setValueNotifyingHost(1.0f); }
+            setParam(processor, juce::String("mix.") + id + ".send.fx", 0.5f);
+        }
+        if (auto* p = findParameter(processor, "mix.fx.level")) { p->setValueNotifyingHost(1.0f); }
+        if (auto* p = findParameter(processor, "mix.master.level")) { p->setValueNotifyingHost(1.0f); }
+        setParam(processor, "fx.reverb.enabled", 1.0f);
+        setParam(processor, "fx.reverb.amount", 0.4f);
+        std::vector<NoteEvent> chords;
+        for (int bar = 0; bar < 6; ++bar)
+        {
+            for (const auto note : { 36, 43, 48, 52, 55, 60, 64, 67 })
+            {
+                chords.push_back({ bar * 16000, true, note, 1.0f });
+                chords.push_back({ bar * 16000 + 12000, false, note, 0.0f });
+            }
+        }
+        const auto capture = render(processor, 6 * 16000 + 48000, chords);
+        check("Qa_NothingLeavesThePluginAboveFullScale", capture.peak() <= 1.0 && capture.isFinite(),
+              "peak " + fmt(capture.peak(), 4) + " with every source, fader and the master at the top");
+    }
 }
 } // namespace px3tests

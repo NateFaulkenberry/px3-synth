@@ -2946,7 +2946,9 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         }
     }
 
-    reverb.applyPostBlockCompensation(masterBusBuffer);
+    // (The reverb's level match is applied inside the reverb stage now - see
+    // Reverb::processSampleFrame. Applied here it scaled the whole mix after
+    // the output ceiling.)
 
     // WHAT LEAVES THE PLUGIN.
     //

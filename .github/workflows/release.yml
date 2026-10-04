@@ -79,6 +79,12 @@ env:
   # Gatekeeper refuses.
   PX3_NOTARIZE: "true"
 
+# bash -eo pipefail for every step: the test steps pipe through `tee`, and
+# without pipefail a failing test could not stop a release.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   # --------------------------------------------------------------------------
   # Work out what is being built before building it. Cheap, and it turns the

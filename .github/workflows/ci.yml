@@ -78,6 +78,15 @@ env:
     -DPX3_BUILD_DIAGNOSTIC=ON
     -DPX3_COPY_PLUGIN_AFTER_BUILD=OFF
 
+# Every run step is `bash -eo pipefail`. Without an explicit shell GitHub runs
+# `bash -e`, and the steps here pipe their tools through `tee`: the pipeline's
+# status was tee's, so the build, the component tests, the audio regression,
+# real-time safety and the smoke test could all fail with the step still green.
+# v0.7.6's own run passed with "8 failure(s)" in its regress report.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   # --------------------------------------------------------------------------
   # Platform-independent. Shell, YAML and the repository's own consistency

@@ -335,6 +335,8 @@ void ::Reverb::reset()
     irBlock.clear();
     convolution.reset();
     outputCompGain = 1.0f;
+    compGainCurrent = 1.0f;
+    compGainStep = 0.0f;
     blockPreEnergy = 0.0;
     blockPostEnergy = 0.0;
     blockSampleCount = 0;
@@ -464,7 +466,26 @@ void ::Reverb::updateForBlock(const ReverbSettings& settings, int numSamples)
     currentSettings.cloudDiffusion = clamp01(settings.cloudDiffusion);
     currentSettings.shimmer = clamp01(settings.shimmer);
 
+    // The level match, from the block just processed: the same estimate and
+    // the same per-block smoothing as before, now ramped sample by sample over
+    // this block and applied to the reverb's own output (processSampleFrame).
+    if (amountSmoothed > 0.0001f && blockSampleCount > 0)
+    {
+        const auto invN = 1.0 / static_cast<double>(blockSampleCount);
+        const auto preRms = static_cast<float>(std::sqrt(juce::jmax(1.0e-12, blockPreEnergy * invN)));
+        const auto postRms = static_cast<float>(std::sqrt(juce::jmax(1.0e-12, blockPostEnergy * invN)));
+        const auto rawComp = juce::jlimit(0.72f, 1.45f, preRms / juce::jmax(1.0e-5f, postRms));
+        const auto compBlend = smoothstep(clamp01(amountSmoothed));
+        const auto targetComp = 1.0f + (rawComp - 1.0f) * compBlend;
+        outputCompGain += 0.03f * (targetComp - outputCompGain);
+    }
+    else
+    {
+        outputCompGain += 0.02f * (1.0f - outputCompGain);
+    }
+
     blockSampleCount = juce::jmax(0, numSamples);
+    compGainStep = blockSampleCount > 0 ? (outputCompGain - compGainCurrent) / static_cast<float>(blockSampleCount) : 0.0f;
     blockPreEnergy = 0.0;
     blockPostEnergy = 0.0;
 }
@@ -481,10 +502,15 @@ void ::Reverb::processSampleFrame(float inL, float inR, float& outL, float& outR
         const auto beforeL = inL;
         const auto beforeR = inR;
         processCore(inL, inR, amountForSample, currentSettings.algorithmIndex, outL, outR);
+        // Measured before the match is applied, so the estimate sees the
+        // reverb's own level and does not chase its own correction.
         blockPreEnergy += 0.5 * (static_cast<double>(beforeL) * static_cast<double>(beforeL)
                                  + static_cast<double>(beforeR) * static_cast<double>(beforeR));
         blockPostEnergy += 0.5 * (static_cast<double>(outL) * static_cast<double>(outL)
                                   + static_cast<double>(outR) * static_cast<double>(outR));
+        compGainCurrent += compGainStep;
+        outL *= compGainCurrent;
+        outR *= compGainCurrent;
         return;
     }
 
@@ -501,35 +527,9 @@ void ::Reverb::processSampleFrame(float inL, float inR, float& outL, float& outR
         bypassCleared = true;
     }
 
+    compGainCurrent += compGainStep;   // keeps ramping toward 1 while bypassed
     outL = inL;
     outR = inR;
-}
-
-void ::Reverb::applyPostBlockCompensation(juce::AudioBuffer<float>& buffer)
-{
-    if (amountSmoothed > 0.0001f && blockSampleCount > 0)
-    {
-        const auto invN = 1.0 / static_cast<double>(blockSampleCount);
-        const auto preRms = static_cast<float>(std::sqrt(juce::jmax(1.0e-12, blockPreEnergy * invN)));
-        const auto postRms = static_cast<float>(std::sqrt(juce::jmax(1.0e-12, blockPostEnergy * invN)));
-        const auto rawComp = juce::jlimit(0.72f, 1.45f, preRms / juce::jmax(1.0e-5f, postRms));
-
-        const auto compBlend = smoothstep(clamp01(amountSmoothed));
-        const auto targetComp = 1.0f + (rawComp - 1.0f) * compBlend;
-        outputCompGain += 0.03f * (targetComp - outputCompGain);
-    }
-    else
-    {
-        outputCompGain += 0.02f * (1.0f - outputCompGain);
-    }
-
-    if (std::abs(outputCompGain - 1.0f) > 0.001f)
-    {
-        for (int channel = 0; channel < buffer.getNumChannels(); ++channel)
-        {
-            buffer.applyGain(channel, 0, buffer.getNumSamples(), outputCompGain);
-        }
-    }
 }
 
 void ::Reverb::processCore(float inL,
