@@ -423,7 +423,9 @@ uint32_t PX3SynthAudioProcessor::debugGetModuleOrderGeneration() const
 
 uint32_t PX3SynthAudioProcessor::debugGetModuleOrderHash() const
 {
-    return fxProcessingOrderPacked.load(std::memory_order_relaxed);
+    // The low 32 bits: the packed order, folded to the hash this reports.
+    const auto packed = fxProcessingOrderPacked.load(std::memory_order_relaxed);
+    return static_cast<uint32_t>(packed ^ (packed >> 32));
 }
 
 juce::String PX3SynthAudioProcessor::debugDescribeOrder(const px3::FxOrder& order) const

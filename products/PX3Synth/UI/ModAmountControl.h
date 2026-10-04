@@ -97,12 +97,12 @@ public:
     }
     void mouseDrag(const juce::MouseEvent& e) override
     {
-        if (e.mouseDownPosition.x < kNudge || e.mouseDownPosition.x > getWidth() - kNudge) { return; }
+        if (e.mouseDownPosition.x < static_cast<float>(kNudge) || e.mouseDownPosition.x > static_cast<float>(getWidth() - kNudge)) { return; }
         juce::Slider::mouseDrag(e);
     }
     void mouseUp(const juce::MouseEvent& e) override
     {
-        if (e.mouseDownPosition.x < kNudge || e.mouseDownPosition.x > getWidth() - kNudge) { return; }
+        if (e.mouseDownPosition.x < static_cast<float>(kNudge) || e.mouseDownPosition.x > static_cast<float>(getWidth() - kNudge)) { return; }
         juce::Slider::mouseUp(e);
     }
     void mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel) override

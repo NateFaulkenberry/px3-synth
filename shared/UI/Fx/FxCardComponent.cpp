@@ -53,7 +53,8 @@ FxCardComponent::~FxCardComponent()
 
 void FxCardComponent::addToggleRow(std::vector<ToggleSpec> specs)
 {
-    Row row { RowKind::toggles, {} };
+    Row row;
+    row.kind = RowKind::toggles;
 
     for (auto& spec : specs)
     {
@@ -73,7 +74,8 @@ void FxCardComponent::addToggleRow(std::vector<ToggleSpec> specs)
 
 void FxCardComponent::addChoiceRow(std::vector<ChoiceSpec> specs)
 {
-    Row row { RowKind::choices, {} };
+    Row row;
+    row.kind = RowKind::choices;
 
     for (auto& spec : specs)
     {
@@ -102,7 +104,8 @@ void FxCardComponent::addChoiceRow(std::vector<ChoiceSpec> specs)
 
 void FxCardComponent::addKnobRow(std::vector<KnobSpec> specs)
 {
-    Row row { RowKind::knobs, {} };
+    Row row;
+    row.kind = RowKind::knobs;
 
     for (auto& spec : specs)
     {
@@ -209,7 +212,8 @@ void FxCardComponent::addFeatureKnobRow(KnobSpec spec)
 
 void FxCardComponent::addHeadingRow(const juce::String& text, const juce::String&)
 {
-    Row row { RowKind::heading, {} };
+    Row row;
+    row.kind = RowKind::heading;
     row.text = text;
     rows.push_back(std::move(row));
 }

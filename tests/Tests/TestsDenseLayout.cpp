@@ -196,7 +196,7 @@ void testDenseLayout()
             const auto r = editor->getLocalArea(card, card->getLocalBounds());
             const auto first = editor->getLocalArea(mods->getCard(0), mods->getCard(0)->getLocalBounds());
             ok = r.getY() == first.getY() && r.getHeight() == first.getHeight() && r.getX() > previousRight
-                 && r.getWidth() > 150 && r.getY() > doc.rectOf("voice.top").getBottom() - 1;
+                 && r.getWidth() > 150 && static_cast<float>(r.getY()) > doc.rectOf("voice.top").getBottom() - 1.0f;
             previousRight = r.getRight() - 1;
             if (! ok) { detail = "card " + juce::String(i) + " at " + r.toString(); }
         }

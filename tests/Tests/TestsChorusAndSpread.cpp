@@ -200,7 +200,7 @@ void testChorus()
                 chorus.processSampleFrame(x, x, l, r);
                 finite = finite && std::isfinite(l) && std::isfinite(r);
                 if (n > 48000) { diff += static_cast<double>(l - x) * (l - x); dry += static_cast<double>(x) * x; }
-                if (n > 48000 && previous < 0.0f && l >= 0.0f) crossings.push_back(n - 1 + previous / (previous - l));
+                if (n > 48000 && previous < 0.0f && l >= 0.0f) crossings.push_back(static_cast<float>(n - 1) + previous / (previous - l));
                 previous = l;
             }
             changed = std::sqrt(diff / dry);

@@ -41,8 +41,8 @@ void testDelay()
                 double c = 0, sn = 0;
                 for (std::size_t n = 0; n < out.size(); ++n)
                 {
-                    const auto hann = 0.5 - 0.5 * std::cos(juce::MathConstants<double>::twoPi * n / (out.size() - 1.0));
-                    const auto w = juce::MathConstants<double>::twoPi * hz * n / 48000.0;
+                    const auto hann = 0.5 - 0.5 * std::cos(juce::MathConstants<double>::twoPi * static_cast<double>(n) / (static_cast<double>(out.size()) - 1.0));
+                    const auto w = juce::MathConstants<double>::twoPi * hz * static_cast<double>(n) / 48000.0;
                     c += hann * out[n] * std::cos(w); sn += hann * out[n] * std::sin(w);
                 }
                 return c * c + sn * sn;

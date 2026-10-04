@@ -596,8 +596,8 @@ void testLfo()
         int distinct = 0;
         for (int c = 0; c < 10; ++c)
         {
-            for (int n = 1; n < 95; ++n) flatWithinCycles = flatWithinCycles && hold[c * 100 + n] == hold[c * 100 + 1];
-            if (c > 0 && std::abs(hold[c * 100 + 5] - hold[(c - 1) * 100 + 5]) > 0.05f) ++distinct;
+            for (int n = 1; n < 95; ++n) flatWithinCycles = flatWithinCycles && hold[static_cast<std::size_t>(c * 100 + n)] == hold[static_cast<std::size_t>(c * 100 + 1)];
+            if (c > 0 && std::abs(hold[static_cast<std::size_t>(c * 100 + 5)] - hold[static_cast<std::size_t>((c - 1) * 100 + 5)]) > 0.05f) ++distinct;
         }
         auto largestStep = 0.0f;
         for (std::size_t n = 0; n < smooth.size(); ++n)
@@ -889,8 +889,8 @@ void testVibe()
                 double c = 0, sn = 0;
                 for (std::size_t n = 0; n < x.size(); ++n)
                 {
-                    const auto hann = 0.5 - 0.5 * std::cos(juce::MathConstants<double>::twoPi * n / (x.size() - 1.0));
-                    const auto w = juce::MathConstants<double>::twoPi * hz * n / 48000.0;
+                    const auto hann = 0.5 - 0.5 * std::cos(juce::MathConstants<double>::twoPi * static_cast<double>(n) / (static_cast<double>(x.size()) - 1.0));
+                    const auto w = juce::MathConstants<double>::twoPi * hz * static_cast<double>(n) / 48000.0;
                     c += hann * x[n] * std::cos(w); sn += hann * x[n] * std::sin(w);
                 }
                 return c * c + sn * sn;
@@ -913,7 +913,7 @@ void testVibe()
             double c = 0, sn = 0;
             for (std::size_t k = 0; k < 2400; ++k)
             {
-                const auto w = juce::MathConstants<double>::twoPi * 2000.0 * (from + k) / 48000.0;
+                const auto w = juce::MathConstants<double>::twoPi * 2000.0 * static_cast<double>(from + k) / 48000.0;
                 c += out[from + k] * std::cos(w); sn += out[from + k] * std::sin(w);
             }
             const auto db = 10.0 * std::log10(c * c + sn * sn + 1e-30);
@@ -1221,7 +1221,7 @@ void testReverb()
             juce::Random random(5);
             for (int ch = 0; ch < 2; ++ch)
                 for (int n = 0; n < ir.getNumSamples(); ++n)
-                    ir.setSample(ch, n, (random.nextFloat() * 2.0f - 1.0f) * std::exp(-n / 4000.0f));
+                    ir.setSample(ch, n, (random.nextFloat() * 2.0f - 1.0f) * std::exp(static_cast<float>(-n) / 4000.0f));
             irFile.deleteFile();
             juce::WavAudioFormat wav;
             std::unique_ptr<juce::AudioFormatWriter> writer(wav.createWriterFor(new juce::FileOutputStream(irFile), 48000.0, 2, 24, {}, 0));
@@ -1301,8 +1301,8 @@ void testReverb()
                 for (std::size_t k = 0; k < count; ++k)
                 {
                     const auto n = from + k;
-                    const auto hann = 0.5 - 0.5 * std::cos(juce::MathConstants<double>::twoPi * k / (count - 1.0));
-                    const auto w = juce::MathConstants<double>::twoPi * hz * n / 48000.0;
+                    const auto hann = 0.5 - 0.5 * std::cos(juce::MathConstants<double>::twoPi * static_cast<double>(k) / (static_cast<double>(count) - 1.0));
+                    const auto w = juce::MathConstants<double>::twoPi * hz * static_cast<double>(n) / 48000.0;
                     c += hann * tail[n] * std::cos(w); sn += hann * tail[n] * std::sin(w);
                 }
                 return c * c + sn * sn;

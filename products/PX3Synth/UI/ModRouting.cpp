@@ -652,10 +652,10 @@ public:
 
     ModSourceSocket& socket(int source) { return *sockets[static_cast<std::size_t>(source)]; }
 
-    void setCounts(const std::vector<RouteInfo>& routes)
+    void setCounts(const std::vector<RouteInfo>& newRoutes)
     {
         std::array<int, kSourceCount> counts {};
-        for (const auto& route : routes)
+        for (const auto& route : newRoutes)
         {
             if (juce::isPositiveAndBelow(route.source, kSourceCount)) { ++counts[static_cast<std::size_t>(route.source)]; }
         }
@@ -790,8 +790,8 @@ public:
     const RouteInfo& getRoute() const { return route; }
     juce::Slider& getDepth() { return depth; }
     // Where the cables attach, in this row's coordinates.
-    juce::Point<float> sourcePlug() const { return { 11.0f, getHeight() * 0.5f }; }
-    juce::Point<float> destinationPlug() const { return { getWidth() - 9.0f, getHeight() * 0.5f }; }
+    juce::Point<float> sourcePlug() const { return { 11.0f, static_cast<float>(getHeight()) * 0.5f }; }
+    juce::Point<float> destinationPlug() const { return { static_cast<float>(getWidth()) - 9.0f, static_cast<float>(getHeight()) * 0.5f }; }
 
     void syncDepth(float value)
     {
@@ -819,7 +819,7 @@ public:
         // row reads as one cable from source plug to destination plug.
         g.setColour(colour.withAlpha(0.55f + 0.4f * juce::jlimit(0.0f, 1.0f, std::abs(route.depth))));
         const auto leadFrom = sourceNameArea.getRight() + 2.0f;
-        g.fillRect(juce::Rectangle<float>(leadFrom, mid - 1.0f, depth.getX() - leadFrom, 2.0f));
+        g.fillRect(juce::Rectangle<float>(leadFrom, mid - 1.0f, static_cast<float>(depth.getX()) - leadFrom, 2.0f));
         const auto textW = th::textWidth(destinationText, th::Type::label);
         const auto leadTo = juce::jmax(destinationArea.getX(), destinationArea.getRight() - textW - 8.0f);
         const auto afterShape = static_cast<float>(curve.getRight()) + 2.0f;
@@ -926,14 +926,14 @@ public:
         for (int y = static_cast<int>(rows.size()) * rowHeight; y < clip.getBottom(); y += rowHeight)
         {
             if (y + rowHeight < clip.getY()) { continue; }
-            const auto mid = static_cast<float>(y) + rowHeight * 0.5f;
+            const auto mid = static_cast<float>(y) + static_cast<float>(rowHeight) * 0.5f;
             g.setColour(th::colour::panelEdge.withAlpha(0.5f));
             g.drawHorizontalLine(y + rowHeight - 1, 0.0f, static_cast<float>(getWidth()));
             g.setColour(th::colour::textDim.withAlpha(0.35f));
             g.drawEllipse(juce::Rectangle<float>(9.0f, 9.0f).withCentre({ 25.0f, mid }), 1.0f);
-            g.drawEllipse(juce::Rectangle<float>(9.0f, 9.0f).withCentre({ getWidth() - 9.0f, mid }), 1.0f);
+            g.drawEllipse(juce::Rectangle<float>(9.0f, 9.0f).withCentre({ static_cast<float>(getWidth()) - 9.0f, mid }), 1.0f);
             const float dashes[] { 3.0f, 5.0f };
-            g.drawDashedLine(juce::Line<float>(36.0f, mid, getWidth() - 20.0f, mid), dashes, 2, 1.0f);
+            g.drawDashedLine(juce::Line<float>(36.0f, mid, static_cast<float>(getWidth()) - 20.0f, mid), dashes, 2, 1.0f);
         }
         if (! rows.empty()) { return; }
         th::drawLabel(g, "NO CONNECTIONS", getLocalBounds().toFloat().withHeight(60.0f), th::Type::label,
@@ -1153,11 +1153,11 @@ public:
         destinationCount = 0;
         for (const auto& group : groups)
         {
-            Item header;
-            header.header = true;
-            header.group = group;
-            header.count = static_cast<int>(byGroup[group].size());
-            items.push_back(header);
+            Item heading;
+            heading.header = true;
+            heading.group = group;
+            heading.count = static_cast<int>(byGroup[group].size());
+            items.push_back(heading);
             for (auto& item : byGroup[group]) { items.push_back(std::move(item)); ++destinationCount; }
         }
     }
@@ -1215,10 +1215,10 @@ public:
         setHighlight(id);
     }
 
-    void setRoutes(const std::vector<RouteInfo>& routes)
+    void setRoutes(const std::vector<RouteInfo>& newRoutes)
     {
         for (auto& item : items) { item.sources.clear(); }
-        for (const auto& route : routes)
+        for (const auto& route : newRoutes)
         {
             for (auto& item : items)
             {
