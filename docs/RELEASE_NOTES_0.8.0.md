@@ -12,7 +12,7 @@ PX3 v0.8.0 rebuilds the Synth's interface into a single, dense modular window an
 
 * **Everything in one window.** VOICE shows the oscillators, filters and AMP envelope side by side, with the LFOs and envelopes in a row beneath them. MOD, FX and MIX each have a page of their own. No feature opens a separate window.
 * **A dense, modular look.** Square modules with a coloured identity stripe, uniform 1-pixel seams, and the same title band, power button and controls on every card. LFOs are purple, envelopes yellow, the AMP envelope green.
-* **The keyboard and wheels are back**, as one panel along the bottom, finished with a keyboard-case end at each side. The PITCH and MOD wheels are drawn as hardware wheels: ribbed cylinders in a recessed slot that roll as you move them, with a stripe that marks the position.
+* **The keyboard and wheels are back**, as one panel along the bottom, finished with a keyboard-case end at each side. A played key sits pressed in and lit. The PITCH and MOD wheels are drawn as hardware wheels: ribbed cylinders in a recessed slot that roll as you move them, with a stripe that marks the position.
 * **Flat, modern controls.** Mixer switches (M / S / Ø, EQ / COMP) are flat keys with the name on the key. Level meters are clean bar meters coloured green, amber and red. The preset browser, the EQ and COMP sheets and SETTINGS all share the same panel style, and the preset, EQ and COMP sheets can be dragged by their title bar.
 * **A refreshed COMP.** Theme switch keys for RATIO, the meter mode and LINK, consistent labels, and a dark display-style VU meter.
 * **Knob readouts** show at most two decimal places.
@@ -90,4 +90,3 @@ PX3 v0.8.0 rebuilds the Synth's interface into a single, dense modular window an
 ## Known Limits
 
 * The CLOUD reverb's level is about 1.7 dB higher at 96 kHz than at 48 kHz.
-* With animations on, holding a large chord costs about 40% of one CPU core on the interface thread, most of it drawing the keyboard sparks. Turning animations off in SETTINGS removes it.
