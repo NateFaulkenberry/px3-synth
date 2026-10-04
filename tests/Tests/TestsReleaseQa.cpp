@@ -884,5 +884,71 @@ void testReleaseQa()
               wrong.isEmpty() ? juce::String("clean switch silent; edited switch asks, CANCEL keeps, DON'T SAVE loads")
                               : wrong.joinIntoString("; "));
     }
+
+    // ---- the EQ and COMP sheets drag by their title band ----------------------------
+    {
+        Processor processor;
+        processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        processor.prepareToPlay(kSampleRate, kBlockSize);
+        std::unique_ptr<juce::AudioProcessorEditor> base(processor.createEditor());
+        auto* editor = dynamic_cast<PX3SynthAudioProcessorEditor*>(base.get());
+        juce::StringArray wrong;
+        if (editor != nullptr)
+        {
+            editor->setSize(1518, 938);
+            for (const auto wantsEq : { true, false })
+            {
+                const juce::String which = wantsEq ? "EQ" : "COMP";
+                editor->debugOpenBusInsert(PX3SynthAudioProcessor::dryBusInsert, wantsEq);
+                px3::ui::BusInsertOverlay* sheet = nullptr;
+                for (auto* child : editor->getChildren())
+                {
+                    if (auto* s = dynamic_cast<px3::ui::BusInsertOverlay*>(child); s != nullptr && s->isVisible()) { sheet = s; }
+                }
+                if (sheet == nullptr) { wrong.add(which + " did not open"); continue; }
+
+                const auto event = [sheet](juce::Point<float> at)
+                {
+                    return juce::MouseEvent(juce::Desktop::getInstance().getMainMouseSource(), at, juce::ModifierKeys(),
+                                            1.0f, 0.0f, 0.0f, 0.0f, 0.0f, sheet, sheet, juce::Time::getCurrentTime(),
+                                            at, juce::Time::getCurrentTime(), 1, false);
+                };
+                const auto start = sheet->getPosition();
+                const auto band = sheet->debugTitleBand();
+                const auto grab = juce::Point<float>(band.getX() + band.getWidth() * 0.4f, band.getCentreY());
+
+                sheet->mouseDown(event(grab));
+                sheet->mouseDrag(event(grab + juce::Point<float>(60.0f, 40.0f)));
+                sheet->mouseUp(event(grab + juce::Point<float>(60.0f, 40.0f)));
+                if (sheet->getPosition() != start + juce::Point<int>(60, 40))
+                {
+                    wrong.add(which + " title drag moved it " + (sheet->getPosition() - start).toString());
+                }
+
+                // Never off the window, however far the drag goes.
+                const auto here = sheet->getPosition();
+                const auto grab2 = grab;
+                sheet->mouseDown(event(grab2));
+                sheet->mouseDrag(event(grab2 + juce::Point<float>(5000.0f, 5000.0f)));
+                sheet->mouseUp(event(grab2));
+                if (! editor->getLocalBounds().contains(sheet->getBounds())) { wrong.add(which + " dragged off the window"); }
+                juce::ignoreUnused(here);
+
+                // The face is not a handle.
+                const auto parked = sheet->getPosition();
+                const auto body = juce::Point<float>(band.getCentreX(), band.getBottom() + 40.0f);
+                sheet->mouseDown(event(body));
+                sheet->mouseDrag(event(body + juce::Point<float>(-30.0f, -30.0f)));
+                sheet->mouseUp(event(body));
+                if (sheet->getPosition() != parked) { wrong.add(which + " moved from a drag on its face"); }
+
+                editor->debugCloseBusInsert();
+            }
+        }
+        else { wrong.add("no editor"); }
+        check("Qa_EqAndCompSheetsDragByTheirTitle", wrong.isEmpty(),
+              wrong.isEmpty() ? juce::String("both sheets follow a title drag, stay in the window, ignore a face drag")
+                              : wrong.joinIntoString("; "));
+    }
 }
 } // namespace px3tests

@@ -43,6 +43,12 @@ public:
     juce::Component& debugEnableButton() noexcept { return enableButton; }
     juce::Component& debugCloseButton() noexcept { return closeButton; }
 
+    // The title band drags the sheet, the way the preset sheet's does: clamped
+    // inside the window, for as long as it is open (it reopens centred).
+    void mouseDown(const juce::MouseEvent& event) override;
+    void mouseDrag(const juce::MouseEvent& event) override;
+    void mouseUp(const juce::MouseEvent& event) override;
+
     BusInsertOverlay(PX3SynthAudioProcessor& processorIn);
     ~BusInsertOverlay() override;
 
@@ -159,6 +165,8 @@ protected:
     void clearAttachments();
 
 private:
+    bool dragging { false };
+    juce::Point<int> dragOffset;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(BusInsertOverlay)
 };

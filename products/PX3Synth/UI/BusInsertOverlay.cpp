@@ -431,6 +431,32 @@ void BusEqOverlay::timerCallback()
     refreshReadouts();
 }
 
+void BusInsertOverlay::mouseDown(const juce::MouseEvent& event)
+{
+    // Only the title band: everywhere else on the face belongs to the controls.
+    dragging = debugTitleBand().contains(event.position);
+    dragOffset = event.getPosition();
+}
+
+void BusInsertOverlay::mouseDrag(const juce::MouseEvent& event)
+{
+    auto* parent = getParentComponent();
+    if (! dragging || parent == nullptr) { return; }
+
+    constexpr int margin = 8;   // the preset sheet's
+    auto topLeft = event.getEventRelativeTo(parent).getPosition() - dragOffset;
+    const auto maxX = parent->getWidth() - getWidth() - margin;
+    const auto maxY = parent->getHeight() - getHeight() - margin;
+    topLeft.x = juce::jlimit(margin, juce::jmax(margin, maxX), topLeft.x);
+    topLeft.y = juce::jlimit(margin, juce::jmax(margin, maxY), topLeft.y);
+    setTopLeftPosition(topLeft);
+}
+
+void BusInsertOverlay::mouseUp(const juce::MouseEvent&)
+{
+    dragging = false;
+}
+
 // A bypassed EQ's controls are dead: the graph refuses the mouse and every band
 // control greys out. Polled rather than attached because the enable also moves
 // from automation, from a preset load, and from the strip.
