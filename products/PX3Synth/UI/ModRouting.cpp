@@ -867,6 +867,23 @@ private:
 
 //------------------------------------------------------------------------------
 // One connection: [x] (plug) SOURCE ~ [ AMOUNT ] POLARITY CURVE ~~ DESTINATION (plug)
+// The route's unpatch control: a bare X, no key behind it. A boxed button at
+// the row's left edge read as part of the source plug and got lost there.
+class UnpatchGlyph final : public juce::Button
+{
+public:
+    UnpatchGlyph() : juce::Button("unpatch") { setMouseCursor(juce::MouseCursor::PointingHandCursor); }
+
+    void paintButton(juce::Graphics& g, bool over, bool down) override
+    {
+        const auto box = getLocalBounds().toFloat().withSizeKeepingCentre(8.0f, 8.0f);
+        g.setColour(down ? juce::Colour(0xffff6b6b).darker(0.2f)
+                         : over ? juce::Colour(0xffff6b6b) : th::colour::textSecondary);
+        g.drawLine(box.getX(), box.getY(), box.getRight(), box.getBottom(), 1.5f);
+        g.drawLine(box.getRight(), box.getY(), box.getX(), box.getBottom(), 1.5f);
+    }
+};
+
 class ModRoutingPanel::Row final : public juce::Component, public juce::SettableTooltipClient
 {
 public:
@@ -928,10 +945,7 @@ public:
         }
 
         remove.setComponentID("mod.routing.remove");
-        remove.setButtonText(juce::CharPointer_UTF8("\xc3\x97"));
         remove.setTooltip("Unpatch (or select the route and press Delete)");
-        remove.setColour(juce::TextButton::buttonColourId, th::colour::inset);
-        remove.setColour(juce::TextButton::textColourOffId, th::colour::textLabel);
         remove.onClick = [this]
         {
             removeRoute(owner.processor, route);
@@ -945,7 +959,7 @@ public:
     const RouteInfo& getRoute() const { return route; }
     juce::Slider& getDepth() { return depth; }
     // Where the cables attach, in this row's coordinates.
-    juce::Point<float> sourcePlug() const { return { 25.0f, getHeight() * 0.5f }; }
+    juce::Point<float> sourcePlug() const { return { 11.0f, getHeight() * 0.5f }; }
     juce::Point<float> destinationPlug() const { return { getWidth() - 9.0f, getHeight() * 0.5f }; }
 
     void syncDepth(float value)
@@ -1014,7 +1028,6 @@ public:
         const auto controlH = juce::jmin(20, h - 6);
         const auto centred = [&](juce::Rectangle<int> r) { return r.withSizeKeepingCentre(r.getWidth(), controlH); };
         const auto wide = getWidth() >= 640;
-        remove.setBounds(centred(area.removeFromLeft(16)));
         area.removeFromLeft(14);   // the source plug
         sourceNameArea = area.removeFromLeft(wide ? 50 : 42).toFloat();
         area.removeFromLeft(wide ? 14 : 8);
@@ -1024,6 +1037,9 @@ public:
         area.removeFromLeft(2);
         curve.setBounds(centred(area.removeFromLeft(wide ? 74 : 66)));
         area.removeFromRight(16);   // the destination plug
+        // Unpatch: after the destination it removes, just inside its plug.
+        remove.setBounds(centred(area.removeFromRight(16)));
+        area.removeFromRight(4);
         area.removeFromLeft(wide ? 16 : 8);
         destinationArea = area.toFloat();
         showOrigin = destinationArea.getWidth() > 190.0f;
@@ -1057,7 +1073,7 @@ private:
     RouteInfo route;
     AmountControl depth;
     juce::ComboBox polarity, curve;
-    juce::TextButton remove;
+    UnpatchGlyph remove;
     std::unique_ptr<juce::SliderParameterAttachment> attachment;
     juce::String destinationText, destinationGroup, originText;
     juce::Rectangle<float> sourceNameArea, destinationArea;
