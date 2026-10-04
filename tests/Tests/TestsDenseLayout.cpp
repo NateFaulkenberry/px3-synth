@@ -3,6 +3,7 @@
 #include "UILayoutEditing.h"
 #include "ModRouting.h"
 #include "SubOscComponent.h"
+#include "ModalBackdrop.h"
 #include "FltPanel.h"
 #include "BusInsertOverlay.h"
 
@@ -538,6 +539,27 @@ void testDenseLayout()
         }
         juce::MessageManager::getInstance()->runDispatchLoopUntil(20);
         editor->debugTimerTick();
+    }
+
+    // ---- the modal backdrop fits a square sheet exactly -------------------------
+    // The hole was a 10 px rounded rectangle grown by a pixel, so around the
+    // square preset sheet its corners and a 1 px rim showed the sharp,
+    // undimmed editor.
+    {
+        juce::Image snapshot(juce::Image::ARGB, 200, 200, true);
+        { juce::Graphics g(snapshot); g.fillAll(juce::Colours::white); }
+        juce::Image out(juce::Image::ARGB, 200, 200, true);
+        const auto sheet = juce::Rectangle<float>(50.0f, 50.0f, 100.0f, 100.0f);
+        { juce::Graphics g(out); px3::ui::paintModalBackdrop(g, { 0, 0, 200, 200 }, sheet, snapshot, 0.0f,
+                                                             juce::Colour::fromRGBA(0, 0, 0, 180), 4.5f); }
+        const auto dimmed = [&](int x, int y) { return out.getPixelAt(x, y).getAlpha() > 200 && out.getPixelAt(x, y).getBrightness() < 0.5f; };
+        const auto untouched = [&](int x, int y) { return out.getPixelAt(x, y).getAlpha() == 0; };
+        const auto ok = dimmed(49, 49) && dimmed(49, 100) && dimmed(150, 100) && dimmed(100, 150)
+                        && untouched(50, 50) && untouched(149, 149) && untouched(100, 100);
+        check("Dense_ModalBackdropFitsASquareSheetExactly", ok,
+              "corner outside " + out.getPixelAt(49, 49).toDisplayString(true) + ", edge outside "
+                  + out.getPixelAt(49, 100).toDisplayString(true) + ", corner inside "
+                  + out.getPixelAt(50, 50).toDisplayString(true));
     }
 
     // ---- an enabled sub osc draws its wave in its own colour -------------------

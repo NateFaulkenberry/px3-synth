@@ -61,7 +61,7 @@ void PX3SynthAudioProcessorEditor::paintOverChildren(juce::Graphics& g)
                                 getLocalBounds(),
                                 presetBrowserPanel.getBounds().toFloat(),
                                 presetBrowserBackdropSnapshot,
-                                10.0f,
+                                px3::ui::theme::space::panelRadius,   // the sheet is square
                                 juce::Colour::fromRGBA(0, 0, 0, 180),
                                 uiConfig != nullptr
                                     ? uiConfig->getFloat("busInserts.backdropBlur", 4.5f)

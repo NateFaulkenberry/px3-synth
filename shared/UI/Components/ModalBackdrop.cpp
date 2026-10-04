@@ -22,7 +22,17 @@ void paintModalBackdrop(juce::Graphics& g,
     outsidePanelMask.addRectangle(fullBounds.toFloat());
     if (! panelBounds.isEmpty())
     {
-        outsidePanelMask.addRoundedRectangle(panelBounds.expanded(1.0f), panelCornerRadius);
+        // A square sheet is cut out exactly: grown by a pixel or rounded, the
+        // hole left the sheet's corners and a rim around it unblurred, so the
+        // sharp editor showed through around a panel with square corners.
+        if (panelCornerRadius <= 0.0f)
+        {
+            outsidePanelMask.addRectangle(panelBounds);
+        }
+        else
+        {
+            outsidePanelMask.addRoundedRectangle(panelBounds.expanded(1.0f), panelCornerRadius);
+        }
     }
 
     if (snapshot.isValid())

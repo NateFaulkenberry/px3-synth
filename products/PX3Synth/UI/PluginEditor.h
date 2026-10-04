@@ -113,6 +113,25 @@ private:
         }
     };
 
+    // The sheet's one action: a solid key in the sheet's text colour with the
+    // panel's colour for its label, square like everything on the surface.
+    class PresetLoadButton final : public juce::TextButton
+    {
+    public:
+        void paintButton(juce::Graphics& g, bool over, bool down) override
+        {
+            namespace th = px3::ui::theme;
+            auto face = th::colour::textPrimary;
+            if (down) { face = face.darker(0.18f); }
+            else if (over) { face = face.brighter(0.25f); }
+            g.setColour(isEnabled() ? face : face.withAlpha(0.35f));
+            g.fillRect(getLocalBounds());
+            g.setColour(th::colour::panelBottom);
+            g.setFont(th::font(th::Type::label).boldened());
+            g.drawFittedText(getButtonText(), getLocalBounds().reduced(4, 0), juce::Justification::centred, 1);
+        }
+    };
+
     // Covers the whole editor while the preset sheet is open, so nothing behind
     // it can be clicked. The sheet was only ever modal to look at:
     // paintOverChildren dimmed the UI while every knob, card, chip and key
@@ -1059,7 +1078,7 @@ private:
     juce::ComboBox presetScopeBox;
     juce::ComboBox presetCategoryBox;
     juce::ListBox presetListBox;
-    juce::TextButton presetBrowserLoadButton;
+    PresetLoadButton presetBrowserLoadButton;
     // The circular X in the panel's top-right corner, the same glyph the
     // settings page, the macro depth panel and the sheets close with.
     px3::ui::SheetCloseButton presetBrowserCloseGlyph;
