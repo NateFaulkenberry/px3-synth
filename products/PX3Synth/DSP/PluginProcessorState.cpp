@@ -547,10 +547,11 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
 
     if (const auto vibeState = state.getChildWithName(kVibeStateId); vibeState.isValid())
     {
-        if (vibeState.hasProperty(kVibeBypassId))
-        {
-            debugSetVibeBypass(static_cast<bool>(vibeState[kVibeBypassId]));
-        }
+        // The bypass flag is NOT applied: fx.vibe.enabled, restored with the
+        // parameters above, is the authority, and the flag only duplicated it.
+        // Applied after the parameters, a stale flag overrode them - INIT's
+        // cached state carried VIBE bypassed while its parameter said on, so
+        // loading INIT switched VIBE off and the name showed "*" a tick later.
 
         if (vibeState.hasProperty(kVibeSeedId))
         {
