@@ -1,6 +1,8 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include <unordered_map>
+#include <mutex>
 
 #include <memory>
 #include <variant>
@@ -78,7 +80,25 @@ public:
 
     const juce::String& getSchemaFingerprint() const noexcept { return schemaFingerprint; }
 
+    // A loaded value, as read and as the parameter then reported it. A skewed
+    // float range does not round-trip exactly through a parameter (normalised
+    // -> real -> normalised in float), so state saved straight from
+    // getValue() drifted a little on every reload: a project re-saved
+    // unedited was never byte-identical, and a host comparing state saw every
+    // reopen as an edit. While a parameter still holds what loading gave it,
+    // the state writes back the value it was loaded from.
+    void rememberLoadedValue(const juce::AudioProcessorParameter* parameter, float loaded);
+
 private:
+    struct LoadedValue
+    {
+        float loaded { 0.0f };
+        float applied { 0.0f };
+        bool valid { false };
+    };
+    mutable std::mutex loadedValuesLock;
+    std::unordered_map<const juce::AudioProcessorParameter*, LoadedValue> loadedValues;
+
     struct GroupSegment
     {
         juce::String id;

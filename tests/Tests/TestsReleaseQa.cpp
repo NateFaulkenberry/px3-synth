@@ -477,5 +477,36 @@ void testReleaseQa()
         check("Qa_AnalogFiltersAddNoAudibleAliasing", worstFilter < -40.0,
               "worst model at half resonance on a 3.5 kHz saw: " + fmt(worstFilter, 1) + " dB (saw alone " + fmt(bare, 1) + " dB)");
     }
+
+    // ---- host state round-trips exactly ------------------------------------------
+    // Save, load, save again: the second save must be the first, byte for byte.
+    // A difference means loading changed something - a value nudged on the way
+    // in, an ordering, a field that grows - and a host that compares state to
+    // mark a project dirty would see every reload as an edit.
+    {
+        Processor processor;
+        processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        processor.prepareToPlay(kSampleRate, kBlockSize);
+        juce::MemoryBlock first, second, third;
+        processor.getStateInformation(first);
+        processor.setStateInformation(first.getData(), static_cast<int>(first.getSize()));
+        processor.getStateInformation(second);
+        processor.setStateInformation(second.getData(), static_cast<int>(second.getSize()));
+        processor.getStateInformation(third);
+        juce::String where;
+        if (second != third || first != second)
+        {
+            const auto a = Processor::getXmlFromBinary(first.getData(), static_cast<int>(first.getSize()));
+            const auto b = Processor::getXmlFromBinary(second.getData(), static_cast<int>(second.getSize()));
+            const auto ta = a != nullptr ? a->toString() : juce::String();
+            const auto tb = b != nullptr ? b->toString() : juce::String();
+            auto i = 0;
+            while (i < juce::jmin(ta.length(), tb.length()) && ta[i] == tb[i]) { ++i; }
+            where = "first difference at char " + juce::String(i) + ": ..." + ta.substring(juce::jmax(0, i - 80), i + 60)
+                    + "  VS  ..." + tb.substring(juce::jmax(0, i - 80), i + 60);
+        }
+        check("Qa_HostStateRoundTripsExactly", first == second && second == third,
+              first == second && second == third ? juce::String(static_cast<int>(first.getSize())) + " bytes, identical across two reloads" : where);
+    }
 }
 } // namespace px3tests

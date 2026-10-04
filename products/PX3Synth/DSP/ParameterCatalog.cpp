@@ -290,6 +290,13 @@ const ParameterCatalogEntry* ParameterCatalog::find(const juce::String& id) cons
     return found == catalogEntries.end() ? nullptr : &*found;
 }
 
+void ParameterCatalog::rememberLoadedValue(const juce::AudioProcessorParameter* parameter, float loaded)
+{
+    if (parameter == nullptr) { return; }
+    const std::lock_guard<std::mutex> lock(loadedValuesLock);
+    loadedValues[parameter] = { loaded, parameter->getValue(), true };
+}
+
 juce::ValueTree ParameterCatalog::createStateTree() const
 {
     juce::ValueTree root("PARAMETERS");
@@ -316,7 +323,16 @@ juce::ValueTree ParameterCatalog::createStateTree() const
 
         juce::ValueTree value("PARAMETER");
         value.setProperty("id", entry.id, nullptr);
-        value.setProperty("value", entry.parameter != nullptr ? entry.parameter->getValue() : 0.0f, nullptr);
+        auto normalized = entry.parameter != nullptr ? entry.parameter->getValue() : 0.0f;
+        {
+            const std::lock_guard<std::mutex> lock(loadedValuesLock);
+            const auto loaded = loadedValues.find(entry.parameter);
+            if (loaded != loadedValues.end() && loaded->second.valid && loaded->second.applied == normalized)
+            {
+                normalized = loaded->second.loaded;
+            }
+        }
+        value.setProperty("value", normalized, nullptr);
         parent.addChild(value, -1, nullptr);
     }
     return root;

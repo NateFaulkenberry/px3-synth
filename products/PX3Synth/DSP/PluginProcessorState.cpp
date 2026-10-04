@@ -467,6 +467,7 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
         if (value.parameter != nullptr)
         {
             value.parameter->setValueNotifyingHost(value.normalizedValue);
+            parameterCatalog.rememberLoadedValue(value.parameter, value.normalizedValue);
         }
     }
 
