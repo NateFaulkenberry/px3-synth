@@ -666,7 +666,7 @@ void testEditorLifecycle()
             walk(*editor);
 
             check("Editor_DefaultWindowIsFifteenPercentLarger",
-              editor->getWidth() == 1518 && editor->getHeight() == 918,
+              editor->getWidth() == 1518 && editor->getHeight() == 938,
               juce::String(editor->getWidth()) + "x" + juce::String(editor->getHeight()));
             const auto defaultPanel = panel != nullptr ? panel->getHeight() : 0;
         const auto defaultKeys = keys != nullptr ? keys->getHeight() : 0;
@@ -691,7 +691,7 @@ void testEditorLifecycle()
             editor->setSize(1320, h);
             keyboardHeld = keyboardHeld && keys->getHeight() == defaultKeys
                            && header->getHeight() == defaultHeader;
-            panelTracks = panelTracks && panel->getHeight() - defaultPanel == h - 918;
+            panelTracks = panelTracks && panel->getHeight() - defaultPanel == h - 938;
             detail << h << ": panel " << panel->getHeight() << " keys " << keys->getHeight()
                    << " header " << header->getHeight() << "   ";
         }

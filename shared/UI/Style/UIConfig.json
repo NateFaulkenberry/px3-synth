@@ -38,15 +38,15 @@
   },
   "keyboard": {
     "background": {
-      "color": "#191919",
-      "opacity": 0,
+      "color": "#1B1E21",
+      "opacity": 1,
       "radius": 0,
       "radiusTopLeft": 0,
-      "radiusTopRight": 12,
-      "radiusBottomRight": 12,
+      "radiusTopRight": 0,
+      "radiusBottomRight": 0,
       "radiusBottomLeft": 0
     },
-    "padding": 8,
+    "padding": 4,
     "whiteKey": {
       "fill": "#F5F5F0",
       "activeFill": "#FFDC78",
@@ -62,7 +62,7 @@
       "border": {
         "color": "#000000",
         "width": 1,
-        "radius": 2.5
+        "radius": 0
       },
       "widthRatio": 0.64,
       "heightRatio": 0.62
@@ -120,23 +120,23 @@
   },
   "performance": {
     "background": {
-      "color": "#141414",
-      "opacity": 0
+      "color": "#1B1E21",
+      "opacity": 1
     },
     "border": {
       "inset": 0,
       "color": "#FFFFFF18",
       "width": 0,
       "radius": 0,
-      "radiusTopLeft": 12,
+      "radiusTopLeft": 0,
       "radiusTopRight": 0,
       "radiusBottomRight": 0,
-      "radiusBottomLeft": 12
+      "radiusBottomLeft": 0
     },
     "wheelPanel": {
-      "color": "#111111",
-      "opacity": 0.863,
-      "radius": 8
+      "color": "#1B1E21",
+      "opacity": 1,
+      "radius": 0
     },
     "title": {
       "color": "#E4E4E4",
@@ -144,7 +144,7 @@
       "height": 18
     },
     "track": {
-      "radius": 8,
+      "radius": 0,
       "borderWidth": 1,
       "fillOpacity": 0.22,
       "fillGlowOpacity": 0.28,
@@ -172,14 +172,14 @@
     "pitch": {
       "accent": "#529BFF",
       "background": {
-        "color": "#141414",
+        "color": "#0F1113",
         "opacity": 1
       }
     },
     "mod": {
       "accent": "#E8544E",
       "background": {
-        "color": "#141414",
+        "color": "#0F1113",
         "opacity": 1
       }
     }
@@ -198,19 +198,19 @@
       "padding": 0,
       "rows": {
         "row1": {
-          "height": "45%",
-          "paddingTop": 20,
-          "fontSize": 14
+          "height": "auto",
+          "paddingTop": 3,
+          "fontSize": 13
         },
         "row2": {
-          "height": "42%",
-          "padding": 5,
-          "fontSize": 10.5
+          "height": 14,
+          "paddingBottom": 3,
+          "fontSize": 9
         }
       },
       "divider": {
         "width": 1,
-        "inset": 6,
+        "inset": 2,
         "alpha": 0.5
       },
       "showLabels": true,
@@ -333,15 +333,15 @@
       }
     },
     "signalFlow": {
-      "height": 30,
+      "height": 40,
       "gapBelow": 1,
       "nodeGap": 26,
       "minNodeWidth": 48,
       "insetX": 0,
-      "insetY": 6,
+      "insetY": 4,
       "cornerRadius": 0,
       "reflowRate": 0.35,
-      "fontSize": 11,
+      "fontSize": 12,
       "accentBarHeight": 3,
       "hoverBrighten": 0.14,
       "dragBrighten": 0.28,
@@ -2460,15 +2460,15 @@
             }
           },
           "row1": {
-            "height": "12%",
+            "height": "14%",
             "gap": 8
           },
           "row2": {
-            "height": "46%",
+            "height": "52%",
             "gap": 10
           },
           "row3": {
-            "height": "42%",
+            "height": "34%",
             "padding": 4
           }
         }

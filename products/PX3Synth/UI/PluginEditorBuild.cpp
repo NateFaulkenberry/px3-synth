@@ -1262,7 +1262,7 @@ void PX3SynthAudioProcessorEditor::finishConstruction()
     fxSectionOrder = audioProcessor.getFxProcessingOrder();
     // The larger default accommodates a complete FX row without changing layout.
     bindSceneComponents();
-    setSize(1518, 918);
+    setSize(1518, 938);
     resized();
 
     juce::String presetInitError;

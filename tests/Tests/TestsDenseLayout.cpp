@@ -84,9 +84,9 @@ void testDenseLayout()
     if (editor == nullptr) { return; }
     auto& doc = editor->getSceneDocument();
 
-    // ---- no outer padding, 1 px seams, at min / default / max --------------
+    // ---- the 1 px seam runs round the window edge too, at min / default / max
     {
-        const int sizes[][2] = { { 1100, 700 }, { 1518, 918 }, { 2400, 1400 } };
+        const int sizes[][2] = { { 1100, 700 }, { 1518, 938 }, { 2400, 1400 } };
         juce::StringArray padding, seams;
         for (const auto& size : sizes)
         {
@@ -99,9 +99,13 @@ void testDenseLayout()
             const auto macros = doc.rectOf("macros");
             const auto mods = doc.rectOf("voice.mods");
             const auto amp = doc.rectOf("primary.amp");
-            if (! near(header.getX(), 0) || ! near(header.getY(), 0) || ! near(header.getRight(), w)
-                || ! near(macros.getX(), 0) || ! near(macros.getBottom(), h) || ! near(mods.getBottom(), h)
-                || ! near(amp.getRight(), w) || ! near(doc.rectOf("views").getRight(), w))
+            const auto keys = doc.rectOf("keys");
+            constexpr auto edge = 1.0f; // the module seam, so nothing meets the window frame
+            if (! near(header.getX(), edge) || ! near(header.getY(), edge) || ! near(header.getRight(), w - edge)
+                || ! near(macros.getX(), edge) || ! near(keys.getBottom(), h - edge)
+                || ! near(keys.getX(), edge) || ! near(keys.getRight(), w - edge)
+                || ! near(mods.getBottom(), keys.getY() - 1.0f)
+                || ! near(amp.getRight(), w - edge) || ! near(doc.rectOf("views").getRight(), w - edge))
             {
                 padding.add(where);
             }
@@ -135,27 +139,28 @@ void testDenseLayout()
     check("Dense_ContainersHaveSquareCorners",
           px3::ui::theme::space::panelRadius == 0.0f && px3::ui::theme::space::insetRadius == 0.0f);
 
-    editor->setSize(1518, 918);
+    editor->setSize(1518, 938);
     editor->debugSelectSection(0);
 
-    // ---- the performance section: hidden, reserved nothing, still built ------
+    // ---- the performance section: a bottom row, and still retirable ---------
     {
         auto& keyboard = editor->debugPianoKeyboard();
         auto& wheels = editor->debugPerformanceControls();
-        const auto hidden = ! editor->debugPerformanceSectionShown() && ! keyboard.isVisible() && ! wheels.isVisible();
-        const auto noSpace = near(doc.rectOf("controls").getBottom(), 918.0f);
-        check("Dense_KeyboardAndWheelsAreHiddenFromTheReleaseUi", hidden && noSpace);
+        const auto shown = editor->debugPerformanceSectionShown() && keyboard.isVisible() && wheels.isVisible()
+                           && keyboard.getHeight() > 40 && wheels.getWidth() > 40
+                           && near(doc.rectOf("keys").getBottom(), 937.0f);
+        check("Dense_KeyboardAndWheelsRunAlongTheBottomEdge", shown,
+              keyboard.getBounds().toString() + " " + wheels.getBounds().toString());
 
-        // Flip the scene flag: the same components come back and get a row.
+        // Flip the scene flag: the row goes and the controls take its height.
         juce::String error;
-        const auto shown = doc.setVisible("keys", true, error);
+        const auto hid = doc.setVisible("keys", false, error);
         editor->relayoutScene();
-        const auto back = shown && editor->debugPerformanceSectionShown() && keyboard.isVisible()
-                          && keyboard.getHeight() > 40 && wheels.isVisible() && wheels.getWidth() > 40;
-        doc.setVisible("keys", false, error);
+        const auto gone = hid && ! editor->debugPerformanceSectionShown() && ! keyboard.isVisible()
+                          && ! wheels.isVisible() && near(doc.rectOf("controls").getBottom(), 937.0f);
+        doc.setVisible("keys", true, error);
         editor->relayoutScene();
-        check("Dense_KeyboardImplementationStillRendersWhenTheSceneShowsIt",
-              back && ! keyboard.isVisible(), error);
+        check("Dense_SceneFlagRetiresThePerformanceRow", gone && keyboard.isVisible(), error);
     }
 
     // ---- six modulators, one row, on VOICE --------------------------------------

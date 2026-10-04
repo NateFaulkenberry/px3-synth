@@ -2169,7 +2169,7 @@ int main(int argc, char* argv[])
     {
         const juce::String dir = argc > 2 ? argv[2] : "/tmp/px3-uisnapshot";
         const auto w = argc > 3 ? juce::String(argv[3]).getIntValue() : 1518;
-        const auto h = argc > 4 ? juce::String(argv[4]).getIntValue() : 918;
+        const auto h = argc > 4 ? juce::String(argv[4]).getIntValue() : 938;
         return runUISnapshot(dir, w, h);
     }
 
