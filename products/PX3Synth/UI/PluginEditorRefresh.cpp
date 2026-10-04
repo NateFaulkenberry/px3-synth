@@ -530,7 +530,9 @@ void PX3SynthAudioProcessorEditor::refreshLfoFrequencyLabel()
 
 void PX3SynthAudioProcessorEditor::refreshLfoUI()
 {
-    refreshLfoFrequencyLabel();
+    // LFO 1's rate readout is written by its card (Hz, ramp time or SYNC).
+    // Writing "x Hz" here as well every tick fought the card's SYNC and ramp
+    // text, a change and a repaint on every tick while synced.
 
     if (modPanel != nullptr)
     {

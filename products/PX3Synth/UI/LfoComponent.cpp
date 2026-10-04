@@ -198,14 +198,20 @@ void LfoComponent::refreshFromParameters(bool enabled, float rateHz, float amoun
 {
     const auto enabledChanged = currentEnabled != enabled;
     currentEnabled = enabled;
+    // The clock's say on the rate controls, applied here in the same pass:
+    // set live here and then dead again by refreshClockControls on every tick,
+    // a synced LFO's rate, ramp and key-sync controls flipped twice a tick and
+    // repainted the card 30 times a second.
+    const auto clockFree = ! clockControlsAttached || clockModeBox.getSelectedId() == 1;
+    const auto rateLive = currentEnabled && clockFree;
 
     enabledButton.setToggleState(currentEnabled, juce::dontSendNotification);
     assignBox.setEnabled(currentEnabled);
     assignLabel.setEnabled(currentEnabled);
     waveformBox.setEnabled(currentEnabled);
     waveformLabel.setEnabled(currentEnabled);
-    rateKnob.setEnabled(currentEnabled);
-    rateKnob.setInterceptsMouseClicks(currentEnabled, currentEnabled);
+    rateKnob.setEnabled(rateLive);
+    rateKnob.setInterceptsMouseClicks(rateLive, rateLive);
     rateKnob.getProperties().set("knobBypassed", !currentEnabled);
     rateKnob.getProperties().set("psychedelicBypassGray", !currentEnabled);
     amountKnob.setEnabled(currentEnabled);
@@ -224,7 +230,7 @@ void LfoComponent::refreshFromParameters(bool enabled, float rateHz, float amoun
                                currentEnabled ? baseAmountValueTextColour : disabledAmountValueColour);
 
     currentRateHz = juce::jlimit(0.01f, 20.0f, rateHz);
-    rateValueLabel.setText(juce::String(currentRateHz, 2) + " Hz", juce::dontSendNotification);
+    rateValueLabel.setText(clockFree ? juce::String(currentRateHz, 2) + " Hz" : juce::String("SYNC"), juce::dontSendNotification);
     currentAmount = juce::jlimit(-1.0f, 1.0f, amount);
     const auto amountPercent = static_cast<int>(std::lround(currentAmount * 100.0f));
     const auto amountPrefix = amountPercent > 0 ? juce::String("+") : juce::String();
@@ -236,14 +242,14 @@ void LfoComponent::refreshFromParameters(bool enabled, float rateHz, float amoun
 
     if (rampControlsAttached)
     {
-        rampTimeKnob.setEnabled(currentEnabled);
-        rampTimeKnob.setInterceptsMouseClicks(currentEnabled, currentEnabled);
+        rampTimeKnob.setEnabled(rateLive);
+        rampTimeKnob.setInterceptsMouseClicks(rateLive, rateLive);
         rampTimeKnob.getProperties().set("knobBypassed", !currentEnabled);
-        keySyncButton.setEnabled(currentEnabled);
+        keySyncButton.setEnabled(currentEnabled && (! clockControlsAttached || clockModeBox.getSelectedId() != 3));
 
         const auto isRamp = px3::isRampLfoWaveformIndex(clamped);
         rateLabel.setText(isRamp ? juce::String("TIME") : rateCaptionText, juce::dontSendNotification);
-        if (isRamp)
+        if (isRamp && clockFree)
         {
             rateValueLabel.setText(formatRampSeconds(rampTimeKnob.getValue()), juce::dontSendNotification);
         }
