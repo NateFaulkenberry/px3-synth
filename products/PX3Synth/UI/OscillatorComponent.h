@@ -123,4 +123,6 @@ private:
     // beat against each other over time.
     double phase { 0.0 };
     int lastModeIndex { -1 };
+    // The enabled state applyEnabledUi last drew; -1 (as int) forces the first.
+    int lastAppliedEnabled { -1 };
 };

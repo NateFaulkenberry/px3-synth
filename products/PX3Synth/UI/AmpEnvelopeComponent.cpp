@@ -173,5 +173,7 @@ void AmpEnvelopeComponent::refreshFromParameters()
         envelopeGraph->setEnvelopeMode(processor.getEnvelopeMode(0));
         envelopeGraph->setEnvelopeProgress(processor.getEnvelopeProgress(0));
     }
-    repaint();
+    // No repaint here: this card draws nothing of its own, and the graph
+    // repaints itself when its shape or playhead moves. An unconditional one
+    // redrew the whole AMP ENV card on every refresh tick.
 }

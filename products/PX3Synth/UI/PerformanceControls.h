@@ -192,6 +192,8 @@ private:
     float visualMod { 0.0f };
     float visualPitchGlow { 0.0f };
     float visualModGlow { 0.0f };
+    // The values last painted, so the timer repaints only on a visible change.
+    float drawnPitch { -2.0f }, drawnMod { -2.0f }, drawnPitchGlow { -2.0f }, drawnModGlow { -2.0f };
     float previousTargetPitch { 0.0f };
     float previousTargetMod { 0.0f };
 

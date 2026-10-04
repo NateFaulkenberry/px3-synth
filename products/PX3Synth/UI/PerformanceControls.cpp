@@ -541,10 +541,20 @@ void PerformanceControls::timerCallback()
                        sparkles.begin() + static_cast<std::ptrdiff_t>(sparkles.size() - kMaxSparkles));
     }
 
-    // The wheels themselves still animate - the handles move and the glows
-    // breathe - so this component repaints either way; the sparkles are the
-    // overlay's job.
-    repaint();
+    // The wheels repaint when what they draw has moved - a handle, a glow -
+    // and not otherwise: an unconditional 60 Hz repaint of a still pair of
+    // wheels was a steady share of the editor's idle CPU. The sparkles are
+    // the overlay's job.
+    constexpr float visibleStep = 0.0015f;
+    if (std::abs(visualPitch - drawnPitch) > visibleStep || std::abs(visualMod - drawnMod) > visibleStep
+        || std::abs(visualPitchGlow - drawnPitchGlow) > visibleStep || std::abs(visualModGlow - drawnModGlow) > visibleStep)
+    {
+        drawnPitch = visualPitch;
+        drawnMod = visualMod;
+        drawnPitchGlow = visualPitchGlow;
+        drawnModGlow = visualModGlow;
+        repaint();
+    }
 
     // One frame past empty, so the overlay clears the last sparkle.
     if ((! sparkles.empty() || hadSparklesLastFrame) && onSparklesChanged != nullptr)

@@ -141,12 +141,19 @@ void OscillatorComponent::refreshFromParameters(bool enabled, int modeIndex, int
     px3::ui::syncComboItemIndex(modeBox, modeIndex);
     px3::ui::syncComboItemIndex(vowelBox, vowelIndex);
 
-    if (modeIndex != lastModeIndex)
+    // Only on a change. applyEnabledUi ends in a whole-card repaint, and this
+    // runs on every refresh tick: three oscillator cards redrawn 30 times a
+    // second with nothing changed was most of the editor's idle CPU.
+    const auto modeChanged = modeIndex != lastModeIndex;
+    if (modeChanged)
     {
         applyModeUi();
     }
-
-    applyEnabledUi();
+    if (modeChanged || static_cast<int>(enabled) != lastAppliedEnabled)
+    {
+        lastAppliedEnabled = static_cast<int>(enabled);
+        applyEnabledUi();
+    }
 }
 
 void OscillatorComponent::advanceAnimation(float deltaPhase)
