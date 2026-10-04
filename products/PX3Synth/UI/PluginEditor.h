@@ -254,6 +254,14 @@ private:
 
     juce::StringArray midiSelection;
     std::vector<juce::Component::SafePointer<juce::Slider>> midiKnobs;
+    // Every parameter knob in the tree, as last scanned (see
+    // refreshMidiMappingUI). Rescanned every kKnobScanTicks, or at once after
+    // invalidateKnobScan().
+    std::vector<juce::Component::SafePointer<juce::Slider>> knobScan;
+    static constexpr int kKnobScanTicks = 10;
+    int knobScanCountdown { 0 };
+    bool knobScanDirty { true };
+    void invalidateKnobScan() noexcept { knobScanDirty = true; }
     // Per-tick lookups the knob walk makes: which sliders are registered, and
     // each parameter id's parameter (the processor's lookup is a linear scan
     // over ~400 parameters, which the dense VOICE page would run ~100 times a

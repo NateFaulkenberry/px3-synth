@@ -137,37 +137,55 @@ juce::RangedAudioParameter* PX3SynthAudioProcessorEditor::cachedParameter(const 
 
 void PX3SynthAudioProcessorEditor::refreshMidiMappingUI()
 {
-    // Walks the tree rather than holding a list built at construction: panels
-    // and overlays create knobs after the editor exists, and a list would only
-    // be right until the next one appeared.
+    // The knobs are found by walking the tree rather than from a list built at
+    // construction: panels and overlays create knobs after the editor exists.
     //
-    // Registration is idempotent - a listener already added is not added again
-    // - so this doubles as the discovery pass.
-    std::vector<std::pair<juce::Component::SafePointer<juce::Slider>, bool>> found;
+    // The walk itself was most of this function's cost - a dynamic_cast over
+    // every component, every tick, about 4% of a core with the editor idle.
+    // So the list is rescanned every few ticks, and at once whenever something
+    // that adds or removes knobs says so (invalidateKnobScan); in between, the
+    // cached list is used. A knob that has been deleted reads as null and
+    // forces a rescan.
+    if (knobScanDirty || --knobScanCountdown <= 0)
+    {
+        knobScan.clear();
+        std::function<void(juce::Component&)> walk = [&](juce::Component& parent)
+        {
+            for (auto* child : parent.getChildren())
+            {
+                if (child == nullptr) { continue; }
+                if (auto* slider = dynamic_cast<juce::Slider*>(child); slider != nullptr && px3::ui::isParameterKnob(*slider))
+                {
+                    knobScan.push_back(slider);
+                }
+                walk(*child);
+            }
+        };
+        walk(*this);
+        knobScanDirty = false;
+        knobScanCountdown = kKnobScanTicks;
+    }
 
     // Knobs on a hidden page skip the two expensive refreshes - the live
     // modulated position and the route rings - which the next tick after their
     // page opens brings up to date. MIDI, macro and selection state stay
     // current everywhere (they are cheap and Select Mode spans pages).
-    std::function<void(juce::Component&, bool)> walk = [&](juce::Component& parent, bool parentShown)
+    const auto shownInEditor = [this](juce::Component* c)
     {
-        for (auto* child : parent.getChildren())
+        for (; c != nullptr && c != this; c = c->getParentComponent())
         {
-            if (child == nullptr) { continue; }
-            const auto shown = parentShown && child->isVisible();
-
-            if (auto* slider = dynamic_cast<juce::Slider*>(child))
-            {
-                if (px3::ui::isParameterKnob(*slider))
-                {
-                    found.push_back({ slider, shown });
-                }
-            }
-
-            walk(*child, shown);
+            if (! c->isVisible()) { return false; }
         }
+        return c == this;
     };
-    walk(*this, true);
+
+    std::vector<std::pair<juce::Component::SafePointer<juce::Slider>, bool>> found;
+    found.reserve(knobScan.size());
+    for (auto& knob : knobScan)
+    {
+        if (knob == nullptr) { knobScanDirty = true; continue; }
+        found.push_back({ knob, shownInEditor(knob.getComponent()) });
+    }
 
     for (auto& [knob, knobShown] : found)
     {
@@ -463,6 +481,7 @@ void PX3SynthAudioProcessorEditor::finishMacroAssignEditing()
 
 void PX3SynthAudioProcessorEditor::openMacroDepthPanel(int macroIndex)
 {
+    invalidateKnobScan();   // may add, show or rebuild knobs
     if (! juce::isPositiveAndBelow(macroIndex, PX3SynthAudioProcessor::kMacroCount)) { return; }
     if (macroDepthPanel == nullptr) { return; }
 

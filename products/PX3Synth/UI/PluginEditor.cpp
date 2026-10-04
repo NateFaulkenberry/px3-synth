@@ -437,6 +437,7 @@ juce::Component* PX3SynthAudioProcessorEditor::activeBusInsertSheet() const
 
 void PX3SynthAudioProcessorEditor::openBusInsert(int bus, bool wantsEq)
 {
+    invalidateKnobScan();   // may add, show or rebuild knobs
     if (busEqOverlay == nullptr || busCompOverlay == nullptr)
     {
         return;
@@ -545,6 +546,7 @@ void PX3SynthAudioProcessorEditor::toggleSettingsView()
 
 void PX3SynthAudioProcessorEditor::applyTopMenuSectionSelection(int sectionIndex, bool pushToProcessor)
 {
+    invalidateKnobScan();   // may add, show or rebuild knobs
     const auto clamped = juce::jlimit(0, kSectionSettings, sectionIndex);
     selectedTopMenuSection = clamped;
 

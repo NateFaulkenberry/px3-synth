@@ -11,6 +11,7 @@ using px3::ui::kSectionMod;
 
 void PX3SynthAudioProcessorEditor::buildModRouting()
 {
+    invalidateKnobScan();   // may add, show or rebuild knobs
     ModDragController::Host host;
     host.sectionTabAt = [this](juce::Point<int> point)
     {

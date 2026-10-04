@@ -116,6 +116,7 @@ void PX3SynthAudioProcessorEditor::refreshPresetNameDisplay()
 
 void PX3SynthAudioProcessorEditor::applyPresetRecord(const PresetManager::PresetRecord& record)
 {
+    invalidateKnobScan();   // may add, show or rebuild knobs
     juce::String error;
     if (!presetManager.loadPreset(record, error))
     {
