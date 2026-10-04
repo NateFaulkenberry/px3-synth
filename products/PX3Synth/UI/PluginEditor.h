@@ -376,7 +376,8 @@ public:
     bool debugPresetBrowserVisible() const { return presetBrowserVisible; }
     juce::ListBox& debugPresetListBox() { return presetListBox; }
     juce::TextButton& debugPresetLoadButton() { return presetBrowserLoadButton; }
-    juce::TextButton& debugPresetCancelButton() { return presetBrowserCloseButton; }
+    juce::Button& debugPresetCloseGlyph() { return presetBrowserCloseGlyph; }
+    juce::Label& debugPresetDetails() { return presetBrowserDetails; }
     juce::TextEditor& debugPresetSearchField() { return presetSearchEditor; }
     juce::ComboBox& debugPresetScopeBox() { return presetScopeBox; }
     juce::ComboBox& debugPresetCategoryBox() { return presetCategoryBox; }
@@ -1059,7 +1060,6 @@ private:
     juce::ComboBox presetCategoryBox;
     juce::ListBox presetListBox;
     juce::TextButton presetBrowserLoadButton;
-    juce::TextButton presetBrowserCloseButton;
     // The circular X in the panel's top-right corner, the same glyph the
     // settings page, the macro depth panel and the sheets close with.
     px3::ui::SheetCloseButton presetBrowserCloseGlyph;

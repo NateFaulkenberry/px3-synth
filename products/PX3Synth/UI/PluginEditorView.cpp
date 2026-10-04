@@ -252,15 +252,13 @@ void PX3SynthAudioProcessorEditor::resized()
     presetSearchEditor.setBounds(filterRow);
 
     browserArea.removeFromTop(6);
-    auto footer = browserArea.removeFromBottom(74);
+    // The list runs to the bottom of the sheet; the details column ends in
+    // the LOAD PRESET button, full width and level with the list's foot.
     presetListBox.setBounds(browserArea.removeFromLeft(browserArea.getWidth() * 2 / 3));
     browserArea.removeFromLeft(8);
+    presetBrowserLoadButton.setBounds(browserArea.removeFromBottom(26));
+    browserArea.removeFromBottom(6);
     presetBrowserDetails.setBounds(browserArea);
-
-    auto footerRight = footer.removeFromRight(190);
-    presetBrowserLoadButton.setBounds(footerRight.removeFromLeft(90));
-    footerRight.removeFromLeft(10);
-    presetBrowserCloseButton.setBounds(footerRight.removeFromLeft(90));
 
 #if PX3_UI_DESIGNER
     if (layoutDesigner != nullptr)

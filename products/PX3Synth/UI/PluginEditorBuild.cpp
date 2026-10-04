@@ -1245,12 +1245,10 @@ void PX3SynthAudioProcessorEditor::buildPresetBar()
     presetListBox.setColour(juce::ListBox::outlineColourId, px3::ui::theme::colour::insetEdge);
     presetListBox.setOutlineThickness(1);
 
-    presetBrowserLoadButton.setButtonText("LOAD");
-    // CANCEL rather than CLOSE: it sits beside LOAD, and the pair reads as the
-    // choice actually being made - take this preset, or take none.
-    presetBrowserCloseButton.setButtonText("CANCEL");
+    // The one action button. There is no CANCEL beside it: the X in the title
+    // band closes without loading, as every sheet's does.
+    presetBrowserLoadButton.setButtonText("LOAD PRESET");
     setupPresetButton(presetBrowserLoadButton);
-    setupPresetButton(presetBrowserCloseButton);
 
     presetBrowserDetails.setJustificationType(juce::Justification::topLeft);
     presetBrowserDetails.setColour(juce::Label::textColourId, juce::Colour::fromRGB(208, 208, 208));
@@ -1264,13 +1262,11 @@ void PX3SynthAudioProcessorEditor::buildPresetBar()
     presetBrowserPanel.addAndMakeVisible(presetSearchEditor);
     presetBrowserPanel.addAndMakeVisible(presetListBox);
     presetBrowserPanel.addAndMakeVisible(presetBrowserLoadButton);
-    presetBrowserPanel.addAndMakeVisible(presetBrowserCloseButton);
     presetBrowserPanel.addAndMakeVisible(presetBrowserDetails);
 
     presetScopeBox.onChange = [this]() { rebuildPresetFilteredList(); };
     presetCategoryBox.onChange = [this]() { rebuildPresetFilteredList(); };
     presetSearchEditor.onTextChange = [this]() { rebuildPresetFilteredList(); };
-    presetBrowserCloseButton.onClick = [this]() { closePresetBrowser(); };
 
     // Same action, in the corner where every other panel now keeps it.
     presetBrowserCloseGlyph.onClick = [this]() { closePresetBrowser(); };

@@ -733,23 +733,45 @@ void testPresets()
                               + (editor->debugPresetBrowserVisible() ? "open" : "closed"));
                 }
 
-                // ---- Cancel changes nothing ---------------------------------
+                // ---- closing changes nothing --------------------------------
+                // The X in the title band is the only way out without loading;
+                // there is no CANCEL button.
                 editor->debugOpenPresetBrowser();
                 editor->debugRebuildPresetList();
                 cutoff.setValueNotifyingHost(0.42f);
                 editor->debugPresetListBox().selectRow(rowOf("BrowserBright"));
-                editor->debugPresetCancelButton().onClick();
+                editor->debugPresetCloseGlyph().onClick();
 
-                check("PresetBrowser_CancelClosesWithoutLoading",
+                check("PresetBrowser_CloseClosesWithoutLoading",
                       ! editor->debugPresetBrowserVisible()
                           && std::abs(norm() - 0.42f) < 0.01f,
                       "cutoff still reads " + juce::String(norm(), 3)
                           + " and the browser is "
                           + (editor->debugPresetBrowserVisible() ? "OPEN" : "closed"));
 
-                check("PresetBrowser_TheSecondButtonSaysCancel",
-                      editor->debugPresetCancelButton().getButtonText() == "CANCEL",
-                      "it reads '" + editor->debugPresetCancelButton().getButtonText() + "'");
+                // LOAD PRESET is the sheet's one button: full width under the
+                // details, its foot level with the list's, and nothing below.
+                {
+                    auto& load = editor->debugPresetLoadButton();
+                    const auto details = editor->debugPresetDetails().getBounds();
+                    const auto list = editor->debugPresetListBox().getBounds();
+                    auto textButtons = 0;
+                    if (auto* sheet = load.getParentComponent())
+                    {
+                        for (auto* child : sheet->getChildren())
+                        {
+                            if (dynamic_cast<juce::TextButton*>(child) != nullptr) { ++textButtons; }
+                        }
+                    }
+                    check("PresetBrowser_LoadPresetIsTheOnlyButtonUnderTheDetails",
+                          load.getButtonText() == "LOAD PRESET" && textButtons == 1
+                              && load.getX() == details.getX() && load.getWidth() == details.getWidth()
+                              && load.getY() > details.getBottom() && load.getBottom() == list.getBottom()
+                              && load.getHeight() <= 28,
+                          "'" + load.getButtonText() + "' " + load.getBounds().toString() + ", details "
+                              + details.toString() + ", list " + list.toString() + ", "
+                              + juce::String(textButtons) + " text button(s)");
+                }
 
                 // ---- a row that is not there is not loaded ------------------
                 //
