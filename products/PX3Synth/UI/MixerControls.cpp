@@ -505,120 +505,73 @@ void MixerLevelMeter::applyStyle(const Style& styleIn)
 
 void MixerLevelMeter::paint(juce::Graphics& g)
 {
-    // An LED ladder, as a console meter is: a row of discrete lamps in a
-    // recessed housing, green through amber to red, with a peak marker and a
-    // clip lamp at the end.
-    //
-    // Unlit segments are drawn as dim versions of their own colour rather than
-    // left empty. That is what makes it read as hardware at rest - you can see
-    // the whole scale before any signal arrives.
+    // A flat bar meter in a theme well, as current DAW meters are drawn: one
+    // continuous fill whose colour comes from its POSITION on the scale -
+    // green, amber from the first threshold, red from the second - so a level
+    // reads by where it ends, not by counting lamps. The unlit scale shows
+    // faintly so the zones are visible at rest; a 1 px line holds the peak and
+    // a separate square at the end holds a clip. No bloom, sheen or rounded
+    // lamps: those belonged to the console look the rest of the surface left.
+    namespace th = px3::ui::theme;
     const auto area = getLocalBounds().toFloat();
-
-    g.setColour(style.backgroundColour);
-    g.fillRoundedRectangle(area, style.cornerRadius);
-    g.setColour(juce::Colour::fromRGBA(0, 0, 0, 150));
-    g.drawRoundedRectangle(area.reduced(0.5f), style.cornerRadius, 1.0f);
-
-    paintSurfaceNoise(g, area, 0.04f);
+    th::drawInset(g, area);
 
     auto well = area.reduced(2.0f);
-    if (well.getWidth() <= 0.0f || well.getHeight() <= 0.0f)
+    if (well.getWidth() <= 4.0f || well.getHeight() <= 0.0f)
     {
         return;
     }
 
-    // The clip lamp is its own segment at the far right, separated from the
-    // ladder by a gap, exactly as it sits on a console.
-    const auto clipLampWidth = juce::jmax(3.0f, well.getHeight() * 0.55f);
-    const auto clipLamp = well.removeFromRight(clipLampWidth);
+    const auto clipSide = juce::jmax(3.0f, well.getHeight());
+    const auto clipLamp = well.removeFromRight(clipSide);
     well.removeFromRight(2.0f);
 
-    const auto segments = juce::jmax(1, style.segmentCount);
-    constexpr float segmentGap = 1.0f;
-    const auto segmentWidth = (well.getWidth() - segmentGap * static_cast<float>(segments - 1))
-                              / static_cast<float>(segments);
-
-    if (segmentWidth > 0.0f)
+    constexpr float highFrom = 0.70f;
+    constexpr float clipFrom = 0.88f;
+    const auto colourAt = [this](float t)
     {
-        const auto peakSegment = static_cast<int>(peakLevel * static_cast<float>(segments));
-        const auto lampRadius = juce::jmin(1.6f, segmentWidth * 0.4f);
+        return t < highFrom ? style.fillColour : (t < clipFrom ? style.highColour : style.clipColour);
+    };
+    const auto xAt = [&well](float t) { return well.getX() + std::round(well.getWidth() * t); };
 
-        for (int i = 0; i < segments; ++i)
+    // The three zones, unlit and then lit up to the level. Zone edges are on
+    // whole pixels so the colour changes in a clean step.
+    const float edges[] { 0.0f, highFrom, clipFrom, 1.0f };
+    const auto shown = juce::jlimit(0.0f, 1.0f, level);
+    for (int zone = 0; zone < 3; ++zone)
+    {
+        const auto from = xAt(edges[zone]);
+        const auto to = xAt(edges[zone + 1]);
+        const auto colour = colourAt(edges[zone]).withAlpha(1.0f);
+        g.setColour(colour.withAlpha(0.10f));
+        g.fillRect(juce::Rectangle<float>(from, well.getY(), to - from, well.getHeight()));
+
+        const auto litTo = juce::jmin(to, well.getX() + well.getWidth() * shown);
+        if (litTo > from)
         {
-            const auto t = static_cast<float>(i) / static_cast<float>(segments - 1);
-            const auto colour = t < 0.70f ? style.fillColour
-                                          : (t < 0.88f ? style.highColour : style.clipColour);
-
-            const auto lit = level * static_cast<float>(segments) > static_cast<float>(i);
-            const auto isPeak = (i == peakSegment && peakLevel > 0.001f);
-
-            const auto seg = juce::Rectangle<float>(well.getX() + static_cast<float>(i) * (segmentWidth + segmentGap),
-                                                    well.getY(),
-                                                    segmentWidth,
-                                                    well.getHeight());
-
-            // Every lamp sits in its own dark well, lit or not - the same
-            // treatment the mute and solo switches use, so the whole strip
-            // reads as one piece of hardware.
-            g.setColour(juce::Colour::fromRGBA(0, 0, 0, 170));
-            g.fillRoundedRectangle(seg.expanded(0.4f), lampRadius);
-
-            if (lit || isPeak)
-            {
-                const auto lampColour = lit ? colour : colour.withAlpha(0.75f);
-
-                // Bloom, so a lit lamp emits rather than just fills.
-                g.setColour(lampColour.withAlpha(0.30f));
-                g.fillRoundedRectangle(seg.expanded(1.2f, 0.8f), lampRadius);
-
-                g.setColour(lampColour);
-                g.fillRoundedRectangle(seg, lampRadius);
-
-                // The same specular sheen across the top of each lamp.
-                auto sheen = seg.withHeight(seg.getHeight() * 0.45f);
-                juce::ColourGradient gloss(juce::Colour::fromRGBA(255, 255, 255, 96),
-                                           sheen.getX(), sheen.getY(),
-                                           juce::Colour::fromRGBA(255, 255, 255, 0),
-                                           sheen.getX(), sheen.getBottom(), false);
-                g.setGradientFill(gloss);
-                g.fillRoundedRectangle(sheen, lampRadius);
-            }
-            else
-            {
-                g.setColour(colour.withMultipliedAlpha(0.15f));
-                g.fillRoundedRectangle(seg, lampRadius);
-            }
+            g.setColour(colour.withAlpha(0.92f));
+            g.fillRect(juce::Rectangle<float>(from, well.getY(), litTo - from, well.getHeight()));
         }
     }
 
-    // ---- clip lamp ---------------------------------------------------------
+    // Threshold ticks: hairlines between the zones, dark over the fill.
+    g.setColour(th::colour::inset.withAlpha(0.9f));
+    for (const auto t : { highFrom, clipFrom })
+    {
+        g.fillRect(juce::Rectangle<float>(xAt(t), well.getY(), 1.0f, well.getHeight()));
+    }
+
+    // Peak hold.
+    if (peakLevel > 0.001f)
+    {
+        const auto peak = juce::jlimit(0.0f, 1.0f, peakLevel);
+        const auto x = juce::jmin(well.getRight() - 1.0f, std::round(well.getX() + well.getWidth() * peak));
+        g.setColour(colourAt(peak).withAlpha(1.0f).brighter(0.25f));
+        g.fillRect(juce::Rectangle<float>(x, well.getY(), 1.0f, well.getHeight()));
+    }
+
+    // Clip: dark until it holds a clip, then solid red.
     const auto clipping = clipHoldCounter > 0;
-    const auto clipRadius = juce::jmin(2.0f, clipLamp.getWidth() * 0.35f);
-
-    g.setColour(juce::Colour::fromRGBA(0, 0, 0, 190));
-    g.fillRoundedRectangle(clipLamp.expanded(0.6f), clipRadius);
-
-    if (clipping)
-    {
-        g.setColour(style.clipColour.withAlpha(0.38f));
-        g.fillRoundedRectangle(clipLamp.expanded(2.4f, 1.4f), clipRadius);
-        g.setColour(style.clipColour.brighter(0.45f));
-        g.fillRoundedRectangle(clipLamp, clipRadius);
-
-        auto clipSheen = clipLamp.withHeight(clipLamp.getHeight() * 0.45f);
-        juce::ColourGradient clipGloss(juce::Colour::fromRGBA(255, 255, 255, 120),
-                                       clipSheen.getX(), clipSheen.getY(),
-                                       juce::Colour::fromRGBA(255, 255, 255, 0),
-                                       clipSheen.getX(), clipSheen.getBottom(), false);
-        g.setGradientFill(clipGloss);
-        g.fillRoundedRectangle(clipSheen, clipRadius);
-    }
-    else
-    {
-        g.setColour(style.clipColour.withMultipliedAlpha(0.16f));
-        g.fillRoundedRectangle(clipLamp, clipRadius);
-    }
-
-    g.setColour(style.borderColour);
-    g.drawRoundedRectangle(area, style.cornerRadius, 1.0f);
+    g.setColour(clipping ? style.clipColour.withAlpha(1.0f) : style.clipColour.withAlpha(0.14f));
+    g.fillRect(clipLamp);
 }
