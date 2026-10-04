@@ -285,7 +285,11 @@ juce::ValueTree PX3SynthAudioProcessor::createParameterStateTree() const
     state.addChild(subOscState, -1, nullptr);
 
     juce::ValueTree vibeState(kVibeStateId);
-    vibeState.setProperty(kVibeBypassId, debugGetVibeBypass(), nullptr);
+    // From the parameter, not the engine: the engine's flag follows the
+    // parameter only when the next block runs, so a state taken just after a
+    // load read the previous preset's VIBE switch - and a preset loaded with
+    // VIBE off showed as edited a moment later, when audio caught up.
+    vibeState.setProperty(kVibeBypassId, ! getVibeEnabledParam().get(), nullptr);
     vibeState.setProperty(kVibeSeedId, static_cast<int64_t>(debugGetVibeSeed()), nullptr);
     state.addChild(vibeState, -1, nullptr);
 

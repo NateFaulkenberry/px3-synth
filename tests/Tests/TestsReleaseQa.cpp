@@ -726,5 +726,58 @@ void testReleaseQa()
               "64- vs 1024-sample buffers, over the pluck: brightness differs by at most " + fmt(worstBrightness, 2)
                   + " semitones of centroid, pitch by at most " + fmt(worstCents, 1) + " cents");
     }
+
+    // ---- a freshly loaded preset is not marked as edited ------------------------------
+    // Reported: open the standalone, press > to load Dial Tone, and the name
+    // immediately shows "*". Whatever writes the state after the load is
+    // listed by parameter.
+    {
+        Processor processor;
+        processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        processor.prepareToPlay(kSampleRate, kBlockSize);
+        std::unique_ptr<juce::AudioProcessorEditor> base(processor.createEditor());
+        auto* editor = dynamic_cast<PX3SynthAudioProcessorEditor*>(base.get());
+        juce::StringArray dirtyAfter;
+        juce::String changed;
+        if (editor != nullptr && editor->debugTopMenuBar() != nullptr)
+        {
+            editor->setSize(1518, 938);
+            for (int tick = 0; tick < 10; ++tick) { editor->debugTimerTick(); }
+            for (int press = 0; press < 4; ++press)   // the first few presets, as a user steps through them
+            {
+                editor->debugTopMenuBar()->getPresetNextButton().triggerClick();
+                juce::MessageManager::getInstance()->runDispatchLoopUntil(30);
+                const auto loaded = processor.createPresetStateTree().createXml()->toString();
+                juce::AudioBuffer<float> buffer(2, kBlockSize);
+                for (int tick = 0; tick < 20; ++tick)
+                {
+                    juce::MidiBuffer midi;
+                    buffer.clear();
+                    processor.processBlock(buffer, midi);
+                    editor->debugTimerTick();
+                    juce::MessageManager::getInstance()->runDispatchLoopUntil(5);
+                }
+                const auto now = processor.createPresetStateTree().createXml()->toString();
+                if (editor->debugPresetDisplayName().endsWithChar('*') || loaded != now)
+                {
+                    dirtyAfter.add(editor->debugPresetDisplayName());
+                    if (changed.isEmpty())
+                    {
+                        // The first differing PARAMETER line.
+                        juce::StringArray a, b;
+                        a.addLines(loaded);
+                        b.addLines(now);
+                        for (int i = 0; i < juce::jmin(a.size(), b.size()); ++i)
+                        {
+                            if (a[i] != b[i]) { changed = a[i].trim() + "  ->  " + b[i].trim(); break; }
+                        }
+                    }
+                }
+            }
+        }
+        check("Qa_ALoadedPresetIsNotMarkedEdited", editor != nullptr && dirtyAfter.isEmpty(),
+              dirtyAfter.isEmpty() ? juce::String("4 presets stepped through, none marked edited")
+                                   : "marked edited: " + dirtyAfter.joinIntoString(", ") + "; first change " + changed);
+    }
 }
 } // namespace px3tests

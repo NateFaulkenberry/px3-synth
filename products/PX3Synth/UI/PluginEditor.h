@@ -296,6 +296,10 @@ public:
     px3::ui::SheetCloseButton& debugUpdateNoticeClose() { return updateNoticeCloseButton; }
     juce::String debugUpdateNoticeText() const { return updateNotice.getText(); }
     void debugTimerTick() { timerCallback(); }
+    juce::String debugPresetDisplayName() const
+    {
+        return (hasCurrentPreset ? currentPreset.metadata.name : juce::String("INIT")) + (currentPresetDirty ? "*" : "");
+    }
     void debugOpenBusInsert(int bus, bool wantsEq) { openBusInsert(bus, wantsEq); }
     void debugCloseBusInsert() { closeBusInsert(); }
     juce::Component* debugActiveBusInsertSheet() const { return activeBusInsertSheet(); }
