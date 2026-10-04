@@ -748,6 +748,32 @@ int main(int argc, char* argv[])
         return 0;
     }
 
+    if (filter == "drive")
+    {
+        // DRIVE runs 8x oversampled ADAA in double at 44.1/48 kHz; it is a
+        // stereo FX-chain stage, so its cost does not scale with voices.
+        const auto budget = 1.0e6 * static_cast<double>(kBlockSize) / kSampleRate;
+        std::printf("\nPX3 DRIVE CPU  %.0f Hz, %d samples (median us per block, %% of budget)\n", kSampleRate, kBlockSize);
+        for (const auto voices : { 1, 16 })
+        {
+            for (const auto on : { false, true })
+            {
+                Scenario scenario {};
+                scenario.name = "drive";
+                scenario.voices = voices;
+                const auto timing = measure(scenario, [on](PX3SynthAudioProcessor& processor)
+                {
+                    setParameter(processor, "fx.distortion.enabled", on ? 1.0f : 0.0f);
+                    setParameter(processor, "fx.distortion.mix", on ? 1.0f : 0.0f);
+                    setParameter(processor, "fx.distortion.drive", 0.7f);
+                }, 200, 3);
+                std::printf("  %2d voices, DRIVE %-3s  median %8.1f us (%5.2f%%), p99 %8.1f us\n", voices, on ? "on" : "off",
+                            timing.medianMicros, 100.0 * timing.medianMicros / budget, timing.p99Micros);
+            }
+        }
+        return 0;
+    }
+
     if (filter == "osc")
     {
         return runOscillatorMatrix();

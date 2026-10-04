@@ -49,6 +49,10 @@ private:
     std::array<float, 2> tightState { { 0.0f, 0.0f } };
     std::array<float, 2> toneState { { 0.0f, 0.0f } };
     std::array<double, 2> previousInput { { 0.0, 0.0 } };   // at the oversampled rate
+    // F(previousInput), kept from the last step: every step needs F at both
+    // ends and one end is always the last step's. Valid for `cachedType` only.
+    std::array<double, 2> previousAntiderivative { { 0.0, 0.0 } };
+    int cachedType { -1 };
     // The clipper's path, and the dry signal through the same filters with no
     // clipper: the MIX blends two signals with the same phase, or it combs.
     px3::dsp::PolyphaseOversampler wetOversampler, dryOversampler;

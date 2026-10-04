@@ -63,6 +63,7 @@ void Distortion::reset()
 {
     tightState = toneState = dcX1 = dcY1 = { { 0.0f, 0.0f } };
     previousInput = { { 0.0, 0.0 } };
+    cachedType = -1;
     wetOversampler.reset();
     dryOversampler.reset();
     inPower = outPower = 0.0f;
@@ -86,12 +87,27 @@ double Distortion::clip(int channel, double x) noexcept
 {
     // First-order ADAA: the average of the curve between this sample and the
     // last, from its antiderivative; the plain curve where they nearly agree.
+    //
+    // F(previous) is carried over from the last step rather than evaluated
+    // again - the same value, half the transcendentals. A TYPE change
+    // invalidates it, so it is rebuilt from the stored input.
+    if (cachedType != current.type)
+    {
+        for (std::size_t ch = 0; ch < previousInput.size(); ++ch)
+        {
+            previousAntiderivative[ch] = antiderivativeDouble(current.type, previousInput[ch]);
+        }
+        cachedType = current.type;
+    }
     const auto c = static_cast<std::size_t>(channel);
     const auto previous = previousInput[c];
+    const auto previousF = previousAntiderivative[c];
+    const auto f = antiderivativeDouble(current.type, x);
     previousInput[c] = x;
+    previousAntiderivative[c] = f;
     const auto difference = x - previous;
     if (std::abs(difference) < 1.0e-6) { return static_cast<double>(shape(current.type, static_cast<float>(0.5 * (x + previous)))); }
-    return (antiderivativeDouble(current.type, x) - antiderivativeDouble(current.type, previous)) / difference;
+    return (f - previousF) / difference;
 }
 
 void Distortion::processSampleFrame(float inL, float inR, float& outL, float& outR)
