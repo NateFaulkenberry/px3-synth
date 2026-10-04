@@ -759,6 +759,12 @@ void PX3SynthAudioProcessorEditor::timerCallback()
         presetBrowserPanel.setAlwaysOnTop(true);
         presetBrowserPanel.toFront(false);
     }
+    // The save question is asked from the sheet too, and stays above it: the
+    // raise just above would otherwise bury it under the sheet on the next tick.
+    if (unsavedPrompt.isAsking())
+    {
+        unsavedPrompt.toFront(false);
+    }
 
     refreshOscillatorEngagedState();
 

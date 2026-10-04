@@ -866,6 +866,17 @@ void testReleaseQa()
             const auto load = [editor] { if (auto& b = editor->debugPresetLoadButton(); b.onClick) { b.onClick(); } };
             load();
             if (! prompt.isAsking()) { wrong.add("LOAD PRESET did not ask"); }
+            for (int tick = 0; tick < 3; ++tick) { editor->debugTimerTick(); }
+            {
+                const auto& kids = editor->getChildren();
+                const auto promptAt = kids.indexOf(&prompt);
+                int sheetAt = -1;
+                for (int i = 0; i < kids.size(); ++i)
+                {
+                    if (kids[i]->isVisible() && kids[i] != &prompt && kids[i]->isAlwaysOnTop()) { sheetAt = juce::jmax(sheetAt, i); }
+                }
+                if (promptAt < sheetAt) { wrong.add("the question went under the preset sheet after a tick"); }
+            }
             prompt.answer(UnsavedChangesPrompt::Answer::cancel);
             if (! editor->debugPresetBrowserVisible()) { wrong.add("CANCEL closed the preset sheet"); }
             if (name() != first + "*") { wrong.add("CANCEL from the sheet lost the edits: " + name()); }
