@@ -378,87 +378,66 @@ void PX3SynthAudioProcessorEditor::refreshUpdateAffordances()
 {
     using namespace px3::update;
 
-    const auto& service = UpdateService::getInstance();
-    const auto waiting = service.getState() == UpdateState::updateAvailable
-                             || updatePreviewForced;
+    auto& service = UpdateService::getInstance();
+    const auto waiting = service.getState() == UpdateState::updateAvailable || updatePreviewForced;
+    if (! waiting || updatePrompt.isAsking()) { return; }
 
-    // The gear glows while an update is unseen. Opening SETTINGS is what counts
-    // as seeing it, so the glow stops there rather than on any click.
-    //
-    // The preview ignores that, because the debug console is reached through
-    // the same panel: with it honoured, turning the preview on would show the
-    // notice for exactly as long as it took to notice it was gone.
-    const auto seen = ! updatePreviewForced && selectedTopMenuSection == kSectionSettings;
+    // Never on top of another question or sheet: it waits for them to close,
+    // and this runs again every tick.
+    if (unsavedPrompt.isAsking() || presetBrowserVisible || busInsertVisible) { return; }
 
-    if (topMenuBar != nullptr)
+    if (updatePreviewForced)
     {
-        topMenuBar->setUpdateAvailable(waiting && ! seen && ! updateAnnouncementFinished);
+        if (updatePreviewShown) { return; }
+        updatePreviewShown = true;
+    }
+    else
+    {
+        // Already looking at SETTINGS, where the update is shown: that is the
+        // announcement, so the session's one is spent without a question.
+        if (selectedTopMenuSection == kSectionSettings) { service.claimSessionAnnouncement(); return; }
+        // Once per session: another window, or this one earlier, may have asked.
+        if (! service.claimSessionAnnouncement()) { return; }
     }
 
-    if (seen) { dismissUpdateNotice(); }
+    const auto release = service.getAvailableRelease();
+    const auto product = service.getProduct();
+    const auto name = product.displayName.isNotEmpty() ? product.displayName : juce::String("PX3 Synth");
+    const auto version = release.isValid() ? " v" + release.version.toString() : juce::String();
+    const auto message = "A new version of " + name + version + " is available!"
+                         + (release.isPreRelease ? "  (pre-release)" : juce::String());
 
-    // The line under the bar, once per window. It says what the glow cannot -
-    // which product, and that there IS a new version - and then gets out of
-    // the way on its own.
-    if (waiting && ! seen && ! updateNoticeShown && ! updateAnnouncementFinished)
-    {
-        const auto release = service.getAvailableRelease();
-        const auto product = service.getProduct();
-        const auto name = product.displayName.isNotEmpty() ? product.displayName
-                                                           : juce::String("PX3 Synth");
-
-        updateNotice.setText("A new version of " + name + " is available!"
-                                 + (release.isPreRelease ? "  (pre-release)" : juce::String()),
-                             juce::dontSendNotification);
-        updateNotice.setVisible(true);
-        updateNotice.toFront(false);
-        // 20 seconds at the editor's 30 Hz tick. The preview holds instead:
-        // a notice that vanishes mid-adjustment is no use for styling one.
-        updateNoticeFramesLeft = updatePreviewForced ? -1 : 30 * 20;
-        updateNoticeShown = true;
-        resized();
-    }
+    enum { cancelId = 0, updateId = 1 };
+    updatePrompt.setBounds(getLocalBounds());
+    updatePrompt.askChoice("UPDATE AVAILABLE", message,
+                           { { "CANCEL", cancelId, false, true, false },
+                             { "UPDATE", updateId, true, false, false } },
+                           createComponentSnapshot(getLocalBounds()),
+                           [this](int id)
+                           {
+                               if (id == updateId && selectedTopMenuSection != kSectionSettings)
+                               {
+                                   toggleSettingsView();
+                               }
+                           });
 }
 
 void PX3SynthAudioProcessorEditor::dismissUpdateNotice()
 {
-    // The glow goes with the notice. It is set before the early return because
-    // the flag is about the announcement being over, not about the label being
-    // on screen - a dismiss that finds the notice already gone still has to
-    // settle the gear.
-    const auto wasAnnouncing = ! updateAnnouncementFinished;
-    updateAnnouncementFinished = true;
-
-    // Turned off here rather than by leaving it to the next refresh: the
-    // timeout path runs from the frame tick, which does not call
-    // refreshUpdateAffordances, so nothing else would put the gear out.
-    if (wasAnnouncing && topMenuBar != nullptr) { topMenuBar->setUpdateAvailable(false); }
-
-    if (updateNoticeFramesLeft < 0 && ! updateNotice.isVisible()) { return; }
-
-    updateNoticeFramesLeft = -1;
-    updateNotice.setVisible(false);
+    if (updatePrompt.isAsking()) { updatePrompt.choose(0); }
 }
 
 void PX3SynthAudioProcessorEditor::setUpdatePreview(bool shouldPreview)
 {
     updatePreviewForced = shouldPreview;
+    updatePreviewShown = false;
 
-    if (shouldPreview)
-    {
-        // Both of these are per-window latches that a real announcement sets on
-        // its way out. Clearing them is what lets the toggle be a toggle rather
-        // than a one-shot that works until the first time it is switched off.
-        updateNoticeShown = false;
-        updateAnnouncementFinished = false;
-    }
-    else
+    if (! shouldPreview)
     {
         dismissUpdateNotice();
     }
 
     refreshUpdateAffordances();
-    resized();
 }
 
 void PX3SynthAudioProcessorEditor::finishMacroAssignEditing()

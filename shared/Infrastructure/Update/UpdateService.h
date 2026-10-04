@@ -120,6 +120,12 @@ public:
     void setDownloaderForTesting(Downloader downloader) { downloadFile = std::move(downloader); }
     void setStagingDirectoryForTesting(juce::File directory) { stagingOverride = std::move(directory); }
     void setSynchronousForTesting(bool shouldBeSynchronous) { synchronous = shouldBeSynchronous; }
+
+    // The update prompt is shown once per PROCESS - once per DAW session, or
+    // once per launch of the standalone - however many editors open. The
+    // first window that can show it claims it; every later call answers false.
+    // This service is a process singleton, which is what makes it the place.
+    bool claimSessionAnnouncement() noexcept { return ! sessionAnnounced.exchange(true); }
     void resetForTesting();
 
     // SHA-256 of a file, as lowercase hex. Public because the helper
@@ -127,6 +133,7 @@ public:
     static juce::String sha256Of(const juce::File& file);
 
 private:
+    std::atomic<bool> sessionAnnounced { false };
     void setState(UpdateState newState, UpdateError newError = UpdateError::none,
                   const juce::String& detail = {});
     void onLookupComplete(UpdateProvider::LookupResult reply);

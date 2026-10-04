@@ -301,9 +301,9 @@ public:
 
     // For the tests: the macro strip and the assignment state.
     MacroStrip* debugMacroStrip() const { return macroStrip.get(); }
-    bool debugUpdateNoticeVisible() const { return updateNotice.isVisible(); }
-    px3::ui::SheetCloseButton& debugUpdateNoticeClose() { return updateNoticeCloseButton; }
-    juce::String debugUpdateNoticeText() const { return updateNotice.getText(); }
+    bool debugUpdateNoticeVisible() const { return updatePrompt.isAsking(); }
+    juce::String debugUpdateNoticeText() const { return updatePrompt.debugMessage(); }
+    UnsavedChangesPrompt& debugUpdatePrompt() { return updatePrompt; }
     void debugTimerTick() { timerCallback(); }
     // The animation preference this editor last applied - what the tests read
     // to see the setting reach every open window.
@@ -607,26 +607,17 @@ private:
 
     //---- update notice ----------------------------------------------------
     //
-    // The gear glows while an update is waiting to be seen, and a line under
-    // it says so once, on the first frame after one is found. Both are views
-    // of UpdateService's state; neither keeps a copy of it.
+    // When an update is waiting: UPDATE / CANCEL, once per session, in the
+    // same sheet as the unsaved-changes question. UPDATE opens SETTINGS, where
+    // the update is shown and installed. A view of UpdateService's state; it
+    // keeps no copy of it.
     void refreshUpdateAffordances();
     void dismissUpdateNotice();
 
-    SpeechBubbleLabel updateNotice;
-    // A child of the notice, so it hides and moves with it rather than needing
-    // its own visibility rules. Tiny - it has a line of text to fit beside.
-    px3::ui::SheetCloseButton updateNoticeCloseButton;
-    // Counts down the notice's own life. -1 when it is not showing.
-    int updateNoticeFramesLeft { -1 };
-    // So the notice appears once per window rather than every time a check
-    // happens to land on the same answer.
-    bool updateNoticeShown { false };
-    // The glow and the notice announce the same thing, so they stop together:
-    // once the notice has had its say, the gear stops asking for attention
-    // too. Per window, like the notice - a newly opened editor announces the
-    // update again, and SETTINGS still shows it after both have gone quiet.
-    bool updateAnnouncementFinished { false };
+    UnsavedChangesPrompt updatePrompt;
+    // The preview shows the question once per switch-on rather than once per
+    // session, so it can be looked at again and again.
+    bool updatePreviewShown { false };
     // Debug console only: pretends an update is waiting so the notice and the
     // glow can be looked at without one. Held rather than fired once, because
     // the point is to style them - so while it is on the notice does not count

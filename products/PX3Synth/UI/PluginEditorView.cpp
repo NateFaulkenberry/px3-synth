@@ -106,82 +106,6 @@ void PX3SynthAudioProcessorEditor::resized()
         macroAssignOverlay->setBounds(macroStripArea.getUnion(panelViewportArea));
     }
 
-    // Under the top bar, tucked to the right so it sits below the gear it is
-    // about rather than over the preset name - and now pointing at it, since
-    // the notice is a speech bubble whose arrow comes off the top right.
-    //
-    // Everything here is a UIConfig knob. The height has to include the arrow:
-    // the bubble draws its body below the pointer, so a component sized only
-    // for the text would have the arrow eat the first few pixels of it.
-    if (updateNotice.isVisible() && topMenuBar != nullptr)
-    {
-        SpeechBubbleLabel::Style style;
-        if (uiConfig != nullptr)
-        {
-            // Opaque fallbacks: translucency is the opacity keys' job now, and a
-            // colour carrying its own alpha would be multiplied by them twice.
-            style.background = uiConfig->getColour("updateNotice.colors.background",
-                                                   juce::Colours::black);
-            style.border     = uiConfig->getColour("updateNotice.colors.border",
-                                                   juce::Colours::white);
-            style.text       = uiConfig->getColour("updateNotice.colors.text", juce::Colours::white);
-
-            style.backgroundOpacity = uiConfig->getFloat("updateNotice.colors.backgroundOpacity",
-                                                         style.backgroundOpacity);
-            style.borderOpacity     = uiConfig->getFloat("updateNotice.colors.borderOpacity",
-                                                         style.borderOpacity);
-
-            style.cornerRadius = uiConfig->getFloat("updateNotice.layout.cornerRadius", 6.0f);
-            style.borderWidth  = uiConfig->getFloat("updateNotice.layout.borderWidth", 1.0f);
-
-            style.arrowWidth          = uiConfig->getFloat("updateNotice.layout.arrowWidth", 14.0f);
-            style.arrowHeight         = uiConfig->getFloat("updateNotice.layout.arrowHeight", 8.0f);
-            style.arrowInsetFromRight = uiConfig->getFloat("updateNotice.layout.arrowInsetFromRight", 18.0f);
-
-            style.paddingX = uiConfig->getFloat("updateNotice.layout.paddingX", 10.0f);
-            style.paddingY = uiConfig->getFloat("updateNotice.layout.paddingY", 4.0f);
-            style.fontSize = uiConfig->getFloat("updateNotice.layout.fontSize", 12.0f);
-        }
-        updateNotice.setStyle(style);
-
-        const auto bar = topMenuBar->getBounds();
-        const auto width = uiConfig != nullptr
-                               ? uiConfig->getInt("updateNotice.layout.width", 340)
-                               : 340;
-        const auto textHeight = uiConfig != nullptr
-                                    ? uiConfig->getInt("updateNotice.layout.textHeight", 18)
-                                    : 18;
-        const auto offsetX = uiConfig != nullptr
-                                 ? uiConfig->getInt("updateNotice.layout.offsetX", 0)
-                                 : 0;
-        const auto offsetY = uiConfig != nullptr
-                                 ? uiConfig->getInt("updateNotice.layout.offsetY", 2)
-                                 : 2;
-
-        const auto clamped = juce::jmin(width, juce::jmax(1, bar.getWidth()));
-        const auto height = textHeight + static_cast<int>(std::ceil(style.arrowHeight))
-                            + static_cast<int>(std::ceil(style.paddingY * 2.0f));
-
-        updateNotice.setBounds(bar.getRight() - clamped + offsetX,
-                               bar.getBottom() + offsetY,
-                               clamped,
-                               height);
-
-        // The close glyph, against the top-right of the notice's BODY - below
-        // the arrow, which occupies the strip above it. Small by default so it
-        // fits the line of text rather than setting the notice's height.
-        px3::ui::SheetCloseButton::Style closeStyle;
-        closeStyle.size = juce::jmax(8, textHeight - 4);
-        closeStyle.offsetX = -static_cast<int>(std::ceil(style.paddingX * 0.5f));
-        px3::ui::SheetCloseButton::readStyleFrom(uiConfig.get(), "updateNotice.closeButton",
-                                                 closeStyle);
-        updateNoticeCloseButton.applyStyle(closeStyle);
-
-        auto body = updateNotice.getLocalBounds()
-                        .withTrimmedTop(static_cast<int>(std::ceil(style.arrowHeight)));
-        updateNoticeCloseButton.setBounds(updateNoticeCloseButton.boundsWithin(body));
-    }
-
     if (macroDepthPanel != nullptr && macroDepthPanel->isVisible())
     {
         macroDepthScrim.setBounds(getLocalBounds());
@@ -217,6 +141,7 @@ void PX3SynthAudioProcessorEditor::resized()
     browserY = juce::jlimit(8, juce::jmax(8, getHeight() - browserHeight - 8), browserY);
     presetBrowserScrim.setBounds(getLocalBounds());
     unsavedPrompt.setBounds(getLocalBounds());
+    updatePrompt.setBounds(getLocalBounds());
     presetBrowserPanel.setBounds(browserX, browserY, browserWidth, browserHeight);
 
     // The faceplate paints the title; the close glyph sits in its band, centred

@@ -5,15 +5,21 @@
 #include "ModalBackdrop.h"
 #include "Theme.h"
 
-// Asked before a preset switch would throw away edits: SAVE, DON'T SAVE or
-// CANCEL. The same faceplate as the preset sheet and the EQ / COMP sheets, over
-// the same dimmed and blurred backdrop.
+#include <memory>
+#include <vector>
+
+// A question, asked in the preset sheet's faceplate over the dimmed, blurred
+// backdrop: a title, one line, and two or three keys.
+//
+// Two questions use it. Before a preset switch would discard edits: SAVE /
+// DON'T SAVE / CANCEL (ask()). And once per session when an update is waiting:
+// UPDATE / CANCEL (askChoice()).
 //
 // It covers the whole editor, so nothing behind it can be clicked while the
-// question is open - including the preset sheet, if that is where the switch
-// came from. A click outside the card does nothing: dismissing by accident is
-// exactly what a save prompt exists to prevent. Escape is CANCEL and Return is
-// SAVE, the platform convention.
+// question is open - including the preset sheet, if that is where it came
+// from. A click outside the card does nothing: dismissing by accident is what
+// a question like this exists to prevent. Escape is the cancelling key and
+// Return the default (solid) key, the platform convention.
 class UnsavedChangesPrompt final : public juce::Component
 {
 public:
@@ -58,26 +64,65 @@ public:
             g.drawFittedText(getButtonText(), getLocalBounds().reduced(4, 0), juce::Justification::centred, 1);
         }
 
+        bool isSolid() const noexcept { return solid; }
+
     private:
         bool solid { false };
+    };
+
+    // One key of a question. `left` keys sit apart on the left (DON'T SAVE,
+    // kept one slip away from SAVE); the rest are packed on the right in the
+    // order given, so the default key goes last.
+    struct Choice
+    {
+        juce::String label;
+        int id { 0 };
+        bool solid { false };      // the default: Return chooses it
+        bool cancels { false };    // Escape chooses it
+        bool left { false };
     };
 
     UnsavedChangesPrompt()
     {
         setName("UnsavedChangesPrompt");
         setWantsKeyboardFocus(true);
-        for (auto* key : { &saveKey, &discardKey, &cancelKey }) { addAndMakeVisible(*key); }
-        saveKey.onClick = [this] { answer(Answer::save); };
-        discardKey.onClick = [this] { answer(Answer::discard); };
-        cancelKey.onClick = [this] { answer(Answer::cancel); };
     }
 
-    // `backdrop` is the editor as it looked when the question was asked.
+    // The unsaved-changes question. `backdrop` is the editor as it looked when
+    // the question was asked.
     void ask(juce::Image backdrop, std::function<void(Answer)> onAnswerIn)
     {
+        askChoice("UNSAVED CHANGES", "Do you want to save your changes?",
+                  { { "DON'T SAVE", static_cast<int>(Answer::discard), false, false, true },
+                    { "CANCEL", static_cast<int>(Answer::cancel), false, true, false },
+                    { "SAVE", static_cast<int>(Answer::save), true, false, false } },
+                  std::move(backdrop),
+                  [onAnswerIn = std::move(onAnswerIn)](int id)
+                  {
+                      if (onAnswerIn != nullptr) { onAnswerIn(static_cast<Answer>(id)); }
+                  });
+    }
+
+    // Any question: a title, a line, and its keys. `onChoose` gets the chosen
+    // key's id, once.
+    void askChoice(const juce::String& titleIn, const juce::String& messageIn, std::vector<Choice> choicesIn,
+                   juce::Image backdrop, std::function<void(int)> onChooseIn)
+    {
+        title = titleIn;
+        message = messageIn;
+        choices = std::move(choicesIn);
+        keys.clear();
+        for (const auto& choice : choices)
+        {
+            auto key = std::make_unique<Key>(choice.label, choice.solid);
+            const auto id = choice.id;
+            key->onClick = [this, id] { choose(id); };
+            addAndMakeVisible(*key);
+            keys.push_back(std::move(key));
+        }
         snapshot = std::move(backdrop);
         treated = {};
-        onAnswer = std::move(onAnswerIn);
+        onChoose = std::move(onChooseIn);
         setVisible(true);
         toFront(true);
         grabKeyboardFocus();
@@ -85,20 +130,28 @@ public:
         repaint();
     }
 
-    bool isAsking() const noexcept { return isVisible() && onAnswer != nullptr; }
+    bool isAsking() const noexcept { return isVisible() && onChoose != nullptr; }
+    juce::String debugTitle() const { return title; }
     juce::String debugMessage() const { return message; }
+    juce::StringArray debugKeyLabels() const
+    {
+        juce::StringArray labels;
+        for (const auto& c : choices) { labels.add(c.label); }
+        return labels;
+    }
     juce::Rectangle<int> debugCard() const noexcept { return card; }
 
     // Answers as if the key had been pressed - the keys and the tests both
     // come through here.
-    void answer(Answer a)
+    void answer(Answer a) { choose(static_cast<int>(a)); }
+    void choose(int id)
     {
-        auto callback = std::move(onAnswer);
-        onAnswer = nullptr;
+        auto callback = std::move(onChoose);
+        onChoose = nullptr;
         setVisible(false);
         snapshot = {};
         treated = {};
-        if (callback != nullptr) { callback(a); }
+        if (callback != nullptr) { callback(id); }
     }
 
     void resized() override
@@ -109,10 +162,12 @@ public:
         const auto keyHeight = 7 * unit;
         const auto padding = 4 * unit;
 
-        // As wide as the three keys need at a comfortable size, and never
-        // wider than the window.
-        const auto keyWidth = juce::roundToInt(juce::jmax(th::textWidth("DON'T SAVE", th::Type::label) + 6.0f * th::space::unit,
-                                                          24.0f * th::space::unit));
+        // Every key the width the longest label needs at a comfortable size,
+        // and the card wide enough for three of them - so a two-key question
+        // is the same size as a three-key one - and never wider than the window.
+        auto longest = 24.0f * th::space::unit;
+        for (const auto& c : choices) { longest = juce::jmax(longest, th::textWidth(c.label, th::Type::label) + 6.0f * th::space::unit); }
+        const auto keyWidth = juce::roundToInt(juce::jmax(longest, th::textWidth("DON'T SAVE", th::Type::label) + 6.0f * th::space::unit));
         const auto width = juce::jmin(getWidth() - 2 * unit, juce::jmax(90 * unit, 3 * keyWidth + 2 * unit + 2 * padding));
         const auto textWidth = static_cast<float>(width - 2 * padding);
         const auto lines = juce::jmax(1, static_cast<int>(std::ceil(th::textWidth(message, th::Type::control) / juce::jmax(1.0f, textWidth))) + 1);
@@ -121,15 +176,21 @@ public:
 
         card = getLocalBounds().withSizeKeepingCentre(width, height);
         auto body = card.withTrimmedTop(band).reduced(padding);
-        auto keys = body.removeFromBottom(keyHeight);
+        auto row = body.removeFromBottom(keyHeight);
         messageArea = body.withTrimmedBottom(padding);
 
-        // DON'T SAVE alone on the left, away from SAVE, so the two are not
-        // one slip apart; CANCEL and SAVE on the right, SAVE last.
-        discardKey.setBounds(keys.removeFromLeft(keyWidth));
-        saveKey.setBounds(keys.removeFromRight(keyWidth));
-        keys.removeFromRight(2 * unit);
-        cancelKey.setBounds(keys.removeFromRight(keyWidth));
+        for (std::size_t i = 0; i < choices.size() && i < keys.size(); ++i)
+        {
+            if (choices[i].left) { keys[i]->setBounds(row.removeFromLeft(keyWidth)); }
+        }
+        // The right-hand keys in the order given, the last at the far right.
+        for (auto i = static_cast<int>(choices.size()) - 1; i >= 0; --i)
+        {
+            const auto idx = static_cast<std::size_t>(i);
+            if (idx >= keys.size() || choices[idx].left) { continue; }
+            keys[idx]->setBounds(row.removeFromRight(keyWidth));
+            row.removeFromRight(2 * unit);
+        }
     }
 
     void paint(juce::Graphics& g) override
@@ -145,7 +206,7 @@ public:
         if (treated.isValid()) { g.drawImageAt(treated, 0, 0, false); }
         else { g.fillAll(juce::Colour::fromRGBA(0, 0, 0, 180)); }
 
-        th::drawModulePanel(g, card.toFloat(), "UNSAVED CHANGES", kAccent, true, th::space::minTitleBand);
+        th::drawModulePanel(g, card.toFloat(), title, kAccent, true, th::space::minTitleBand);
         g.setColour(th::colour::textPrimary);
         g.setFont(th::font(th::Type::control));
         g.drawFittedText(message, messageArea, juce::Justification::centred, 4, 1.0f);
@@ -154,8 +215,14 @@ public:
     bool keyPressed(const juce::KeyPress& key) override
     {
         if (! isAsking()) { return false; }
-        if (key == juce::KeyPress::escapeKey) { answer(Answer::cancel); return true; }
-        if (key == juce::KeyPress::returnKey) { answer(Answer::save); return true; }
+        for (const auto& c : choices)
+        {
+            if ((key == juce::KeyPress::escapeKey && c.cancels) || (key == juce::KeyPress::returnKey && c.solid))
+            {
+                choose(c.id);
+                return true;
+            }
+        }
         return true;   // nothing behind the question takes keys while it is open
     }
 
@@ -164,15 +231,14 @@ public:
 
     static inline const juce::Colour kAccent { 0xff8abcff };   // the preset sheet's
 
-    Key saveKey { "SAVE", true };
-    Key discardKey { "DON'T SAVE", false };
-    Key cancelKey { "CANCEL", false };
-
 private:
-    const juce::String message { "Do you want to save your changes?" };
+    juce::String title;
+    juce::String message;
+    std::vector<Choice> choices;
+    std::vector<std::unique_ptr<Key>> keys;
     juce::Image snapshot;
     juce::Image treated;
     juce::Rectangle<int> card;
     juce::Rectangle<int> messageArea;
-    std::function<void(Answer)> onAnswer;
+    std::function<void(int)> onChoose;
 };

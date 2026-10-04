@@ -602,12 +602,9 @@ void PX3SynthAudioProcessorEditor::refreshOscillatorEngagedState()
 
 void PX3SynthAudioProcessorEditor::timerCallback()
 {
-    // The update notice shows itself out. Counted in frames on the tick that
-    // is already running rather than on a timer of its own.
-    if (updateNoticeFramesLeft > 0)
-    {
-        if (--updateNoticeFramesLeft == 0) { dismissUpdateNotice(); }
-    }
+    // A waiting update is announced once the window is free of other sheets
+    // and questions; until then this asks again each tick.
+    refreshUpdateAffordances();
 
     loadUiConfig(false);
     refreshWavetableDisplays();

@@ -751,168 +751,108 @@ void testUpdater()
         processor.setPlayConfigDetails(0, 2, 48000.0, 256);
         processor.prepareToPlay(48000.0, 256);
 
+        // An update found: a question, UPDATE / CANCEL, in the unsaved-changes
+        // sheet - no speech bubble, no glowing gear. UPDATE opens SETTINGS.
         std::unique_ptr<juce::AudioProcessorEditor> base(processor.createEditor());
         auto* editor = dynamic_cast<PX3SynthAudioProcessorEditor*>(base.get());
-
         if (editor != nullptr)
         {
             editor->setSize(1280, 800);
             service.checkForUpdates(true);          // the editor's listener reacts
-
-            auto* bar = editor->debugTopMenuBar();
-            const auto glowing = bar != nullptr && bar->isUpdateAvailable();
-            const auto noticeShown = editor->debugUpdateNoticeVisible();
-            const auto noticeText = editor->debugUpdateNoticeText();
-
-            check("UpdateUi_TheGearGlowsAndTheNoticeAppearsWhenAnUpdateIsFound",
-                  glowing && noticeShown
-                      && noticeText.contains("new version")
-                      && noticeText.contains("PX3 Synth"),
-                  juce::String(glowing ? "gear glowing" : "GEAR NOT GLOWING")
-                      + "; notice " + (noticeShown ? "'" + noticeText + "'"
-                                                   : juce::String("NOT SHOWN")));
-
-            // Twenty seconds at the editor's 30 Hz tick, and not a frame before.
-            for (int i = 0; i < 30 * 20 - 1; ++i) { editor->debugTimerTick(); }
-            const auto stillThere = editor->debugUpdateNoticeVisible();
             editor->debugTimerTick();
-            const auto goneNow = ! editor->debugUpdateNoticeVisible();
 
-            check("UpdateUi_TheNoticeShowsItselfOutAfterTwentySeconds",
-                  stillThere && goneNow,
-                  juce::String("still up at 19.97 s: ") + (stillThere ? "yes" : "NO")
-                      + "; gone at 20 s: " + (goneNow ? "yes" : "NO"));
+            auto& prompt = editor->debugUpdatePrompt();
+            auto* bar = editor->debugTopMenuBar();
+            const auto keys = prompt.debugKeyLabels();
+            check("UpdateUi_AnUpdateIsAskedAboutInTheSheet",
+                  prompt.isAsking() && prompt.debugTitle() == "UPDATE AVAILABLE"
+                      && prompt.debugMessage().contains("PX3 Synth") && prompt.debugMessage().contains("0.9.0")
+                      && keys == juce::StringArray { "CANCEL", "UPDATE" }
+                      && bar != nullptr && ! bar->isUpdateAvailable(),
+                  (prompt.isAsking() ? "'" + prompt.debugMessage() + "' [" + keys.joinIntoString(" / ") + "]"
+                                     : juce::String("NOT ASKED"))
+                      + "; gear " + (bar != nullptr && bar->isUpdateAvailable() ? "GLOWING" : "quiet"));
 
-            // The glow goes when the notice does. The two announce the same
-            // thing, so leaving the gear pulsing after the notice has shown
-            // itself out just makes it the permanent state of the window.
-            // SETTINGS still reports the update after both have gone quiet, and
-            // a newly opened editor announces it again.
-            check("UpdateUi_TheGlowStopsWithTheNotice",
-                  bar != nullptr && ! bar->isUpdateAvailable(),
-                  bar != nullptr && ! bar->isUpdateAvailable()
-                      ? juce::String("glow cleared with the notice")
-                      : juce::String("STILL GLOWING after the notice went"));
+            prompt.keyPressed(juce::KeyPress(juce::KeyPress::returnKey));   // UPDATE
+            check("UpdateUi_UpdateOpensSettings",
+                  ! prompt.isAsking() && editor->debugSelectedSection() == 6,
+                  "section " + juce::String(editor->debugSelectedSection()) + (prompt.isAsking() ? ", STILL ASKING" : ""));
+
+            // Once per session: more ticks, and another window, do not ask again.
+            editor->debugSelectSection(0);
+            for (int i = 0; i < 10; ++i) { editor->debugTimerTick(); }
+            const auto askedAgainHere = prompt.isAsking();
+            base.reset();
+
+            std::unique_ptr<juce::AudioProcessorEditor> second(processor.createEditor());
+            auto* other = dynamic_cast<PX3SynthAudioProcessorEditor*>(second.get());
+            auto askedInSecond = false;
+            if (other != nullptr)
+            {
+                other->setSize(1280, 800);
+                service.checkForUpdates(true);
+                for (int i = 0; i < 5; ++i) { other->debugTimerTick(); }
+                askedInSecond = other->debugUpdatePrompt().isAsking();
+            }
+            check("UpdateUi_AskedOncePerSession",
+                  ! askedAgainHere && ! askedInSecond,
+                  juce::String("same window later: ") + (askedAgainHere ? "ASKED AGAIN" : "quiet")
+                      + "; another window: " + (askedInSecond ? "ASKED AGAIN" : "quiet"));
         }
 
-        // Opening SETTINGS is the other way the announcement ends, and it needs
-        // its own editor: on the one above the timeout has already cleared the
-        // glow, so asserting there would pass no matter what SETTINGS did.
-        base.reset();
-
-        std::unique_ptr<juce::AudioProcessorEditor> second(processor.createEditor());
-
-        if (auto* fresh = dynamic_cast<PX3SynthAudioProcessorEditor*>(second.get()))
+        // A new session asks again - and waits for an open preset sheet to
+        // close rather than stacking on it. CANCEL just closes it.
+        service.resetForTesting();
+        // The processor remembers the last page, and the test above left it on
+        // SETTINGS - where the update is already in view, so a window opening
+        // there spends the announcement without asking. Start on VOICE.
+        processor.setTopMenuViewIndex(0, true);
         {
-            fresh->setSize(1280, 800);
-            service.checkForUpdates(true);
-
-            auto* bar = fresh->debugTopMenuBar();
-
-            check("UpdateUi_ANewWindowAnnouncesTheUpdateAgain",
-                  bar != nullptr && bar->isUpdateAvailable()
-                      && fresh->debugUpdateNoticeVisible(),
-                  juce::String(bar != nullptr && bar->isUpdateAvailable()
-                                   ? "glowing" : "NOT GLOWING")
-                      + "; notice "
-                      + (fresh->debugUpdateNoticeVisible() ? "shown" : "NOT SHOWN"));
-
-            // Opening SETTINGS is what counts as having seen it - before any
-            // timeout, so this measures SETTINGS and nothing else.
-            fresh->debugSelectSection(6);
-            const auto afterOpening = bar != nullptr && bar->isUpdateAvailable();
-
-            check("UpdateUi_OpeningSettingsStopsTheGlow",
-                  ! afterOpening && ! fresh->debugUpdateNoticeVisible(),
-                  afterOpening ? juce::String("STILL GLOWING after opening SETTINGS")
-                               : juce::String("glow and notice both cleared"));
+            std::unique_ptr<juce::AudioProcessorEditor> third(processor.createEditor());
+            if (auto* fresh = dynamic_cast<PX3SynthAudioProcessorEditor*>(third.get()))
+            {
+                fresh->setSize(1280, 800);
+                fresh->debugOpenPresetBrowser();
+                service.checkForUpdates(true);   // found while the preset sheet is open
+                for (int i = 0; i < 3; ++i) { fresh->debugTimerTick(); }
+                const auto waitedForSheet = ! fresh->debugUpdatePrompt().isAsking();
+                fresh->debugClosePresetBrowser();
+                fresh->debugTimerTick();
+                const auto askedAfter = fresh->debugUpdatePrompt().isAsking();
+                fresh->debugUpdatePrompt().keyPressed(juce::KeyPress(juce::KeyPress::escapeKey));   // CANCEL
+                check("UpdateUi_ANewSessionAsksAfterOtherSheetsAndCancelCloses",
+                      waitedForSheet && askedAfter && ! fresh->debugUpdatePrompt().isAsking()
+                          && fresh->debugSelectedSection() != 6,
+                      juce::String(waitedForSheet ? "waited for the preset sheet" : "ASKED OVER THE SHEET")
+                          + "; " + (askedAfter ? "asked once it closed" : "NEVER ASKED")
+                          + "; CANCEL " + (fresh->debugSelectedSection() != 6 ? "left SETTINGS closed" : "OPENED SETTINGS"));
+            }
         }
 
-        second.reset();
-
-        // The debug console's preview toggle. It exists to style the notice and
-        // the glow, which means it has to work with no update in sight and has
-        // to hold - the two things a real announcement does not do.
-        // Provider removed as well as state cleared, so "no update available"
-        // is true of the whole service rather than just its current answer.
+        // The debug console's preview: asks with no update at all, again each
+        // time it is switched on, and switching it off takes the question away.
         service.resetForTesting();
         service.setProvider(nullptr);
 
         std::unique_ptr<juce::AudioProcessorEditor> styling(processor.createEditor());
-
         if (auto* preview = dynamic_cast<PX3SynthAudioProcessorEditor*>(styling.get()))
         {
             preview->setSize(1280, 800);
-            auto* bar = preview->debugTopMenuBar();
-
-            const auto quietBefore = bar != nullptr && ! bar->isUpdateAvailable()
-                                         && ! preview->debugUpdateNoticeVisible();
-
+            preview->debugTimerTick();
+            const auto quietBefore = ! preview->debugUpdateNoticeVisible();
             preview->debugSetUpdatePreview(true);
-
-            check("UpdateUi_ThePreviewShowsTheNoticeWithNoUpdateAvailable",
-                  quietBefore && bar != nullptr && bar->isUpdateAvailable()
-                      && preview->debugUpdateNoticeVisible(),
-                  juce::String(quietBefore ? "quiet first" : "NOT QUIET FIRST")
-                      + "; then " + (bar != nullptr && bar->isUpdateAvailable()
-                                         ? "glowing" : "NOT GLOWING")
-                      + " and notice "
-                      + (preview->debugUpdateNoticeVisible() ? "shown" : "NOT SHOWN"));
-
-            // Well past the twenty seconds that would have retired a real one.
-            for (int i = 0; i < 30 * 30; ++i) { preview->debugTimerTick(); }
-
-            check("UpdateUi_ThePreviewDoesNotTimeOut",
-                  preview->debugUpdateNoticeVisible()
-                      && bar != nullptr && bar->isUpdateAvailable(),
-                  preview->debugUpdateNoticeVisible()
-                      ? juce::String("still up at 30 s, which is the point of it")
-                      : juce::String("TIMED OUT - unusable for styling"));
-
-            // Opening SETTINGS is how a real announcement ends, and it must not
-            // end this one: the debug console is reached through that panel.
-            preview->debugSelectSection(6);
-
-            check("UpdateUi_ThePreviewSurvivesOpeningSettings",
-                  preview->debugUpdateNoticeVisible(),
-                  preview->debugUpdateNoticeVisible()
-                      ? juce::String("still up with SETTINGS open")
-                      : juce::String("CLEARED by opening SETTINGS"));
-
+            const auto shown = preview->debugUpdateNoticeVisible();
             preview->debugSetUpdatePreview(false);
-
-            check("UpdateUi_ThePreviewTogglesBackOff",
-                  ! preview->debugUpdateNoticeVisible()
-                      && bar != nullptr && ! bar->isUpdateAvailable(),
-                  ! preview->debugUpdateNoticeVisible()
-                      ? juce::String("notice and glow both cleared")
-                      : juce::String("STILL SHOWING after switching off"));
-
-            // And on again, because a toggle that only works once is a button.
+            const auto offAgain = ! preview->debugUpdateNoticeVisible();
             preview->debugSetUpdatePreview(true);
-
-            check("UpdateUi_ThePreviewCanBeTurnedOnAgain",
-                  preview->debugUpdateNoticeVisible(),
-                  preview->debugUpdateNoticeVisible()
-                      ? juce::String("came back")
-                      : juce::String("DID NOT COME BACK - latched off"));
-
-            // The close glyph ends the announcement the way the timeout does -
-            // notice away and gear settled - because the point of closing it is
-            // to stop being told.
-            preview->debugSetUpdatePreview(true);
-            preview->debugUpdateNoticeClose().onClick();
-
-            check("UpdateUi_ClosingTheNoticeAlsoStopsTheGlow",
-                  ! preview->debugUpdateNoticeVisible()
-                      && bar != nullptr && ! bar->isUpdateAvailable(),
-                  juce::String(preview->debugUpdateNoticeVisible()
-                                   ? "NOTICE STILL UP" : "notice gone")
-                      + "; gear "
-                      + (bar != nullptr && bar->isUpdateAvailable()
-                             ? "STILL GLOWING" : "settled"));
-
+            const auto backAgain = preview->debugUpdateNoticeVisible();
             preview->debugSetUpdatePreview(false);
+            check("UpdateUi_ThePreviewAsksOnDemand",
+                  quietBefore && shown && offAgain && backAgain,
+                  juce::String(quietBefore ? "quiet with no update" : "ASKED WITH NO UPDATE")
+                      + "; preview on: " + (shown ? "asked" : "NOT ASKED")
+                      + "; off: " + (offAgain ? "gone" : "STILL UP")
+                      + "; on again: " + (backAgain ? "asked" : "NOT ASKED"));
         }
 
         styling.reset();

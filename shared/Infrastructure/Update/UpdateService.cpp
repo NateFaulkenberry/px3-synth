@@ -667,6 +667,7 @@ bool UpdateService::launchInstaller()
 
 void UpdateService::resetForTesting()
 {
+    sessionAnnounced = false;
     if (worker != nullptr) { worker->stopThread(3000); }
     worker.reset();
     state = UpdateState::idle;
