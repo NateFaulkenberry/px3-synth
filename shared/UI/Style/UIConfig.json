@@ -2062,16 +2062,16 @@
     },
     "env1": {
       "border": {
-        "color": "#BA70FF",
+        "color": "#F2C14E",
         "opacity": 0.35
       },
       "background": {
-        "color": "#BA70FF",
+        "color": "#F2C14E",
         "opacity": 0.1
       },
       "gloss": {
         "topFill": {
-          "color": "#BA70FF",
+          "color": "#F2C14E",
           "opacity": 0
         },
         "bottomFill": {
@@ -2080,7 +2080,7 @@
         }
       },
       "title": {
-        "color": "#EEDCFF"
+        "color": "#FFF1C9"
       }
     },
     "lfo2": {
@@ -2108,16 +2108,16 @@
     },
     "env2": {
       "border": {
-        "color": "#BA70FF",
+        "color": "#F2C14E",
         "opacity": 0.35
       },
       "background": {
-        "color": "#BA70FF",
+        "color": "#F2C14E",
         "opacity": 0.1
       },
       "gloss": {
         "topFill": {
-          "color": "#BA70FF",
+          "color": "#F2C14E",
           "opacity": 0
         },
         "bottomFill": {
@@ -2126,7 +2126,7 @@
         }
       },
       "title": {
-        "color": "#EEDCFF"
+        "color": "#FFF1C9"
       }
     },
     "lfo3": {
@@ -2154,16 +2154,16 @@
     },
     "env3": {
       "border": {
-        "color": "#BA70FF",
+        "color": "#F2C14E",
         "opacity": 0.35
       },
       "background": {
-        "color": "#BA70FF",
+        "color": "#F2C14E",
         "opacity": 0.1
       },
       "gloss": {
         "topFill": {
-          "color": "#BA70FF",
+          "color": "#F2C14E",
           "opacity": 0
         },
         "bottomFill": {
@@ -2172,7 +2172,7 @@
         }
       },
       "title": {
-        "color": "#EEDCFF"
+        "color": "#FFF1C9"
       }
     },
     "ampEnv": {
