@@ -304,10 +304,13 @@ bool parse(const juce::String&, LayoutPosition&);
 // Rounds a resolved rect to pixels by EDGES, so adjacent boxes stay adjacent.
 inline juce::Rectangle<int> snapToPixels(juce::Rectangle<float> r) noexcept
 {
-    const auto l = juce::roundToInt(r.getX());
-    const auto t = juce::roundToInt(r.getY());
-    return juce::Rectangle<int>::leftTopRightBottom(l, t,
-                                                    juce::jmax(l, juce::roundToInt(r.getRight())),
-                                                    juce::jmax(t, juce::roundToInt(r.getBottom())));
+    // Round half UP, the same way at every edge. juce::roundToInt rounds an
+    // exact half to the even neighbour, so a module ending at x.5 and the next
+    // starting 1 px later at (x+1).5 rounded away from each other: a 2 px seam
+    // between OSC 1 and OSC 2, and either side of the preset name.
+    const auto snap = [](float v) { return static_cast<int>(std::floor(v + 0.5f)); };
+    const auto l = snap(r.getX());
+    const auto t = snap(r.getY());
+    return juce::Rectangle<int>::leftTopRightBottom(l, t, juce::jmax(l, snap(r.getRight())), juce::jmax(t, snap(r.getBottom())));
 }
 }

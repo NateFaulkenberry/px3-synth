@@ -1,5 +1,7 @@
 #include "FxChainLayout.h"
 
+#include <cmath>
+
 namespace px3::ui
 {
 
@@ -95,9 +97,14 @@ std::vector<juce::Rectangle<int>> fxGridCells(int contentWidth,
         const auto column = i % safeColumns;
         const auto row = i / safeColumns;
         const auto x = static_cast<float>(column) * (cellWidth + static_cast<float>(gap));
-        const auto y = static_cast<float>(row * (rowHeight + gap));
+        const auto y = row * (rowHeight + gap);
 
-        cells.push_back(juce::Rectangle<float>(x, y, cellWidth, static_cast<float>(rowHeight)).toNearestInt());
+        // Edges rounded, not position and size: rounding x and the width each
+        // on their own left gaps of 0, 1 or 2 px between neighbours and let the
+        // last card overrun the panel by a pixel.
+        const auto left = static_cast<int>(std::floor(x + 0.5f));
+        const auto right = static_cast<int>(std::floor(x + cellWidth + 0.5f));
+        cells.push_back(juce::Rectangle<int>::leftTopRightBottom(left, y, right, y + rowHeight));
     }
 
     return cells;

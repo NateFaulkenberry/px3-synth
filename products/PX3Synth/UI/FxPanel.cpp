@@ -393,8 +393,9 @@ void FxPanel::resized()
         {
             auto& cell = cells[static_cast<std::size_t>(first + i)];
             const auto x = static_cast<float>(i) * (width + static_cast<float>(gap));
-            cell = juce::Rectangle<float>(x, static_cast<float>(cell.getY()), width, static_cast<float>(cell.getHeight()))
-                       .toNearestInt();
+            // Edges, as fxGridCells does, so every seam is exactly the gap.
+            cell = juce::Rectangle<int>::leftTopRightBottom(static_cast<int>(std::floor(x + 0.5f)), cell.getY(),
+                                                            static_cast<int>(std::floor(x + width + 0.5f)), cell.getBottom());
         }
     }
 

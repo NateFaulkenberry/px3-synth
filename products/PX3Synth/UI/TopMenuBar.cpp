@@ -202,12 +202,16 @@ void TopMenuTabButton::paintButton(juce::Graphics& g,
     // LED or a glow.
     namespace tc = px3::ui::theme::colour;
     const auto face = on ? juce::Colour(0xff2a3036) : juce::Colour(0xff1b1f23);
+    // Whole pixels. Inset by half a pixel (for an outline that is no longer
+    // drawn), each edge column came out half-covered and darker, and the 1 px
+    // seam between two tabs read as 2.
+    const auto faceArea = px3::ui::theme::space::moduleOutlines ? area.reduced(0.5f) : area;
     g.setColour(face);
-    g.fillRoundedRectangle(area.reduced(0.5f), 0.0f);
+    g.fillRect(faceArea);
     if (shouldDrawButtonAsHighlighted || shouldDrawButtonAsDown)
     {
         g.setColour(juce::Colours::white.withAlpha(shouldDrawButtonAsDown ? 0.10f : 0.05f));
-        g.fillRoundedRectangle(area.reduced(0.5f), 0.0f);
+        g.fillRect(faceArea);
     }
     if (attention)
     {
@@ -403,11 +407,11 @@ TopMenuBar::TopMenuBar()
 
     // Butted together with no gaps, so a hairline seam is what keeps them
     // readable as separate controls. The last one has nothing to its right.
-    presetPrevButton.setShowSeam(true);
+    presetPrevButton.setShowSeam(false);   // the 1 px gap is the seam; a hairline too made it 2
     // The preset tab is showing you what is loaded, not offering an unselected
     // choice, so it wears the active text colour permanently.
     presetNameButton.setAlwaysActiveText(true);
-    presetNameButton.setShowSeam(true);
+    presetNameButton.setShowSeam(false);
     presetNextButton.setShowSeam(false);
     presetMenuButton.setShowSeam(false);
 
