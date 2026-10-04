@@ -1068,13 +1068,19 @@ double OscillatorUnit::renderDigital(const MainPhase& main)
         const auto steps = static_cast<double>(target.digitalSteps);
         const auto quantised = std::round(main.phase * steps) / steps;
 
-        // FOLD between two whole multiples of the cycle, crossfaded, so it is
-        // continuous at the wrap for any fold amount.
-        const auto fold = static_cast<double>(ramped(&DerivedCurves::digitalFold));
-        const auto lower = std::floor(fold);
-        const auto blend = fold - lower;
-        const auto shaped = (1.0 - blend) * fastSine(lower * quantised)
-                            + blend * fastSine((lower + 1.0) * quantised);
+        // FOLD: a sine wavefolder, sin(beta * x). As beta passes pi/2 the peaks
+        // fold back on themselves, and every further pi folds them again, so
+        // the odd harmonics climb (their weights are odd Bessel functions of
+        // beta) while the fundamental stays. Normalised below pi/2 so FOLD 0 is
+        // the plain sine and the level does not drop as the fold comes in.
+        // It replaced a crossfade between sin(n x) and sin((n + 1) x), which
+        // moved the sine up two octaves at mid-knob and lost its fundamental.
+        const auto beta = juce::MathConstants<double>::halfPi
+                          * juce::jmax(0.0, static_cast<double>(ramped(&DerivedCurves::digitalFold)) - 1.0);
+        const auto x = fastSine(quantised);
+        const auto shaped = beta < 1.0e-4 ? x
+                                          : std::sin(beta * x)
+                                                / (beta < juce::MathConstants<double>::halfPi ? std::sin(beta) : 1.0);
 
         const auto crush = static_cast<double>(target.digitalCrushSteps);
         digitalHeld = std::round(shaped * crush) / crush;

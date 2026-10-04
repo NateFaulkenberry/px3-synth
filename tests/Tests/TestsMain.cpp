@@ -2981,6 +2981,7 @@ int main(int argc, char* argv[])
     if (wants("lfo")) testLfo();
     if (wants("modupgrade")) testModulationUpgrade();
     if (wants("modmatrix")) testModulationMatrix();
+    if (wants("releaseqa")) testReleaseQa();
     if (wants("keyboardnotes")) testKeyboardNotes();
     if (wants("tuning")) testOscillatorTuning();
     if (wants("oscquality")) testOscillatorQuality();

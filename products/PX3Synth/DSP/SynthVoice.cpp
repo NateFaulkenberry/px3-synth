@@ -169,7 +169,17 @@ void SynthVoice::startNote(int midiNoteNumber, float velocity, juce::Synthesiser
         {
             auto& filter = sourceFilters[static_cast<std::size_t>(sourceIndex)][static_cast<std::size_t>(filterIndex)];
             filter.reset();
-            filter.setCurrentSettingsImmediate(filterSettings[static_cast<std::size_t>(filterIndex)]);
+            // Key tracking applied here too, not only as the render's target:
+            // started at the untracked cutoff, every tracked note swept up to
+            // its own over its first ~20 ms.
+            auto start = filterSettings[static_cast<std::size_t>(filterIndex)];
+            if (start.keyTrack != 0.0f && currentMidiNote >= 0)
+            {
+                start.cutoffHz = juce::jlimit(20.0f, 20000.0f,
+                                              start.cutoffHz * std::exp2((static_cast<float>(currentMidiNote) - start.keyTrackReference)
+                                                                         / 12.0f * start.keyTrack));
+            }
+            filter.setCurrentSettingsImmediate(start);
         }
     }
     // ~12 Hz coupling capacitor: blocks DC without touching the bass.

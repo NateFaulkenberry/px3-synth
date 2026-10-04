@@ -155,11 +155,12 @@ float LfoGenerator::rampSampleAt(double elapsedSeconds, float rampSeconds, int w
     return waveformIndex == px3::lfoWaveformToIndex(px3::LfoWaveform::rampDown) ? -rising : rising;
 }
 
-float LfoGenerator::randomForCycle(std::int64_t cycle) noexcept
+float LfoGenerator::randomForCycle(std::int64_t cycle, std::uint64_t seed) noexcept
 {
     // A hash, not a generator: the value for a cycle is the same however the
     // LFO got there, so transport sync and key sync stay deterministic.
-    auto x = static_cast<std::uint64_t>(cycle) * 0x9E3779B97F4A7C15ull + 0x632BE59BD9B4E019ull;
+    auto x = static_cast<std::uint64_t>(cycle) * 0x9E3779B97F4A7C15ull + 0x632BE59BD9B4E019ull
+             + seed * 0xD1B54A32D192ED03ull;
     x ^= x >> 31; x *= 0xBF58476D1CE4E5B9ull; x ^= x >> 27; x *= 0x94D049BB133111EBull; x ^= x >> 33;
     return static_cast<float>(static_cast<double>(x >> 11) / static_cast<double>(1ull << 53) * 2.0 - 1.0);
 }
@@ -167,9 +168,14 @@ float LfoGenerator::randomForCycle(std::int64_t cycle) noexcept
 float LfoGenerator::sampleAtPhase(float inPhaseRadians, int waveformIndex) const
 {
     const auto index = px3::clampLfoWaveformIndex(waveformIndex);
+    // The cycle the phase is actually in. The block path reads at the block's
+    // midpoint, which can lie past the end of the current cycle before the
+    // counter has moved; easing from the old cycle's value at t ~ 0 there was a
+    // full-scale jump back for one block.
+    const auto cycle = cycleIndex + static_cast<std::int64_t>(std::floor(inPhaseRadians / juce::MathConstants<float>::twoPi));
     if (index == px3::lfoWaveformToIndex(px3::LfoWaveform::sampleHold))
     {
-        return randomForCycle(cycleIndex);
+        return randomForCycle(cycle, randomSeed);
     }
     if (index == px3::lfoWaveformToIndex(px3::LfoWaveform::smoothRandom))
     {
@@ -178,8 +184,8 @@ float LfoGenerator::sampleAtPhase(float inPhaseRadians, int waveformIndex) const
         auto t = std::fmod(inPhaseRadians, juce::MathConstants<float>::twoPi) / juce::MathConstants<float>::twoPi;
         if (t < 0.0f) t += 1.0f;
         const auto ease = 0.5f - 0.5f * std::cos(juce::MathConstants<float>::pi * t);
-        const auto a = randomForCycle(cycleIndex);
-        const auto b = randomForCycle(cycleIndex + 1);
+        const auto a = randomForCycle(cycle, randomSeed);
+        const auto b = randomForCycle(cycle + 1, randomSeed);
         return a + (b - a) * ease;
     }
     return waveformSampleAtPhase(inPhaseRadians, index);

@@ -1356,6 +1356,7 @@ void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
     for (int lfoIndex = 0; lfoIndex < kLfoSourceCount; ++lfoIndex)
     {
         lfoGenerators[static_cast<std::size_t>(lfoIndex)].prepare(sampleRate);
+        lfoGenerators[static_cast<std::size_t>(lfoIndex)].setRandomSeed(static_cast<std::uint64_t>(lfoIndex));
         lfoGenerators[static_cast<std::size_t>(lfoIndex)].setSettings(currentLfoSettings(lfoIndex));
     }
     for (int envIndex = 0; envIndex < kEnvelopeSourceCount; ++envIndex)
@@ -1583,7 +1584,18 @@ void PX3SynthAudioProcessor::updateHostClock()
     if (! tempoAvailable && isFollowingMidiClock())
     {
         hostTempoBpm = midiClockBpm;
+        // Between ticks the position is carried forward at the clock's own
+        // tempo, never past the next tick. Ticks come 1/24 beat apart - every
+        // two or three blocks - and a TRANSPORT LFO takes its phase from this
+        // each block, so a position that only moved on a tick froze the LFO
+        // and then jumped it.
         hostTransportPpq = midiClockPpq;
+        if (midiClockRunning && midiClockLastTick >= 0)
+        {
+            const auto sinceTick = static_cast<double>(midiClockSampleCounter - midiClockLastTick);
+            const auto beats = sinceTick * midiClockBpm / (60.0 * juce::jmax(1.0, getSampleRate()));
+            hostTransportPpq += juce::jlimit(0.0, 1.0 / 24.0, beats);
+        }
         hostTransportPlaying = midiClockRunning;
         tempoAvailable = true;
         positionAvailable = true;

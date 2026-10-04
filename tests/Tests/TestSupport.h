@@ -1514,6 +1514,7 @@ void testBreakpointEnvelope();
 void testWavetable();
 void testSubOscillator();
 void testModulationMatrix();
+void testReleaseQa();
 void testOscillators();
 void testAmpEnvelope();
 void testModEnvelopes();

@@ -9,7 +9,10 @@ class LfoGenerator
 {
 public:
     // The value a random shape (S&H, SMOOTH RND) takes in a given cycle.
-    static float randomForCycle(std::int64_t cycle) noexcept;
+    // `seed` keeps each LFO's series its own: without it LFO 1, 2 and 3 on S&H
+    // stepped through the same values.
+    static float randomForCycle(std::int64_t cycle, std::uint64_t seed = 0) noexcept;
+    void setRandomSeed(std::uint64_t newSeed) noexcept { randomSeed = newSeed; }
     void prepare(double newSampleRateHz);
     void setSettings(const LfoSettings& newSettings);
 
@@ -31,6 +34,7 @@ private:
     // a function of phase alone.
     float sampleAtPhase(float phaseRadians, int waveformIndex) const;
     std::int64_t cycleIndex { 0 };
+    std::uint64_t randomSeed { 0 };
     static float rampSampleAt(double elapsedSeconds, float rampSeconds, int waveformIndex);
 
     double sampleRateHz { 44100.0 };
