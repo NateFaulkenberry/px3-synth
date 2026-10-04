@@ -2,6 +2,7 @@
 #include "LfoGenerator.h"
 #include "OscillatorUnit.h"
 #include "Reverb.h"
+#include "Distortion.h"
 
 // v0.8.0 release QA: one test per defect found by the DSP and UI audits of
 // everything added since v0.7.6, each written to fail on the defect before it
@@ -328,6 +329,153 @@ void testReleaseQa()
               "96 vs 48 kHz: tail " + fmt(levelDb, 2) + " dB, brightness x" + fmt(brightness, 2)
                   + "; decays " + fmt(20.0 * std::log10(at48.level3s / juce::jmax(1.0e-12, at48.level1s)), 1) + " / "
                   + fmt(20.0 * std::log10(at96.level3s / juce::jmax(1.0e-12, at96.level1s)), 1) + " dB from 1 s to 3 s");
+    }
+
+    // ---- aliasing: DRIVE at full drive, and the analog filter models ----------------
+    // Measured, not assumed. Energy that is not at a harmonic of the input, in
+    // dB against the fundamental, below 15 kHz (where aliasing is heard).
+    {
+        // Blackman-Harris spectrum, harmonics masked +/- 6 bins.
+        const auto aliasDb = [](const std::vector<float>& x, double sr, double f0)
+        {
+            constexpr int order = 15;
+            constexpr int n = 1 << order;
+            std::vector<float> data(static_cast<std::size_t>(n) * 2, 0.0f);
+            for (int i = 0; i < n; ++i)
+            {
+                const auto t = juce::MathConstants<double>::twoPi * i / n;
+                const auto w = 0.35875 - 0.48829 * std::cos(t) + 0.14128 * std::cos(2 * t) - 0.01168 * std::cos(3 * t);
+                data[static_cast<std::size_t>(i)] = static_cast<float>(x[static_cast<std::size_t>(i)] * w);
+            }
+            juce::dsp::FFT(order).performFrequencyOnlyForwardTransform(data.data());
+            const auto binHz = sr / n;
+            double fundamental = 1.0e-30, alias = 0.0;
+            for (int k = 3; k < n / 2; ++k)
+            {
+                const auto hz = k * binHz;
+                const auto power = static_cast<double>(data[static_cast<std::size_t>(k)]) * data[static_cast<std::size_t>(k)];
+                const auto harmonic = std::round(hz / f0);
+                const auto nearHarmonic = harmonic >= 1.0 && std::abs(hz - harmonic * f0) < 6.0 * binHz;
+                if (harmonic == 1.0 && nearHarmonic) { fundamental = juce::jmax(fundamental, power); }
+                if (! nearHarmonic && hz < 15000.0) { alias += power; }
+            }
+            return 10.0 * std::log10(juce::jmax(1.0e-30, alias) / fundamental);
+        };
+
+        // DRIVE: a 5 kHz sine into HARD at full drive (the worst case), and a
+        // survey of more typical settings for the report.
+        const auto driveAt = [&](double hz, float driveAmount, int type)
+        {
+            px3::Distortion drive;
+            drive.prepare(48000.0);
+            px3::DistortionSettings settings;
+            settings.type = type;
+            settings.drive = driveAmount;
+            settings.tight = 0.0f;
+            settings.tone = 1.0f;
+            settings.mix = 1.0f;
+            std::vector<float> out;
+            for (int i = 0; i < 8192 + 32768; ++i)
+            {
+                if (i % 256 == 0) { drive.updateForBlock(settings); }
+                const auto in = static_cast<float>(0.5 * std::sin(juce::MathConstants<double>::twoPi * hz * i / 48000.0));
+                float l = 0.0f, r = 0.0f;
+                drive.processSampleFrame(in, in, l, r);
+                if (i >= 8192) { out.push_back(l); }
+            }
+            return aliasDb(out, 48000.0, hz);
+        };
+        juce::String survey;
+        auto worstTypical = -200.0;
+        for (const auto hz : { 220.0, 1000.0, 3000.0 })
+        {
+            for (const auto amount : { 0.35f, 0.7f, 1.0f })
+            {
+                const auto soft = driveAt(hz, amount, 0);
+                const auto hard = driveAt(hz, amount, 1);
+                worstTypical = juce::jmax(worstTypical, juce::jmax(soft, hard));
+                survey << fmt(hz, 0) << "Hz/" << fmt(amount, 2) << ": " << fmt(soft, 0) << "/" << fmt(hard, 0) << "  ";
+            }
+        }
+        std::printf("  ..    DRIVE alias dB (SOFT/HARD) by input Hz/drive: %s\n", survey.toRawUTF8());
+        double driveAlias = 0.0;
+        {
+            px3::Distortion drive;
+            drive.prepare(48000.0);
+            px3::DistortionSettings settings;
+            settings.type = 1;
+            settings.drive = 1.0f;
+            settings.tight = 0.0f;
+            settings.tone = 1.0f;
+            settings.mix = 1.0f;
+            std::vector<float> out;
+            for (int i = 0; i < 8192 + 32768; ++i)
+            {
+                if (i % 256 == 0) { drive.updateForBlock(settings); }
+                const auto in = static_cast<float>(0.5 * std::sin(juce::MathConstants<double>::twoPi * 5003.0 * i / 48000.0));
+                float l = 0.0f, r = 0.0f;
+                drive.processSampleFrame(in, in, l, r);
+                if (i >= 8192) { out.push_back(l); }
+            }
+            driveAlias = aliasDb(out, 48000.0, 5003.0);
+        }
+
+        // Each analog filter model at full resonance on a 3.5 kHz saw (cutoff
+        // 8 kHz), against the same saw unfiltered: what the filter adds.
+        const auto filtered = [&](int type)
+        {
+            Processor processor;
+            makePlainPatch(processor);
+            setChoice(processor, "voice.osc1.mode", 1);   // SAW
+            setParam(processor, "voice.filter1.enabled", type >= 0 ? 1.0f : 0.0f);
+            if (type >= 0)
+            {
+                setChoice(processor, "voice.filter1.type", type);
+                setParam(processor, "voice.filter1.cutoff", 8000.0f);
+                if (auto* q = findParameter(processor, "voice.filter1.resonance")) { q->setValueNotifyingHost(0.5f); }
+            }
+            const auto capture = render(processor, 8192 + 32768, { { 0, true, 105, 0.9f } });
+            std::vector<float> tail(capture.left.begin() + 8192, capture.left.end());
+            return aliasDb(tail, kSampleRate, 440.0 * std::pow(2.0, (105 - 69) / 12.0));
+        };
+        const auto bare = filtered(-1);
+        {
+            // The filters at a more typical pitch, for the report.
+            const auto at = [&](int note, int type)
+            {
+                Processor processor;
+                makePlainPatch(processor);
+                setChoice(processor, "voice.osc1.mode", 1);
+                setParam(processor, "voice.filter1.enabled", 1.0f);
+                setChoice(processor, "voice.filter1.type", type);
+                setParam(processor, "voice.filter1.cutoff", 3000.0f);
+                if (auto* q = findParameter(processor, "voice.filter1.resonance")) { q->setValueNotifyingHost(0.5f); }
+                const auto capture = render(processor, 8192 + 32768, { { 0, true, note, 0.9f } });
+                std::vector<float> tail(capture.left.begin() + 8192, capture.left.end());
+                return aliasDb(tail, kSampleRate, 440.0 * std::pow(2.0, (note - 69) / 12.0));
+            };
+            std::printf("  ..    filters at A3 (220 Hz saw, cutoff 3 kHz, half resonance): LADDER24 %.1f, CURTIS24 %.1f, ARP12 %.1f, LP24 %.1f dB\n",
+                        at(57, 11), at(57, 12), at(57, 13), at(57, 1));
+        }
+        juce::String filters;
+        auto worstFilter = -200.0;
+        for (const auto& [name, type] : { std::pair<const char*, int> { "LADDER24", 11 }, { "CURTIS24", 12 }, { "ARP12", 13 }, { "LP24", 1 } })
+        {
+            const auto db = filtered(type);
+            worstFilter = juce::jmax(worstFilter, db);
+            filters << name << " " << fmt(db, 1) << " dB, ";
+        }
+        std::printf("  ..    alias below 15 kHz vs fundamental: DRIVE HARD full %.1f dB; saw alone %.1f dB; %s\n",
+                    driveAlias, bare, filters.toRawUTF8());
+        // First-order ADAA, no oversampling: clean wherever a note is played,
+        // audible only with a ~5 kHz fundamental at full drive (a known limit,
+        // in the release notes; oversampling it would add latency against the
+        // dry path).
+        check("Qa_DriveAliasingIsInaudibleAtPlayedPitches", worstTypical < -55.0,
+              "worst at 220 Hz-3 kHz input, any drive, SOFT or HARD: " + fmt(worstTypical, 1)
+                  + " dB (5 kHz at full HARD drive: " + fmt(driveAlias, 1) + " dB)");
+        check("Qa_AnalogFiltersAddNoAudibleAliasing", worstFilter < -40.0,
+              "worst model at half resonance on a 3.5 kHz saw: " + fmt(worstFilter, 1) + " dB (saw alone " + fmt(bare, 1) + " dB)");
     }
 }
 } // namespace px3tests
