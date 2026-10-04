@@ -654,9 +654,11 @@ juce::Rectangle<int> CardHost::powerBounds() const
     const auto band = titleBandHeight();
     return juce::Rectangle<float>(cardBounds.getX() + theme::space::powerInset,
                                   // Centred in the band BELOW the accent stripe, so
-                                  // it never touches the stripe or the divider.
+                                  // it never touches the stripe or the divider, then
+                                  // dropped by powerNudge, which reads as centred.
                                   cardBounds.getY() + theme::space::accentBar
-                                      + juce::jmax(0.0f, (band - theme::space::accentBar - side) * 0.5f),
+                                      + juce::jmax(0.0f, (band - theme::space::accentBar - side) * 0.5f)
+                                      + theme::space::powerNudge,
                                   side, side).toNearestInt();
 }
 

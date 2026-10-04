@@ -208,10 +208,12 @@ void testDenseLayout()
                 const auto band = px3::ui::theme::space::minTitleBand;
                 const auto top = static_cast<float>(c.getY());
                 const auto bottomClear = band - static_cast<float>(c.getBottom());
-                // Centred in the band below the accent stripe, >= 4 px clear.
+                // Centred in the band below the accent stripe, then dropped by
+                // powerNudge: clear of the stripe above and the divider below.
                 const auto stripe = px3::ui::theme::space::accentBar;
-                if (c.getWidth() != side || c.getHeight() != side || top - stripe < 4.0f || bottomClear < 4.0f
-                    || std::abs((top - stripe) - bottomClear) > 1.0f)
+                const auto nudge = px3::ui::theme::space::powerNudge;
+                if (c.getWidth() != side || c.getHeight() != side || top - stripe < 4.0f || bottomClear < 2.0f
+                    || std::abs((top - stripe) - bottomClear - 2.0f * nudge) > 1.0f)
                 {
                     faults.add(card->getName() + juce::String(" ") + c.getBounds().toString());
                 }
