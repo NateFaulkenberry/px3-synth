@@ -8,6 +8,7 @@
 #include "PluginProcessor.h"
 #include "SheetCloseButton.h"
 #include "SpeechBubbleLabel.h"
+#include "ModAmountControl.h"
 
 class UIConfig;
 
@@ -29,30 +30,6 @@ namespace px3::ui
 // The layout answers that by filling columns before it scrolls: the plugin has
 // horizontal space, and a single tall column that scrolls at four assignments
 // wastes it.
-// How a depth row's slider is drawn.
-//
-// Its own look rather than JUCE's default, for the same reason every other
-// control in this synth has one: a stock LinearHorizontal reads as a dialog
-// widget dropped into an instrument. A flat track, a filled portion from the
-// centre, and a round cap - all of it from UIConfig under "macroDepth.colors".
-//
-// Filled from the CENTRE, not from the left, because depth is bipolar: a route
-// at -60% and one at +60% should look like mirror images rather than like one
-// being nearly empty and the other nearly full.
-class MacroDepthSliderLook final : public juce::LookAndFeel_V4
-{
-public:
-    void drawLinearSlider(juce::Graphics& g, int x, int y, int width, int height,
-                          float sliderPos, float minSliderPos, float maxSliderPos,
-                          juce::Slider::SliderStyle style, juce::Slider& slider) override;
-
-    juce::Colour track { juce::Colour::fromRGBA(255, 255, 255, 38) };
-    juce::Colour fill { juce::Colour::fromRGB(90, 220, 200) };
-    juce::Colour thumb { juce::Colour::fromRGB(220, 250, 244) };
-    float trackThickness { 3.0f };
-    float thumbRadius { 5.0f };
-};
-
 class MacroDepthPanel final : public juce::Component
 {
 public:
@@ -100,17 +77,14 @@ public:
     bool debugIsScrolling() const;
     juce::StringArray debugRowParameterIds() const;
     juce::Slider* debugDepthSliderFor(const juce::String& parameterId);
-    juce::Label* debugValueLabelFor(const juce::String& parameterId);
+    // What the row prints for its depth (inside the amount control).
+    juce::String debugReadoutFor(const juce::String& parameterId);
+    juce::Button* debugRemoveButtonFor(const juce::String& parameterId);
     // The panel's only close control since the footer button went.
     SheetCloseButton& debugCloseButton() { return closeGlyph; }
     SheetCloseButton& debugCloseGlyph() { return closeGlyph; }
     int debugPointerTargetY() const { return pointerTargetY; }
     juce::String debugEmptyNotice() const { return emptyNotice; }
-    juce::LookAndFeel* debugSliderLookAndFeel(const juce::String& parameterId)
-    {
-        auto* slider = debugDepthSliderFor(parameterId);
-        return slider != nullptr ? &slider->getLookAndFeel() : nullptr;
-    }
 
 private:
     // One route: the parameter it drives, and the control for its depth.
@@ -118,8 +92,11 @@ private:
     {
         juce::String parameterId;
         juce::Label name;
-        juce::Slider depth { juce::Slider::LinearHorizontal, juce::Slider::NoTextBox };
-        juce::Label value;
+        // The matrix's amount control, so a depth reads and edits the same
+        // here as on the MOD page - its value is printed inside it.
+        px3::ui::ModAmountControl depth;
+        // Deletes this assignment, like the matrix route's X.
+        px3::ui::UnpatchGlyph remove;
     };
 
     int rowHeight() const;
@@ -139,12 +116,11 @@ private:
     int columnsForRows(int rowCount, int width, int height) const;
     void layoutRows();
     void writeDepth(const Row& row);
-    void refreshValueLabel(Row& row);
 
     PX3SynthAudioProcessor& processor;
     std::shared_ptr<const UIConfig> uiConfig;
     juce::Colour accent { juce::Colour::fromRGB(90, 220, 200) };
-    MacroDepthSliderLook sliderLook;
+    juce::Colour depthFill { juce::Colour::fromRGB(90, 220, 200) };
     int pointerTargetY { -1 };
     int macroIndex { -1 };
 

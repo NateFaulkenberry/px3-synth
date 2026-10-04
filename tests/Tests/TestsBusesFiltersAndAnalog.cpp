@@ -2680,9 +2680,11 @@ void testBusInserts()
                                         ? config->getValue("busInserts.comp.enableButton.anchor").toString()
                                         : juce::String();
 
-            check("BusInsert_BothSheetsAnchorTheirEnableToTheInnerPanel",
-                  eqAnchor.equalsIgnoreCase("innerTopLeft")
-                      && compAnchor.equalsIgnoreCase("innerTopLeft"),
+            // In the title band, where every card keeps its header controls
+            // (Dense_InsertSheetHeaderButtonsSitInTheTitleBand checks the pixels).
+            check("BusInsert_BothSheetsAnchorTheirEnableToTheTitleBand",
+                  eqAnchor.equalsIgnoreCase("titleBand")
+                      && compAnchor.equalsIgnoreCase("titleBand"),
                   "EQ anchor '" + eqAnchor + "', compressor anchor '" + compAnchor + "'");
         }
 

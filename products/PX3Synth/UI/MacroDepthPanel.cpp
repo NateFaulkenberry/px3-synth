@@ -45,52 +45,9 @@ juce::String displayNameFor(PX3SynthAudioProcessor& processor, const juce::Strin
     return parameterId;
 }
 
-// Depth is stored -1..+1 and shown as a signed percentage. Bipolar because the
-// accumulator has always taken a signed depth - it picks the headroom on the
-// side the depth points at - so an inverted route is expressible in the model
-// and in the sound, and hiding it here would be the UI narrowing the format.
-juce::String depthText(float depth)
-{
-    const auto percent = juce::roundToInt(depth * 100.0f);
-    return (percent > 0 ? "+" : "") + juce::String(percent) + "%";
-}
 } // namespace
 
-void MacroDepthSliderLook::drawLinearSlider(juce::Graphics& g, int x, int y, int width, int height,
-                                            float sliderPos, float, float,
-                                            juce::Slider::SliderStyle, juce::Slider& slider)
-{
-    const auto bounds = juce::Rectangle<int>(x, y, width, height).toFloat();
-    const auto centreY = bounds.getCentreY();
-    const auto radius = trackThickness * 0.5f;
-
-    // The track, full width, flat.
-    g.setColour(track);
-    g.fillRoundedRectangle(bounds.getX(), centreY - radius, bounds.getWidth(),
-                           trackThickness, radius);
-
-    // The filled portion, from the CENTRE outwards, because the range is
-    // bipolar and zero is the middle rather than the left end.
-    const auto zeroPos = static_cast<float>(
-        slider.getPositionOfValue(juce::jlimit(slider.getMinimum(), slider.getMaximum(), 0.0)));
-    const auto from = juce::jmin(zeroPos, sliderPos);
-    const auto to = juce::jmax(zeroPos, sliderPos);
-
-    if (to - from > 0.5f)
-    {
-        g.setColour(fill);
-        g.fillRoundedRectangle(from, centreY - radius, to - from, trackThickness, radius);
-    }
-
-    g.setColour(thumb);
-    g.fillEllipse(sliderPos - thumbRadius, centreY - thumbRadius,
-                  thumbRadius * 2.0f, thumbRadius * 2.0f);
-}
-
-MacroDepthPanel::~MacroDepthPanel()
-{
-    for (auto& row : rows) { row->depth.setLookAndFeel(nullptr); }
-}
+MacroDepthPanel::~MacroDepthPanel() = default;
 
 MacroDepthPanel::MacroDepthPanel(PX3SynthAudioProcessor& processorIn)
     : processor(processorIn)
@@ -145,15 +102,9 @@ void MacroDepthPanel::applyStyleFromConfig()
 {
     // Every colour and size the panel draws with, in one place, so a change in
     // UIConfig.json reaches the whole panel rather than half of it.
-    sliderLook.track = colourFrom(uiConfig.get(), "macroDepth.colors.sliderTrack",
-                                  juce::Colour::fromRGBA(255, 255, 255, 38));
-    sliderLook.fill = colourFrom(uiConfig.get(), "macroDepth.colors.sliderFill", accent);
-    sliderLook.thumb = colourFrom(uiConfig.get(), "macroDepth.colors.sliderThumb",
-                                  accent.brighter(0.45f));
-    sliderLook.trackThickness = static_cast<float>(
-        intFrom(uiConfig.get(), "macroDepth.layout.sliderTrackThickness", 3));
-    sliderLook.thumbRadius = static_cast<float>(
-        intFrom(uiConfig.get(), "macroDepth.layout.sliderThumbRadius", 5));
+    // The amount bar's fill. The old slider's track and thumb keys went with
+    // it: the control draws the theme's well, as the matrix's does.
+    depthFill = colourFrom(uiConfig.get(), "macroDepth.colors.sliderFill", accent);
 
     header.setFont(juce::FontOptions(static_cast<float>(
         intFrom(uiConfig.get(), "macroDepth.layout.headerFontSize", 13)), juce::Font::bold));
@@ -174,12 +125,7 @@ void MacroDepthPanel::applyStyleFromConfig()
         row->name.setColour(juce::Label::textColourId,
                             colourFrom(uiConfig.get(), "macroDepth.colors.rowLabel",
                                        juce::Colour::fromRGB(224, 226, 232)));
-        row->value.setFont(juce::FontOptions(static_cast<float>(
-            intFrom(uiConfig.get(), "macroDepth.layout.valueFontSize", 11))));
-        row->value.setColour(juce::Label::textColourId,
-                             colourFrom(uiConfig.get(), "macroDepth.colors.rowValue",
-                                        juce::Colour::fromRGB(198, 202, 212)));
-        row->depth.setLookAndFeel(&sliderLook);
+        row->depth.setFillColour(depthFill);
     }
 }
 
@@ -189,8 +135,7 @@ void MacroDepthPanel::setAccentColour(juce::Colour colour)
 
     for (auto& row : rows)
     {
-        row->depth.setColour(juce::Slider::trackColourId, accent.withAlpha(0.85f));
-        row->depth.setColour(juce::Slider::thumbColourId, accent.brighter(0.25f));
+        juce::ignoreUnused(row);
     }
 
     repaint();
@@ -240,7 +185,6 @@ void MacroDepthPanel::refreshFromProcessor()
                     && std::abs(static_cast<float>(row.depth.getValue()) - current[i].depth) > 1.0e-6f)
                 {
                     row.depth.setValue(current[i].depth, juce::dontSendNotification);
-                    refreshValueLabel(row);
                 }
             }
             return;
@@ -250,9 +194,6 @@ void MacroDepthPanel::refreshFromProcessor()
     // Rebuilt rather than diffed. The list is at most a few dozen rows and is
     // rebuilt only on an assignment change, so the simplest thing that cannot
     // leave a row pointing at a route that no longer exists is the right one.
-    // Detach the look before the rows go: a Component holding a pointer to a
-    // LookAndFeel it outlives is the classic way to crash on teardown.
-    for (auto& row : rows) { row->depth.setLookAndFeel(nullptr); }
     rows.clear();
     rowHost.removeAllChildren();
 
@@ -277,28 +218,25 @@ void MacroDepthPanel::refreshFromProcessor()
         row->name.setInterceptsMouseClicks(false, false);
         rowHost.addAndMakeVisible(row->name);
 
-        row->depth.setRange(-1.0, 1.0, 0.001);
-        row->depth.setDoubleClickReturnValue(true, PX3SynthAudioProcessor::kMacroDepthDefault);
+        row->depth.setComponentID("macro.depth.amount");
         row->depth.setValue(destination.depth, juce::dontSendNotification);
         row->depth.setTooltip("How much of " + PX3SynthAudioProcessor::macroDisplayName(macroIndex)
                               + " reaches " + row->name.getText());
         auto* raw = row.get();
-        row->depth.onValueChange = [this, raw]
-        {
-            writeDepth(*raw);
-            refreshValueLabel(*raw);
-        };
-        row->depth.setLookAndFeel(&sliderLook);
+        row->depth.onValueChange = [this, raw] { writeDepth(*raw); };
+        row->depth.setFillColour(depthFill);
         rowHost.addAndMakeVisible(row->depth);
 
-        row->value.setJustificationType(juce::Justification::centredRight);
-        row->value.setFont(juce::FontOptions(11.0f));
-        row->value.setColour(juce::Label::textColourId,
-                             colourFrom(uiConfig.get(), "macroDepth.colors.rowValue",
-                                        juce::Colour::fromRGB(198, 202, 212)));
-        row->value.setInterceptsMouseClicks(false, false);
-        rowHost.addAndMakeVisible(row->value);
-        refreshValueLabel(*row);
+        row->remove.setTooltip("Remove " + row->name.getText() + " from "
+                               + PX3SynthAudioProcessor::macroDisplayName(macroIndex));
+        row->remove.onClick = [this, id = destination.parameterId]
+        {
+            if (processor.isMacroDestination(macroIndex, id)) { processor.toggleMacroDestination(macroIndex, id); }
+            // Rebuilt after this click returns: the row is the button's owner.
+            juce::Component::SafePointer<MacroDepthPanel> self(this);
+            juce::MessageManager::callAsync([self] { if (self != nullptr) { self->refreshFromProcessor(); } });
+        };
+        rowHost.addAndMakeVisible(row->remove);
 
         rows.push_back(std::move(row));
     }
@@ -315,12 +253,6 @@ void MacroDepthPanel::writeDepth(const Row& row)
     // the same number.
     processor.setMacroDestinationDepth(macroIndex, row.parameterId,
                                        static_cast<float>(row.depth.getValue()));
-}
-
-void MacroDepthPanel::refreshValueLabel(Row& row)
-{
-    row.value.setText(depthText(static_cast<float>(row.depth.getValue())),
-                      juce::dontSendNotification);
 }
 
 int MacroDepthPanel::rowHeight() const
@@ -386,13 +318,22 @@ juce::Slider* MacroDepthPanel::debugDepthSliderFor(const juce::String& parameter
     return nullptr;
 }
 
-juce::Label* MacroDepthPanel::debugValueLabelFor(const juce::String& parameterId)
+juce::Button* MacroDepthPanel::debugRemoveButtonFor(const juce::String& parameterId)
 {
     for (auto& row : rows)
     {
-        if (row->parameterId == parameterId) { return &row->value; }
+        if (row->parameterId == parameterId) { return &row->remove; }
     }
     return nullptr;
+}
+
+juce::String MacroDepthPanel::debugReadoutFor(const juce::String& parameterId)
+{
+    for (auto& row : rows)
+    {
+        if (row->parameterId == parameterId) { return row->depth.readout(); }
+    }
+    return {};
 }
 
 juce::Rectangle<int> MacroDepthPanel::preferredBoundsWithin(juce::Rectangle<int> available,
@@ -502,7 +443,6 @@ void MacroDepthPanel::layoutRows()
     rowHost.setBounds(0, 0, hostWidth, hostHeight);
 
     const auto colWidth = juce::jmax(80, hostWidth / columns);
-    const auto valueWidth = juce::jmax(38, intFrom(uiConfig.get(), "macroDepth.layout.valueWidth", 46));
     const auto nameWidth = juce::jmax(60, intFrom(uiConfig.get(), "macroDepth.layout.nameWidth", 96));
 
     for (std::size_t i = 0; i < rows.size(); ++i)
@@ -516,8 +456,11 @@ void MacroDepthPanel::layoutRows()
 
         auto& row = *rows[i];
         row.name.setBounds(cell.removeFromLeft(juce::jmin(nameWidth, cell.getWidth() / 2)));
-        row.value.setBounds(cell.removeFromRight(juce::jmin(valueWidth, cell.getWidth() / 2)));
-        row.depth.setBounds(cell.reduced(4, 0));
+        // The X at the row's end, then the amount at the matrix row's height.
+        row.remove.setBounds(cell.removeFromRight(16).withSizeKeepingCentre(16, juce::jmin(20, cell.getHeight())));
+        cell.removeFromRight(4);
+        row.depth.setBounds(cell.reduced(4, 0).withSizeKeepingCentre(cell.getWidth() - 8,
+                                                                     juce::jmin(20, cell.getHeight())));
     }
 }
 

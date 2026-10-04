@@ -222,7 +222,6 @@ private:
     class SourceColumn;
     class Row;
     class ListContent;
-    class AmountControl;
     class DestinationBrowser;
     void rebuildRows();
     void fitRowsToRoutesArea();

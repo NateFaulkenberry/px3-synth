@@ -2302,9 +2302,17 @@ void testMacroSystem()
                     &knobProcessor.getFilterResonanceParam(0),
                     &knobProcessor.getReverbAmountParam(),
                     &knobProcessor.getFilterCutoffParam(1),
-                    &knobProcessor.getDelayAmountParam()
+                    &knobProcessor.getDelayAmountParam(),
+                    &knobProcessor.getVibeAmountParam()
                 };
-                targets.resize(static_cast<std::size_t>(PX3SynthAudioProcessor::kMacroCount));
+                // resize() pads with null, which segfaulted the suite the
+                // moment a sixth macro arrived; fail it instead.
+                check("MacroKnob_TheIsolationTestCoversEveryMacro",
+                      targets.size() >= static_cast<std::size_t>(PX3SynthAudioProcessor::kMacroCount),
+                      juce::String(static_cast<int>(targets.size())) + " targets for "
+                          + juce::String(PX3SynthAudioProcessor::kMacroCount) + " macros");
+                targets.resize(static_cast<std::size_t>(PX3SynthAudioProcessor::kMacroCount),
+                               &knobProcessor.getVibeAmountParam());
                 const auto targetCount = static_cast<int>(targets.size());
 
                 for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
@@ -2370,15 +2378,17 @@ void testMacroSystem()
                 &saver.getFilterResonanceParam(0),
                 &saver.getReverbAmountParam(),
                 &saver.getFilterCutoffParam(1),
-                &saver.getDelayAmountParam()
+                &saver.getDelayAmountParam(),
+                &saver.getVibeAmountParam()
             };
-            targets.resize(static_cast<std::size_t>(PX3SynthAudioProcessor::kMacroCount));
+            // Padded with a real parameter, never null: a null here segfaults.
+            targets.resize(static_cast<std::size_t>(PX3SynthAudioProcessor::kMacroCount), &saver.getVibeAmountParam());
 
             for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
             {
                 saver.toggleMacroDestination(
                     macro, targets[static_cast<std::size_t>(macro)]->getParameterID());
-                saver.getMacroParam(macro).setValueNotifyingHost(0.2f * static_cast<float>(macro + 1));
+                saver.getMacroParam(macro).setValueNotifyingHost(static_cast<float>(macro + 1) / static_cast<float>(PX3SynthAudioProcessor::kMacroCount));
             }
 
             juce::MemoryBlock saved;
@@ -2399,7 +2409,7 @@ void testMacroSystem()
                 restored.add("M" + juce::String(macro + 1) + " mask " + juce::String(mask)
                              + " at " + fmt(value, 2));
                 correct = correct && mask == (1 << macro)
-                          && std::abs(value - 0.2f * static_cast<float>(macro + 1)) < 0.02f;
+                          && std::abs(value - static_cast<float>(macro + 1) / static_cast<float>(PX3SynthAudioProcessor::kMacroCount)) < 0.02f;
             }
 
             check("Macro_EachComesBackOnItsOwnIndex",
@@ -2645,9 +2655,11 @@ void testMacroSystem()
                 &saver.getFilterResonanceParam(0),
                 &saver.getReverbAmountParam(),
                 &saver.getFilterCutoffParam(1),
-                &saver.getDelayAmountParam()
+                &saver.getDelayAmountParam(),
+                &saver.getVibeAmountParam()
             };
-            targets.resize(static_cast<std::size_t>(PX3SynthAudioProcessor::kMacroCount));
+            // Padded with a real parameter, never null: a null here segfaults.
+            targets.resize(static_cast<std::size_t>(PX3SynthAudioProcessor::kMacroCount), &saver.getVibeAmountParam());
 
             juce::StringArray targetIds;
             for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
@@ -3330,11 +3342,35 @@ void testMacroSystem()
                           + fmt(processor.getMacroDestinationDepth(0, resonanceId), 3));
 
                 // ---- and the readout follows it ------------------------------
-                auto* cutoffValue = panel->debugValueLabelFor(cutoffId);
+                const auto cutoffReadout = panel->debugReadoutFor(cutoffId);
                 check("MacroDepthUi_TheReadoutFollowsTheSlider",
-                      cutoffValue != nullptr && cutoffValue->getText().contains("40"),
-                      cutoffValue != nullptr ? "the row reads '" + cutoffValue->getText() + "'"
-                                             : juce::String("no readout for that row"));
+                      cutoffReadout.contains("40"),
+                      cutoffReadout.isNotEmpty() ? "the row reads '" + cutoffReadout + "'"
+                                                 : juce::String("no readout for that row"));
+
+                // ---- the row's X removes that assignment and no other ---------
+                {
+                    if (! processor.isMacroDestination(0, resonanceId)) { processor.toggleMacroDestination(0, resonanceId); }
+                    editor->debugOpenMacroDepthPanel(0);
+                    const auto before = panel->debugRowCount();
+                    // The click handler itself: triggerClick() posts, and the
+                    // rebuild it schedules is async too, so wait for the rows.
+                    if (auto* x = panel->debugRemoveButtonFor(resonanceId); x != nullptr && x->onClick) { x->onClick(); }
+                    for (int spin = 0; spin < 100 && panel->debugRowCount() == before; ++spin)
+                    {
+                        juce::MessageManager::getInstance()->runDispatchLoopUntil(10);
+                    }
+                    check("MacroDepthUi_TheRowsXRemovesThatAssignment",
+                          before == 2 && panel->debugRowCount() == 1
+                              && ! processor.isMacroDestination(0, resonanceId)
+                              && processor.isMacroDestination(0, cutoffId),
+                          juce::String(before) + " rows -> " + juce::String(panel->debugRowCount())
+                              + "; resonance " + (processor.isMacroDestination(0, resonanceId) ? "still assigned" : "removed")
+                              + ", cutoff " + (processor.isMacroDestination(0, cutoffId) ? "kept" : "LOST"));
+                    processor.toggleMacroDestination(0, resonanceId);   // restore for what follows
+                    processor.setMacroDestinationDepth(0, resonanceId, 1.0f);
+                    editor->debugOpenMacroDepthPanel(0);
+                }
 
                 // ---- one parameter, two macros, two depths -------------------
                 processor.toggleMacroDestination(1, cutoffId);
@@ -3461,8 +3497,15 @@ void testMacroSystem()
                     processor.toggleMacroDestination(0, resonanceId);
                     editor->debugOpenMacroDepthPanel(0);
 
-                    auto* firstSlider = panel->debugDepthSliderFor(cutoffId);
-                    const auto defaultRow = firstSlider != nullptr ? firstSlider->getHeight() : 0;
+                    // A row's pitch: the amount control keeps the matrix's
+                    // height in any row, so the row is measured between rows.
+                    const auto rowPitch = [&]
+                    {
+                        auto* a = panel->debugDepthSliderFor(cutoffId);
+                        auto* b = panel->debugDepthSliderFor(resonanceId);
+                        return a != nullptr && b != nullptr ? std::abs(b->getY() - a->getY()) : 0;
+                    };
+                    const auto defaultRow = rowPitch();
 
                     // After opening, not before: opening hands the panel the
                     // editor's config, which would replace this one.
@@ -3470,8 +3513,7 @@ void testMacroSystem()
                     panel->setUIConfig(UIConfig::fromJsonText(
                         R"({"macroDepth":{"layout":{"rowHeight":60}}})", configError));
 
-                    firstSlider = panel->debugDepthSliderFor(cutoffId);
-                    const auto tallRow = firstSlider != nullptr ? firstSlider->getHeight() : 0;
+                    const auto tallRow = rowPitch();
 
                     // And a colour key, since the panel now takes its whole
                     // appearance from config rather than just its geometry.
@@ -3556,14 +3598,15 @@ void testMacroSystem()
                     processor.toggleMacroDestination(0, cutoffId);
                     editor->debugOpenMacroDepthPanel(0);
 
-                    auto* look = panel->debugSliderLookAndFeel(cutoffId);
+                    // The matrix's amount control, so a depth edits the same here
+                    // as on the MOD page.
                     const auto isOurs =
-                        dynamic_cast<px3::ui::MacroDepthSliderLook*>(look) != nullptr;
+                        dynamic_cast<px3::ui::ModAmountControl*>(panel->debugDepthSliderFor(cutoffId)) != nullptr;
 
-                    check("MacroDepthUi_TheDepthSliderUsesTheSynthsOwnLook",
+                    check("MacroDepthUi_TheDepthSliderIsTheMatrixAmountControl",
                           isOurs,
-                          isOurs ? juce::String("MacroDepthSliderLook, not the default")
-                                 : juce::String("STOCK look-and-feel"));
+                          isOurs ? juce::String("ModAmountControl")
+                                 : juce::String("some other slider"));
                 }
 
                 // ---- the depth button moves straight to another macro ---------
