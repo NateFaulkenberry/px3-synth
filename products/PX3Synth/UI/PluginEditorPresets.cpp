@@ -172,7 +172,9 @@ void PX3SynthAudioProcessorEditor::showPresetError(const juce::String& title, co
 
 void PX3SynthAudioProcessorEditor::savePreset(bool saveAs)
 {
-    if (!saveAs && hasCurrentPreset && !currentPreset.isFactory)
+    // Saving over INIT is a Save As: it has no file, and writing the current
+    // state under its name would make a user preset called "- INIT -".
+    if (!saveAs && hasCurrentPreset && !currentPreset.isFactory && !currentPreset.isInit)
     {
         PresetManager::PresetMetadata metadata = currentPreset.metadata;
         juce::String error;
@@ -357,13 +359,15 @@ void PX3SynthAudioProcessorEditor::showPresetMenu()
     menu.addItem(MenuItemId::save, "Save");
     menu.addItem(MenuItemId::saveAs, "Save As");
     menu.addSeparator();
+    // INIT is a state, not a file: there is nothing to favourite or export.
+    const auto hasPresetFile = hasCurrentPreset && ! currentPreset.isInit;
     menu.addItem(MenuItemId::favorite,
                  "Add to Favorites",
-                 hasCurrentPreset,
-                 hasCurrentPreset && currentPreset.isFavorite);
+                 hasPresetFile,
+                 hasPresetFile && currentPreset.isFavorite);
     menu.addSeparator();
     menu.addItem(MenuItemId::import, "Import");
-    menu.addItem(MenuItemId::exportPreset, "Export", hasCurrentPreset);
+    menu.addItem(MenuItemId::exportPreset, "Export", hasPresetFile);
 
     // Its own section rather than another line under Export: the items above
     // are all about the preset in front of you, and this one is not.
@@ -531,7 +535,10 @@ void PX3SynthAudioProcessorEditor::paintListBoxItem(int rowNumber,
 
     const auto& item = presetFiltered[static_cast<std::size_t>(rowNumber)];
     const auto favoritePrefix = item.isFavorite ? juce::String("★ ") : juce::String();
-    const auto sourcePrefix = item.isFactory ? juce::String("[F] ") : juce::String("[U] ");
+    // INIT is neither: it is the default state, not a preset from either
+    // library, so it carries no source tag.
+    const auto sourcePrefix = item.isInit ? juce::String()
+                                          : (item.isFactory ? juce::String("[F] ") : juce::String("[U] "));
 
     g.setColour(juce::Colour::fromRGB(234, 234, 234));
     g.setFont(juce::FontOptions(12.5f));
@@ -561,7 +568,7 @@ void PX3SynthAudioProcessorEditor::selectedRowsChanged(int lastRowSelected)
     juce::String details;
     details << "Name: " << preset.metadata.name << "\n";
     details << "Category: " << preset.metadata.category << "\n";
-    details << "Source: " << (preset.isFactory ? "Factory" : "User") << "\n";
+    details << "Source: " << (preset.isInit ? "Default" : (preset.isFactory ? "Factory" : "User")) << "\n";
     if (preset.metadata.author.isNotEmpty())
     {
         details << "Author: " << preset.metadata.author << "\n";

@@ -109,8 +109,10 @@ std::vector<PresetManager::PresetRecord> PresetManager::queryPresets(const Query
     // one - it has no file, no category and no author - but it is the thing you
     // reach for to start again, so it belongs at the top rather than nowhere.
     // It is a state, so a favourites view and a search that does not name it
-    // both leave it out.
-    if (! query.favoritesOnly && (search.isEmpty() || initPresetName().toLowerCase().contains(search)))
+    // both leave it out - and so do the Factory and User views, because it
+    // belongs to neither library.
+    if (! query.favoritesOnly && query.includeFactory && query.includeUser
+        && (search.isEmpty() || initPresetName().toLowerCase().contains(search)))
     {
         PresetRecord init;
         init.metadata.name = initPresetName();
@@ -212,6 +214,13 @@ bool PresetManager::saveUserPreset(const PresetMetadata& metadata,
     if (metadata.name.trim().isEmpty())
     {
         error = "Preset name is required.";
+        return false;
+    }
+    // INIT's name is the default state's, not a preset's: a user preset under
+    // it would sit in the list beside INIT looking like the same thing.
+    if (metadata.name.trim().equalsIgnoreCase(initPresetName()))
+    {
+        error = "\"" + initPresetName() + "\" is reserved for the default state.";
         return false;
     }
 

@@ -68,6 +68,32 @@ void testFactoryPresets()
                              : "first row is \"" + listed.front().metadata.name + "\", "
                                    + juce::String(listed.size()) + " rows in total");
 
+        // INIT belongs to neither library: it is listed under All only, and
+        // its name cannot be taken by a user preset.
+        {
+            const auto listsInit = [&manager](bool factory, bool user)
+            {
+                PresetManager::Query scoped;
+                scoped.includeFactory = factory;
+                scoped.includeUser = user;
+                const auto rows = manager.queryPresets(scoped);
+                return std::any_of(rows.begin(), rows.end(), [](const auto& r) { return r.isInit; });
+            };
+            check("Preset_InitIsNeitherFactoryNorUser",
+                  listsInit(true, true) && ! listsInit(true, false) && ! listsInit(false, true),
+                  juce::String("All ") + (listsInit(true, true) ? "lists" : "omits") + " it, Factory "
+                      + (listsInit(true, false) ? "lists" : "omits") + " it, User "
+                      + (listsInit(false, true) ? "lists" : "omits") + " it");
+
+            PresetManager::PresetMetadata named;
+            named.name = PresetManager::initPresetName();
+            named.category = "LEADS";
+            juce::String saveError;
+            const auto saved = manager.saveUserPreset(named, true, saveError);
+            check("Preset_InitsNameIsReserved", ! saved && saveError.contains("reserved"),
+                  saved ? "a user preset was saved as INIT" : saveError);
+        }
+
         // And loading it restores the default state from memory.
         {
             setParam(processor, "voice.osc1.macro.a", 0.9f);
