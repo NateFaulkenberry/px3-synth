@@ -595,6 +595,33 @@ void testReleaseQa()
               first == second && second == third ? juce::String(static_cast<int>(first.getSize())) + " bytes, identical across two reloads" : where);
     }
 
+    // ---- no knob reads out more than 2 decimals ------------------------------------
+    // A continuous parameter with no formatter of its own fell back to JUCE's,
+    // which prints 7 decimals: a knob read "0.8451094".
+    {
+        Processor processor;
+        juce::StringArray long_;
+        auto checked = 0;
+        for (auto* p : processor.getParameters())
+        {
+            if (dynamic_cast<juce::AudioParameterFloat*>(p) == nullptr) { continue; }
+            for (const auto v : { 0.0f, 0.1234567f, 0.8451094f, 1.0f })
+            {
+                const auto text = p->getText(v, 0);
+                const auto dot = text.indexOfChar('.');
+                auto digits = 0;
+                if (dot >= 0)
+                {
+                    for (auto i = dot + 1; i < text.length() && juce::CharacterFunctions::isDigit(text[i]); ++i) { ++digits; }
+                }
+                ++checked;
+                if (digits > 2) { long_.addIfNotAlreadyThere(p->getName(64) + " \"" + text + "\""); }
+            }
+        }
+        check("Qa_NoKnobShowsMoreThanTwoDecimals", long_.isEmpty() && checked > 0,
+              long_.isEmpty() ? juce::String(checked) + " readouts" : long_.joinIntoString(", ").substring(0, 400));
+    }
+
     // ---- nothing leaves the plugin above full scale ---------------------------------
     // The output ceiling is the instrument's guarantee, and it is last. The
     // reverb's level match ran after it, scaling the whole master by up to

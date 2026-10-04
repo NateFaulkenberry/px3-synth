@@ -1,6 +1,7 @@
 #include "ParameterCatalog.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <functional>
 #include <map>
@@ -91,8 +92,28 @@ juce::AudioParameterFloat* ParameterCatalog::createFloat(const juce::ParameterID
                                                         float defaultValue,
                                                         const juce::AudioParameterFloatAttributes& attributes)
 {
+    // A parameter with no formatter of its own reads at most 2 decimals. JUCE's
+    // fallback prints 7 for a continuous range ("0.8451094"), which is noise on
+    // a knob and in a host's automation lane. A stepped range keeps the
+    // interval's own precision when that is coarser.
+    auto shown = attributes;
+    if (attributes.getStringFromValueFunction() == nullptr)
+    {
+        // Whole steps (semitones, voices) read as integers; anything finer
+        // than 1 shows 1 or 2 places.
+        auto places = 2;
+        if (range.interval >= 1.0f && std::abs(range.interval - std::round(range.interval)) < 1.0e-4f) { places = 0; }
+        else if (range.interval >= 0.1f && std::abs(range.interval * 10.0f - std::round(range.interval * 10.0f)) < 1.0e-3f) { places = 1; }
+        shown = shown.withStringFromValueFunction([places](float value, int length)
+        {
+            // String(v, 0) means full precision in JUCE, not "no decimals".
+            const auto text = places == 0 ? juce::String(juce::roundToInt(value)) : juce::String(value, places);
+            return length > 0 ? text.substring(0, length) : text;
+        });
+    }
+
     auto definition = std::make_unique<ParameterDefinition>(ParameterDefinition {
-        id, name, ParameterKind::continuous, range, defaultValue, {}, attributes });
+        id, name, ParameterKind::continuous, range, defaultValue, {}, shown });
     auto* parameter = new juce::AudioParameterFloat(definition->id, definition->name,
                                                    definition->range, definition->defaultValue,
                                                    std::get<juce::AudioParameterFloatAttributes>(definition->attributes));
