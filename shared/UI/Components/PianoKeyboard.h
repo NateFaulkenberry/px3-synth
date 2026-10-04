@@ -99,6 +99,10 @@ public:
     // component - it no longer is, now that the sparks live in the overlay.
     juce::Rectangle<int> keyboardArea() const;
     juce::Rectangle<float> keysArea() const;
+    // The end cheek, shared with the wheels so the bottom row ends the same at
+    // both sides. innerFaceOnLeft: the lit inner face is on the cheek's left
+    // (the right-hand end); false mirrors it for the left-hand end.
+    static void paintEndCheek(juce::Graphics& g, juce::Rectangle<float> cheek, bool innerFaceOnLeft);
 
     // Silenced when every oscillator source is bypassed: nothing this keyboard
     // does can make a sound, so it stops animating, greys out, stops responding

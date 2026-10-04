@@ -191,7 +191,8 @@
     },
     "layout": {
       "panelInset": 0,
-      "panelGap": 0
+      "panelGap": 0,
+      "cheekLeft": 14
     }
   },
   "topMenu": {

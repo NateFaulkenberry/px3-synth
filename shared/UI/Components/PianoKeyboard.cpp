@@ -32,6 +32,26 @@ juce::Rectangle<float> PianoKeyboard::keysArea() const
         .withTrimmedRight(std::round(juce::jmax(0.0f, style.cheekRight)));
 }
 
+void PianoKeyboard::paintEndCheek(juce::Graphics& g, juce::Rectangle<float> cheek, bool innerFaceOnLeft)
+{
+    // A raised block lit along its top and along the face that meets the
+    // instrument, like the moulded end of a keyboard's case. The same block,
+    // mirrored, ends both sides of the bottom row.
+    juce::ColourGradient face(juce::Colour::fromRGB(48, 52, 57), cheek.getX(), cheek.getY(),
+                              juce::Colour::fromRGB(30, 33, 37), cheek.getX(), cheek.getBottom(), false);
+    g.setGradientFill(face);
+    g.fillRect(cheek);
+    g.setColour(juce::Colours::white.withAlpha(0.10f));
+    g.fillRect(cheek.withHeight(1.0f));
+    const auto shadow = innerFaceOnLeft ? cheek.withWidth(1.0f) : cheek.withLeft(cheek.getRight() - 1.0f);
+    const auto lit = innerFaceOnLeft ? cheek.withTrimmedLeft(1.0f).withWidth(1.0f)
+                                     : cheek.withTrimmedRight(1.0f).withLeft(cheek.getRight() - 2.0f);
+    g.setColour(juce::Colours::black.withAlpha(0.55f));
+    g.fillRect(shadow);
+    g.setColour(juce::Colours::white.withAlpha(0.07f));
+    g.fillRect(lit);
+}
+
 void PianoKeyboard::paintKeyboard(juce::Graphics& g)
 {
     // Only the keyboard's own rectangle is filled. fillAll would paint the
@@ -51,18 +71,9 @@ void PianoKeyboard::paintKeyboard(juce::Graphics& g)
     if (style.cheekRight > 0.0f)
     {
         const auto frame = keyboardArea().toFloat();
-        const auto cheek = juce::Rectangle<float>(area.getRight(), frame.getY(),
-                                                  frame.getRight() - area.getRight(), frame.getHeight());
-        juce::ColourGradient face(juce::Colour::fromRGB(48, 52, 57), cheek.getX(), cheek.getY(),
-                                  juce::Colour::fromRGB(30, 33, 37), cheek.getX(), cheek.getBottom(), false);
-        g.setGradientFill(face);
-        g.fillRect(cheek);
-        g.setColour(juce::Colours::white.withAlpha(0.10f));
-        g.fillRect(cheek.withHeight(1.0f));
-        g.setColour(juce::Colours::black.withAlpha(0.55f));
-        g.fillRect(cheek.withWidth(1.0f));
-        g.setColour(juce::Colours::white.withAlpha(0.07f));
-        g.fillRect(cheek.withTrimmedLeft(1.0f).withWidth(1.0f));
+        paintEndCheek(g, juce::Rectangle<float>(area.getRight(), frame.getY(),
+                                                frame.getRight() - area.getRight(), frame.getHeight()),
+                      true);
     }
 
     std::vector<KeyGeometry> whites;

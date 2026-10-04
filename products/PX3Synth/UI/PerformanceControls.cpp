@@ -1,5 +1,7 @@
 #include "PerformanceControls.h"
 
+#include "PianoKeyboard.h"
+
 #include "Theme.h"
 #include "UIConfig.h"
 
@@ -298,6 +300,7 @@ PerformanceControls::Style PerformanceControls::Style::fromConfig(const UIConfig
     s.dividerWidth = cfgFloat(config, prefix + ".divider.width", s.dividerWidth);
     s.panelInset = cfgFloat(config, prefix + ".layout.panelInset", s.panelInset);
     s.panelGap = cfgFloat(config, prefix + ".layout.panelGap", s.panelGap);
+    s.cheekLeft = juce::jmax(0.0f, cfgFloat(config, prefix + ".layout.cheekLeft", s.cheekLeft));
 
     s.pitchAccent = cfgColour(config, prefix + ".pitch.accent", s.pitchAccent);
     s.modAccent = cfgColour(config, prefix + ".mod.accent", s.modAccent);
@@ -313,6 +316,12 @@ void PerformanceControls::setStyle(const Style& newStyle)
 juce::Rectangle<int> PerformanceControls::controlsArea() const
 {
     return getLocalBounds();
+}
+
+juce::Rectangle<int> PerformanceControls::wheelsArea() const
+{
+    // Whole pixels, so the cheek and the PITCH panel meet on one.
+    return controlsArea().withTrimmedLeft(juce::roundToInt(style.cheekLeft));
 }
 
 void PerformanceControls::paint(juce::Graphics& g)
@@ -400,7 +409,12 @@ void PerformanceControls::paint(juce::Graphics& g)
               false,
               easeAmount(visualModGlow));
 
-
+    // The keyboard case's left end, the mirror of the cheek past the top key.
+    if (style.cheekLeft > 0.0f)
+    {
+        const auto strip = controlsArea().toFloat();
+        PianoKeyboard::paintEndCheek(g, strip.withWidth(static_cast<float>(juce::roundToInt(style.cheekLeft))), false);
+    }
 }
 
 void PerformanceControls::mouseDown(const juce::MouseEvent& event)
@@ -697,7 +711,7 @@ PerformanceControls::WheelVisual PerformanceControls::getPitchVisual() const
 {
     // Whole pixels, so the seam between the panels is exactly panelGap wide
     // and matches the 1 px seams between every other module.
-    auto area = controlsArea().reduced(juce::roundToInt(style.panelInset));
+    auto area = wheelsArea().reduced(juce::roundToInt(style.panelInset));
     const auto gap = juce::roundToInt(style.panelGap);
     const auto panelWidth = (area.getWidth() - gap) / 2;
 
@@ -709,7 +723,7 @@ PerformanceControls::WheelVisual PerformanceControls::getPitchVisual() const
 
 PerformanceControls::WheelVisual PerformanceControls::getModVisual() const
 {
-    auto area = controlsArea().reduced(juce::roundToInt(style.panelInset));
+    auto area = wheelsArea().reduced(juce::roundToInt(style.panelInset));
     const auto gap = juce::roundToInt(style.panelGap);
     const auto panelWidth = (area.getWidth() - gap) / 2;
     area.removeFromLeft(panelWidth + gap);

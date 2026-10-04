@@ -27,6 +27,8 @@ public:
     // The controls occupy the whole component again, now that the sparkles are
     // drawn by the overlay above rather than inside here.
     juce::Rectangle<int> controlsArea() const;
+    // The strip less the left cheek: where the wheel panels tile.
+    juce::Rectangle<int> wheelsArea() const;
 
     // Everything the pitch and mod section is drawn with. Every field is read
     // by paint or drawWheel.
@@ -37,6 +39,9 @@ public:
         // strip's edge, panelGap between PITCH and MOD.
         float panelInset { 0.0f };
         float panelGap { 1.0f };
+        // The keyboard-case end on the strip's left, mirroring the cheek at
+        // the keyboard's right, so the bottom row reads as one instrument.
+        float cheekLeft { 0.0f };
         float backgroundOpacity { 1.0f };
         // The outer frame, inset from the component edge.
         float borderInset { 2.0f };
