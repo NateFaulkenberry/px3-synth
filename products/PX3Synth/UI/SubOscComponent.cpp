@@ -315,6 +315,8 @@ float SubOscComponent::waveformSample(float phaseNorm, int waveformIndex)
             return std::sin(p * juce::MathConstants<float>::twoPi);
         case 1:
             return p < 0.5f ? 1.0f : -1.0f;
+        case 2:
+            return 2.0f * p - 1.0f;
         default:
             break;
     }

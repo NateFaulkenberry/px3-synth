@@ -1,6 +1,7 @@
 #include "TestSupport.h"
 #include "OscillatorDsp.h"
 #include "OscillatorUnit.h"
+#include "SubOscillator.h"
 
 // testOscillatorQuality - a regression test for every bug the oscillator audit
 // confirmed, and the measured quality envelope of the rebuilt oscillators
@@ -682,6 +683,88 @@ void testOscillatorQuality()
                   "alias below 15 kHz " + fmt(result.below15k, 1) + " dB (limit " + fmt(c.limit, 0) + "), total "
                       + fmt(result.total, 1) + " dB, against the fundamental");
         }
+    }
+
+    // ---- the sub's SAW is the oscillator's saw ----------------------------------------------------
+    // Same BLEP saw as OSC 1-3: held to the main saw's alias limit, measurably
+    // cleaner than a naive ramp, and on the shared 5-sample latency (it lines
+    // up with OSC's saw at lag 0, not one sample either side).
+    {
+        constexpr int order = 15;
+        const auto size = 1 << order;
+        const auto bin = oddBinNear(440.0 * std::pow(2.0, (72 - 69) / 12.0), fs, order);
+        const auto hz = bin * fs / size;
+
+        const auto renderSub = [&](int samples, int skip)
+        {
+            SubOscillator sub;
+            sub.prepare(fs);
+            SubOscSettings settings;
+            settings.enabled = true;
+            settings.level = 1.0f;
+            settings.coarseOctaves = 0.0f;
+            settings.waveformIndex = static_cast<int>(px3::SubOscWaveform::saw);
+            sub.setSettings(settings);
+            sub.resetForNote(0.0);
+            std::vector<double> out;
+            for (int i = 0; i < skip + samples; ++i)
+            {
+                const auto v = sub.renderSample(hz);
+                if (i >= skip) { out.push_back(v); }
+            }
+            return out;
+        };
+
+        const auto subAlias = aliasAgainstFundamental(periodicPower(renderSub(size, 8192), order), bin, bin, fs);
+        check("OscQuality_Alias_SubSawAtC5", subAlias.below15k < -58.0,
+              "alias below 15 kHz " + fmt(subAlias.below15k, 1) + " dB (limit -58, the OSC saw's), total "
+                  + fmt(subAlias.total, 1) + " dB");
+
+        std::vector<double> naive(static_cast<std::size_t>(size));
+        {
+            double phase = 0.0;
+            const auto increment = hz / fs;
+            for (int i = 0; i < 8192 + size; ++i)
+            {
+                if (i >= 8192) { naive[static_cast<std::size_t>(i - 8192)] = 2.0 * phase - 1.0; }
+                phase += increment;
+                phase -= std::floor(phase);
+            }
+        }
+        const auto naiveAlias = aliasAgainstFundamental(periodicPower(naive, order), bin, bin, fs);
+        check("OscQuality_SubSawIsNotNaive", subAlias.below15k < naiveAlias.below15k - 20.0,
+              "sub saw " + fmt(subAlias.below15k, 1) + " dB against a naive saw's " + fmt(naiveAlias.below15k, 1) + " dB");
+
+        UnitSetup oscSaw;
+        oscSaw.mode = static_cast<int>(Mode::saw);
+        const auto reference = renderUnit(oscSaw, 220.0, fs, 4096, 0);
+        SubOscillator sub;
+        sub.prepare(fs);
+        SubOscSettings settings;
+        settings.enabled = true;
+        settings.level = 1.0f;
+        settings.coarseOctaves = 0.0f;
+        settings.waveformIndex = static_cast<int>(px3::SubOscWaveform::saw);
+        sub.setSettings(settings);
+        sub.resetForNote(0.0);
+        std::vector<double> mine;
+        for (int i = 0; i < 4096; ++i) { mine.push_back(sub.renderSample(220.0)); }
+        const auto correlationAt = [&](int lag)
+        {
+            double ab = 0.0, aa = 0.0, bb = 0.0;
+            for (int i = 64; i < 4000; ++i)
+            {
+                const auto a = reference[static_cast<std::size_t>(i)];
+                const auto b = mine[static_cast<std::size_t>(i + lag)];
+                ab += a * b; aa += a * a; bb += b * b;
+            }
+            return ab / std::sqrt(juce::jmax(1.0e-30, aa * bb));
+        };
+        const auto atZero = correlationAt(0);
+        check("OscQuality_SubSawSharesTheOscillatorLatency",
+              atZero > 0.999 && atZero > correlationAt(-1) && atZero > correlationAt(1),
+              "correlation with OSC's saw " + fmt(atZero, 5) + " at lag 0, " + fmt(correlationAt(-1), 5) + " / "
+                  + fmt(correlationAt(1), 5) + " at -1 / +1");
     }
 
     // ---- a mode change crossfades ------------------------------------------------------------------

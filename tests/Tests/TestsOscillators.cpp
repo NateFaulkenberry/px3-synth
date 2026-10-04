@@ -2338,7 +2338,7 @@ void testSubOscillator()
     // the sine at the same level (that is what distinguishes them).
     {
         double sineRms = 0.0, squareRms = 0.0, sinePeak = 0.0, squarePeak = 0.0;
-        for (int waveform = 0; waveform <= 1; ++waveform)
+        for (int waveform = 0; waveform <= px3::subOscWaveformMaxIndex; ++waveform)
         {
             SubOscillator sub;
             sub.prepare(kSampleRate);
@@ -2368,7 +2368,7 @@ void testSubOscillator()
                   std::abs(dc) < 0.01, "dc " + fmt(dc, 6));
 
             if (waveform == 0) { sineRms = rms; sinePeak = peak; }
-            else { squareRms = rms; squarePeak = peak; }
+            else if (waveform == 1) { squareRms = rms; squarePeak = peak; }
         }
         // A sine's RMS/peak is 0.707. A NAIVE square's is 1.0, but a band-limited
         // square carries its Gibbs overshoot - an ideal one peaks at 1.18, so

@@ -46,7 +46,7 @@ void SubOscillator::setSettings(const SubOscSettings& newSettings, int rampSampl
         fadingWaveform = activeWaveform;
         activeWaveform = settings.waveformIndex;
         fadeRemaining = fadeLength;
-        (activeWaveform == 1 ? squareLine.reset() : sineDelay.reset());
+        resetWaveform(activeWaveform);
     }
 }
 
@@ -59,7 +59,19 @@ void SubOscillator::resetForNote(double startPhase)
     fadingWaveform = -1;
     fadeRemaining = 0;
     squareLine.reset();
+    sawLine.reset();
     sineDelay.reset();
+}
+
+void SubOscillator::resetWaveform(int waveform)
+{
+    switch (static_cast<px3::SubOscWaveform>(px3::clampSubOscWaveformIndex(waveform)))
+    {
+        case px3::SubOscWaveform::square: squareLine.reset(); break;
+        case px3::SubOscWaveform::saw:    sawLine.reset(); break;
+        case px3::SubOscWaveform::sine:
+        default:                          sineDelay.reset(); break;
+    }
 }
 
 double SubOscillator::renderSample(double baseFrequencyHz)
@@ -95,6 +107,19 @@ double SubOscillator::renderSample(double baseFrequencyHz)
 
 double SubOscillator::renderWaveform(int waveform, double increment, bool wrapped, double tau)
 {
+    // The oscillator's own band-limited saw (OscillatorUnit, Mode::saw): a
+    // -2 BLEP at the wrap, placed at its fractional position, through the
+    // same BlepLine - so it lands on the shared 5-sample latency and aliases
+    // no more than OSC 1-3's saw does.
+    if (px3::clampSubOscWaveformIndex(waveform) == static_cast<int>(px3::SubOscWaveform::saw))
+    {
+        if (wrapped && increment > 0.0)
+        {
+            sawLine.step(tau, -2.0);
+        }
+        return sawLine.push(2.0 * phase - 1.0);
+    }
+
     if (px3::clampSubOscWaveformIndex(waveform) == static_cast<int>(px3::SubOscWaveform::square))
     {
         if (increment > 0.0)

@@ -30,6 +30,7 @@ public:
     double currentPhase() const noexcept { return phase; }
 
 private:
+    void resetWaveform(int waveform);
     double renderWaveform(int waveform, double increment, bool wrapped, double tau);
 
     double sampleRateHz { 48000.0 };
@@ -49,5 +50,6 @@ private:
     int fadeLength { 240 };
 
     px3::dsp::BlepLine squareLine;
+    px3::dsp::BlepLine sawLine;
     px3::dsp::LatencyDelay sineDelay;
 };
