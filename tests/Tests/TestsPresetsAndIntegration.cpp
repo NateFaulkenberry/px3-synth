@@ -701,6 +701,11 @@ void testPresets()
                 if (brightRow >= 0)
                 {
                     editor->debugDoubleClickPresetRow(brightRow);
+                    // The cutoff edit above is unsaved: answer the prompt.
+                    if (auto& prompt = editor->debugUnsavedPrompt(); prompt.isAsking())
+                    {
+                        prompt.answer(UnsavedChangesPrompt::Answer::discard);
+                    }
 
                     check("PresetBrowser_DoubleClickingARowLoadsIt",
                           std::abs(norm() - 0.90f) < 0.01f,
@@ -724,6 +729,11 @@ void testPresets()
                 {
                     editor->debugPresetListBox().selectRow(darkRow);
                     editor->debugPresetLoadButton().onClick();
+                    // The cutoff edit above is unsaved: answer the prompt.
+                    if (auto& prompt = editor->debugUnsavedPrompt(); prompt.isAsking())
+                    {
+                        prompt.answer(UnsavedChangesPrompt::Answer::discard);
+                    }
 
                     check("PresetBrowser_TheLoadButtonLoadsTheSelectedRow",
                           std::abs(norm() - 0.10f) < 0.01f

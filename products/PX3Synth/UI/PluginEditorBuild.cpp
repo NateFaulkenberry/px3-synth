@@ -1130,7 +1130,7 @@ void PX3SynthAudioProcessorEditor::buildTopMenuBar()
 
         if (!hasCurrentPreset)
         {
-            applyPresetRecord(presetFiltered.front());
+            requestPresetSwitch(presetFiltered.front());
             return;
         }
 
@@ -1146,7 +1146,7 @@ void PX3SynthAudioProcessorEditor::buildTopMenuBar()
 
         const auto count = static_cast<int>(presetFiltered.size());
         const auto next = ((currentIndex - 1) % count + count) % count;
-        applyPresetRecord(presetFiltered[static_cast<std::size_t>(next)]);
+        requestPresetSwitch(presetFiltered[static_cast<std::size_t>(next)]);
     });
 
     topMenuBar->setOnPresetNext([this]()
@@ -1158,7 +1158,7 @@ void PX3SynthAudioProcessorEditor::buildTopMenuBar()
 
         if (!hasCurrentPreset)
         {
-            applyPresetRecord(presetFiltered.front());
+            requestPresetSwitch(presetFiltered.front());
             return;
         }
 
@@ -1174,7 +1174,7 @@ void PX3SynthAudioProcessorEditor::buildTopMenuBar()
 
         const auto count = static_cast<int>(presetFiltered.size());
         const auto next = (currentIndex + 1) % count;
-        applyPresetRecord(presetFiltered[static_cast<std::size_t>(next)]);
+        requestPresetSwitch(presetFiltered[static_cast<std::size_t>(next)]);
     });
 
     topMenuBar->setOnPresetName([this]() { openPresetBrowser(); });
@@ -1214,6 +1214,10 @@ void PX3SynthAudioProcessorEditor::buildPresetBar()
     presetBrowserPanel.setInterceptsMouseClicks(false, true);
     addAndMakeVisible(presetBrowserPanel);
     presetBrowserPanel.setVisible(false);
+
+    // Above everything, the preset sheet included: it can be asked from there.
+    unsavedPrompt.setAlwaysOnTop(true);
+    addChildComponent(unsavedPrompt);
 
     presetBrowserTitle.setText("P(X3) PRESETS", juce::dontSendNotification);
     presetBrowserTitle.setJustificationType(juce::Justification::centredLeft);

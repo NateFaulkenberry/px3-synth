@@ -218,6 +218,7 @@ void PX3SynthAudioProcessorEditor::resized()
     browserX = juce::jlimit(8, juce::jmax(8, getWidth() - browserWidth - 8), browserX);
     browserY = juce::jlimit(8, juce::jmax(8, getHeight() - browserHeight - 8), browserY);
     presetBrowserScrim.setBounds(getLocalBounds());
+    unsavedPrompt.setBounds(getLocalBounds());
     presetBrowserPanel.setBounds(browserX, browserY, browserWidth, browserHeight);
 
     // The faceplate paints the title; the close glyph sits in its band, centred

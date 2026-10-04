@@ -39,6 +39,7 @@
 #include "MixPanel.h"
 #include "BusInsertOverlay.h"
 #include "ModalBackdrop.h"
+#include "UnsavedChangesPrompt.h"
 #include "OscPanel.h"
 #include "GlobalSettings.h"
 #include "SettingsPanel.h"
@@ -397,6 +398,7 @@ public:
     void debugOpenPresetBrowser() { openPresetBrowser(); }
     void debugClosePresetBrowser() { closePresetBrowser(); }
     bool debugPresetBrowserVisible() const { return presetBrowserVisible; }
+    UnsavedChangesPrompt& debugUnsavedPrompt() { return unsavedPrompt; }
     juce::ListBox& debugPresetListBox() { return presetListBox; }
     juce::TextButton& debugPresetLoadButton() { return presetBrowserLoadButton; }
     juce::Button& debugPresetCloseGlyph() { return presetBrowserCloseGlyph; }
@@ -565,6 +567,9 @@ private:
     void rebuildPresetFilteredList();
     void refreshPresetNameDisplay();
     void applyPresetRecord(const PresetManager::PresetRecord& record);
+    // Every user-initiated preset switch: asks first when the current patch
+    // has unsaved edits. `afterLoad` runs only if the new preset was loaded.
+    void requestPresetSwitch(const PresetManager::PresetRecord& record, std::function<void()> afterLoad = {});
     void openPresetBrowser();
     void closePresetBrowser();
 
@@ -574,7 +579,8 @@ private:
     void closeBusInsert();
     juce::Component* activeBusInsertSheet() const;
     void showPresetError(const juce::String& title, const juce::String& message);
-    void savePreset(bool saveAs);
+    // `onSaved` runs only once the preset is actually written.
+    void savePreset(bool saveAs, std::function<void()> onSaved = {});
     void importPreset();
     void exportCurrentPreset();
     void showPresetMenu();
@@ -1165,6 +1171,7 @@ private:
     SparkOverlay sparkOverlay { pianoKeyboard };
 
     ModalDismissScrim presetBrowserScrim { *this };
+    UnsavedChangesPrompt unsavedPrompt;
     std::unique_ptr<px3::ui::BusEqOverlay> busEqOverlay;
     std::unique_ptr<px3::ui::BusCompOverlay> busCompOverlay;
     px3::ui::ModalScrim busInsertScrim { *this };

@@ -808,5 +808,65 @@ void testReleaseQa()
               dirtyAfter.isEmpty() ? juce::String("4 presets stepped through, none marked edited")
                                    : "marked edited: " + dirtyAfter.joinIntoString(", ") + "; first change " + changed);
     }
+
+    // ---- switching away from unsaved edits asks first ------------------------------
+    // SAVE / DON'T SAVE / CANCEL before any preset switch that would discard
+    // edits: the arrows, the sheet's LOAD and import all go through it.
+    {
+        Processor processor;
+        processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        processor.prepareToPlay(kSampleRate, kBlockSize);
+        std::unique_ptr<juce::AudioProcessorEditor> base(processor.createEditor());
+        auto* editor = dynamic_cast<PX3SynthAudioProcessorEditor*>(base.get());
+        juce::StringArray wrong;
+        if (editor != nullptr && editor->debugTopMenuBar() != nullptr)
+        {
+            editor->setSize(1518, 938);
+            auto& prompt = editor->debugUnsavedPrompt();
+            const auto next = [editor]
+            {
+                if (auto& b = editor->debugTopMenuBar()->getPresetNextButton(); b.onClick) { b.onClick(); }
+            };
+            const auto name = [editor] { return editor->debugPresetDisplayName(); };
+            const auto edit = [&processor](float hz) { setParam(processor, "voice.filter1.cutoff", hz); };
+
+            next();                                   // a clean load: no question
+            if (prompt.isAsking()) { wrong.add("asked on a clean switch"); prompt.answer(UnsavedChangesPrompt::Answer::cancel); }
+            const auto first = name();
+
+            edit(432.0f);
+            next();
+            if (! prompt.isAsking()) { wrong.add("did not ask with edits"); }
+            if (name() != first + "*") { wrong.add("switched before the answer: " + name()); }
+            if (prompt.debugMessage() != "Do you want to save your changes?") { wrong.add("message reads " + prompt.debugMessage()); }
+
+            prompt.keyPressed(juce::KeyPress(juce::KeyPress::escapeKey));
+            if (prompt.isAsking() || name() != first + "*") { wrong.add("CANCEL (Escape) did not keep the edits: " + name()); }
+
+            // From the sheet: CANCEL leaves it open, DON'T SAVE loads and closes it.
+            if (auto& b = editor->debugTopMenuBar()->getPresetNameButton(); b.onClick) { b.onClick(); }
+            auto& list = editor->debugPresetListBox();
+            list.selectRow(juce::jmin(3, editor->debugPresetRowCount() - 1));
+            const auto load = [editor] { if (auto& b = editor->debugPresetLoadButton(); b.onClick) { b.onClick(); } };
+            load();
+            if (! prompt.isAsking()) { wrong.add("LOAD PRESET did not ask"); }
+            prompt.answer(UnsavedChangesPrompt::Answer::cancel);
+            if (! editor->debugPresetBrowserVisible()) { wrong.add("CANCEL closed the preset sheet"); }
+            if (name() != first + "*") { wrong.add("CANCEL from the sheet lost the edits: " + name()); }
+            load();
+            if (prompt.isAsking()) { prompt.answer(UnsavedChangesPrompt::Answer::discard); }
+            else { wrong.add("did not ask a second time"); }
+            const auto second = name();
+            if (second == first || second.endsWithChar('*')) { wrong.add("DON'T SAVE did not load cleanly: " + second); }
+            if (editor->debugPresetBrowserVisible()) { wrong.add("the sheet stayed open after loading"); }
+
+            const auto card = prompt.debugCard();
+            if (! card.isEmpty() && ! editor->getLocalBounds().contains(card)) { wrong.add("card outside the window"); }
+        }
+        else { wrong.add("no editor"); }
+        check("Qa_UnsavedEditsAskBeforeAPresetSwitch", wrong.isEmpty(),
+              wrong.isEmpty() ? juce::String("clean switch silent; edited switch asks, CANCEL keeps, DON'T SAVE loads")
+                              : wrong.joinIntoString("; "));
+    }
 }
 } // namespace px3tests

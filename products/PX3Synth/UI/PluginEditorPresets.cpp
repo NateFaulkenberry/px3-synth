@@ -131,6 +131,40 @@ void PX3SynthAudioProcessorEditor::applyPresetRecord(const PresetManager::Preset
     repaint();
 }
 
+void PX3SynthAudioProcessorEditor::requestPresetSwitch(const PresetManager::PresetRecord& record,
+                                                       std::function<void()> afterLoad)
+{
+    const auto load = [this, record, afterLoad]
+    {
+        applyPresetRecord(record);
+        if (afterLoad != nullptr) { afterLoad(); }
+    };
+
+    // The timer only checks for edits every few frames; an edit made just
+    // before the switch must still count.
+    updatePresetDirtyState();
+    if (! hasCurrentPreset || ! currentPresetDirty)
+    {
+        load();
+        return;
+    }
+
+    unsavedPrompt.setBounds(getLocalBounds());
+    unsavedPrompt.ask(createComponentSnapshot(getLocalBounds()),
+                      [this, load](UnsavedChangesPrompt::Answer answer)
+                      {
+                          switch (answer)
+                          {
+                              // A preset with a file is saved in place; INIT
+                              // and factory presets go through Save As, and
+                              // the switch happens only if that is completed.
+                              case UnsavedChangesPrompt::Answer::save: savePreset(false, load); break;
+                              case UnsavedChangesPrompt::Answer::discard: load(); break;
+                              case UnsavedChangesPrompt::Answer::cancel: break;
+                          }
+                      });
+}
+
 void PX3SynthAudioProcessorEditor::openPresetBrowser()
 {
     presetBrowserBackdropSnapshot = createComponentSnapshot(getLocalBounds());
@@ -170,7 +204,7 @@ void PX3SynthAudioProcessorEditor::showPresetError(const juce::String& title, co
                                            this);
 }
 
-void PX3SynthAudioProcessorEditor::savePreset(bool saveAs)
+void PX3SynthAudioProcessorEditor::savePreset(bool saveAs, std::function<void()> onSaved)
 {
     // Saving over INIT is a Save As: it has no file, and writing the current
     // state under its name would make a user preset called "- INIT -".
@@ -195,6 +229,7 @@ void PX3SynthAudioProcessorEditor::savePreset(bool saveAs)
             currentPresetDirty = false;
             refreshPresetNameDisplay();
         }
+        if (onSaved != nullptr) { onSaved(); }
         return;
     }
 
@@ -216,7 +251,7 @@ void PX3SynthAudioProcessorEditor::savePreset(bool saveAs)
                                                         "*.px3preset");
 
     chooser->launchAsync(juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles,
-                         [this, chooser](const juce::FileChooser& fc)
+                         [this, chooser, onSaved](const juce::FileChooser& fc)
                          {
                              auto destination = fc.getResult();
                              if (destination == juce::File())
@@ -269,6 +304,7 @@ void PX3SynthAudioProcessorEditor::savePreset(bool saveAs)
                                  currentPresetDirty = false;
                                  refreshPresetNameDisplay();
                              }
+                             if (onSaved != nullptr) { onSaved(); }
                          });
 }
 
@@ -295,7 +331,7 @@ void PX3SynthAudioProcessorEditor::importPreset()
                              }
 
                              rebuildPresetFilteredList();
-                             applyPresetRecord(imported);
+                             requestPresetSwitch(imported);
                          });
 }
 
@@ -510,8 +546,8 @@ void PX3SynthAudioProcessorEditor::loadPresetRow(int row)
 {
     if (row < 0 || row >= static_cast<int>(presetFiltered.size())) { return; }
 
-    applyPresetRecord(presetFiltered[static_cast<std::size_t>(row)]);
-    closePresetBrowser();
+    // The sheet stays open if the switch is cancelled at the save prompt.
+    requestPresetSwitch(presetFiltered[static_cast<std::size_t>(row)], [this] { closePresetBrowser(); });
 }
 
 int PX3SynthAudioProcessorEditor::getNumRows()
