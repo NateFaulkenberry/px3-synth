@@ -8,6 +8,7 @@
 
 #include <cmath>
 #include <functional>
+#include <typeinfo>
 
 // testDenseLayout
 //
@@ -413,6 +414,51 @@ void testDenseLayout()
         for (int i = 0; i < 30; ++i) { editor->debugTimerTick(); }
         check("Dense_TimerTickDoesNoLayoutWork", doc.getResolveCount() == before,
               juce::String(doc.getResolveCount() - before) + " resolves in 30 ticks");
+    }
+
+    // ---- a dropdown choice survives the refresh tick ---------------------------
+    // Choosing from a dropdown's menu selects the item and tells the attachment
+    // ASYNCHRONOUSLY. A refresh tick landing in between read the parameter -
+    // still the old value - and pushed it back into the box, so the queued
+    // notification found nothing to do and the choice was lost. With every
+    // panel on the VOICE page refreshing each tick this happened often enough
+    // to look like clicks on menu items being ignored.
+    {
+        juce::StringArray lost;
+        auto examined = 0;
+        for (const int section : { 0, 4 })
+        {
+            editor->debugSelectSection(section);
+            editor->debugTimerTick();
+            juce::MessageManager::getInstance()->runDispatchLoopUntil(20);
+            std::vector<juce::ComboBox*> boxes;
+            walkAll(*editor, [&](juce::Component& c)
+            {
+                if (auto* box = dynamic_cast<juce::ComboBox*>(&c))
+                {
+                    if (shownIn(c, *editor) && box->isEnabled() && box->getNumItems() > 1) { boxes.push_back(box); }
+                }
+            });
+            for (auto* box : boxes)
+            {
+                const auto before = box->getSelectedItemIndex();
+                const auto choice = before == 1 ? 0 : 1;
+                box->setSelectedItemIndex(choice, juce::sendNotificationAsync); // what the menu does
+                editor->debugTimerTick();                                       // a refresh lands first
+                juce::MessageManager::getInstance()->runDispatchLoopUntil(20);
+                editor->debugTimerTick();
+                ++examined;
+                if (box->getSelectedItemIndex() != choice)
+                {
+                    const auto* parent = box->getParentComponent();
+                    lost.add(juce::String(parent != nullptr ? typeid(*parent).name() : "?") + ":" + box->getItemText(0) + "/"
+                             + box->getItemText(1));
+                }
+            }
+        }
+        editor->debugSelectSection(0);
+        check("Dense_DropdownChoiceSurvivesTheRefreshTick", examined > 8 && lost.isEmpty(),
+              juce::String(examined) + " dropdowns; lost: " + lost.joinIntoString(", "));
     }
 }
 } // namespace px3tests

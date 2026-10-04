@@ -18,6 +18,7 @@
 // have split importWavetableFile from the menu it rebuilds.
 
 #include "PluginEditor.h"
+#include "ComboSync.h"
 #include "UpdateService.h"
 #include "EditorSections.h"
 #include "ParameterKnob.h"
@@ -125,13 +126,11 @@ void PX3SynthAudioProcessorEditor::rebuildWavetableMenu(int oscIndex)
     if (userName.isNotEmpty())
     {
         const auto found = userTables.indexOf(userName);
-        box.setSelectedId(found >= 0 ? kUserWavetableMenuBase + found : previous,
-                          juce::dontSendNotification);
+        px3::ui::syncComboItemId(box, found >= 0 ? kUserWavetableMenuBase + found : previous);
     }
     else
     {
-        box.setSelectedId(audioProcessor.getOscillatorWtTableParam(idx).getIndex() + 1,
-                          juce::dontSendNotification);
+        px3::ui::syncComboItemId(box, audioProcessor.getOscillatorWtTableParam(idx).getIndex() + 1);
     }
 }
 
@@ -434,18 +433,12 @@ void PX3SynthAudioProcessorEditor::refreshOscillatorModeUI()
         }
 
         const auto paramModeIndex = audioProcessor.getOscillatorModeParam(oscIndex).getIndex();
-        if (modeBox->getSelectedItemIndex() != paramModeIndex)
-        {
-            modeBox->setSelectedItemIndex(paramModeIndex, juce::dontSendNotification);
-        }
+        px3::ui::syncComboItemIndex(*modeBox, paramModeIndex);
 
         const auto enabled = audioProcessor.getOscillatorEnabledParam(oscIndex).get();
 
         const auto paramVowelIndex = audioProcessor.getOscillatorVowelParam(oscIndex).getIndex();
-        if (vowelBox->getSelectedItemIndex() != paramVowelIndex)
-        {
-            vowelBox->setSelectedItemIndex(paramVowelIndex, juce::dontSendNotification);
-        }
+        px3::ui::syncComboItemIndex(*vowelBox, paramVowelIndex);
 
         if (oscPanel != nullptr)
         {
@@ -466,10 +459,7 @@ void PX3SynthAudioProcessorEditor::refreshAnyKeyDownState()
 void PX3SynthAudioProcessorEditor::refreshGranularModeUI()
 {
     const auto modeIndex = audioProcessor.getGranularModeParam().getIndex();
-    if (granularModeBox.getSelectedItemIndex() != modeIndex)
-    {
-        granularModeBox.setSelectedItemIndex(modeIndex, juce::dontSendNotification);
-    }
+    px3::ui::syncComboItemIndex(granularModeBox, modeIndex);
 
     if (modeIndex == lastGranularModeIndex)
     {

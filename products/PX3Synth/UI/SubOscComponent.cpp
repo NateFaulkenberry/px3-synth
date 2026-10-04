@@ -1,4 +1,5 @@
 #include "SubOscComponent.h"
+#include "ComboSync.h"
 #include "SceneBinding.h"
 
 #include "BypassButton.h"
@@ -66,10 +67,7 @@ void SubOscComponent::refreshFromParameters(bool enabled, int waveformIndex)
     currentWaveformIndex = px3::clampSubOscWaveformIndex(waveformIndex);
 
     enabledButton.setToggleState(enabled, juce::dontSendNotification);
-    if (waveformBox.getSelectedItemIndex() != currentWaveformIndex)
-    {
-        waveformBox.setSelectedItemIndex(currentWaveformIndex, juce::dontSendNotification);
-    }
+    px3::ui::syncComboItemIndex(waveformBox, currentWaveformIndex);
 
     waveformBox.setEnabled(currentEnabled);
     waveformLabel.setEnabled(currentEnabled);

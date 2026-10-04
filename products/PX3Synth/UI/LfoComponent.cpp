@@ -1,4 +1,5 @@
 #include "LfoComponent.h"
+#include "ComboSync.h"
 #include "LfoGenerator.h"
 
 #include "BypassButton.h"
@@ -228,10 +229,7 @@ void LfoComponent::refreshFromParameters(bool enabled, float rateHz, float amoun
 
     const auto clamped = px3::clampLfoWaveformIndex(waveformIndex);
     currentWaveformIndex = clamped;
-    if (waveformBox.getSelectedItemIndex() != clamped)
-    {
-        waveformBox.setSelectedItemIndex(clamped, juce::dontSendNotification);
-    }
+    px3::ui::syncComboItemIndex(waveformBox, clamped);
 
     if (rampControlsAttached)
     {

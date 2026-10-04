@@ -1,4 +1,5 @@
 #include "OscillatorComponent.h"
+#include "ComboSync.h"
 #include "SceneBinding.h"
 #include "OscillatorMode.h"
 
@@ -135,15 +136,10 @@ void OscillatorComponent::refreshFromParameters(bool enabled, int modeIndex, int
     currentEnabled = enabled;
     enabledButton.setToggleState(enabled, juce::dontSendNotification);
 
-    if (modeBox.getSelectedItemIndex() != modeIndex)
-    {
-        modeBox.setSelectedItemIndex(modeIndex, juce::dontSendNotification);
-    }
-
-    if (vowelBox.getSelectedItemIndex() != vowelIndex)
-    {
-        vowelBox.setSelectedItemIndex(vowelIndex, juce::dontSendNotification);
-    }
+    // Through syncComboItemIndex, so a refresh never undoes a menu choice
+    // whose notification is still queued.
+    px3::ui::syncComboItemIndex(modeBox, modeIndex);
+    px3::ui::syncComboItemIndex(vowelBox, vowelIndex);
 
     if (modeIndex != lastModeIndex)
     {
