@@ -2,6 +2,7 @@
 #include "UILayout.h"
 #include "UILayoutEditing.h"
 #include "ModRouting.h"
+#include "SubOscComponent.h"
 
 #include "../../shared/UI/Style/Theme.h"
 #include "../../shared/UI/Components/BypassButton.h"
@@ -459,6 +460,44 @@ void testDenseLayout()
         editor->debugSelectSection(0);
         check("Dense_DropdownChoiceSurvivesTheRefreshTick", examined > 8 && lost.isEmpty(),
               juce::String(examined) + " dropdowns; lost: " + lost.joinIntoString(", "));
+    }
+
+    // ---- an enabled sub osc draws its wave in its own colour -------------------
+    // The wave and its frame take the card's identity colour once the sub is on,
+    // as every other card's graph does - grey is what a bypassed card looks like.
+    {
+        editor->debugSelectSection(0);
+        processor.getSubOscEnabledParam().setValueNotifyingHost(1.0f);
+        editor->debugTimerTick();
+        SubOscComponent* sub = nullptr;
+        walkAll(*editor, [&](juce::Component& c)
+        {
+            if (auto* s = dynamic_cast<SubOscComponent*>(&c)) { sub = s; }
+        });
+        auto tinted = 0;
+        auto grey = 0;
+        juce::String accentText;
+        if (sub != nullptr)
+        {
+            const auto graph = sub->getGraphSlot().getBounds();
+            const auto image = sub->createComponentSnapshot(sub->getLocalBounds(), true, 1.0f);
+            for (int y = graph.getY(); y < graph.getBottom(); ++y)
+            {
+                for (int x = graph.getX(); x < graph.getRight(); ++x)
+                {
+                    const auto p = image.getPixelAt(x, y);
+                    const auto bright = p.getBrightness() > 0.35f;
+                    if (! bright) { continue; }
+                    // Sub Osc's identity is blue in both the shipped config and
+                    // the defaults (pale there), so its wave leans blue.
+                    if (p.getBlue() > p.getRed() + 12) { ++tinted; } else { ++grey; }
+                }
+            }
+        }
+        check("Dense_EnabledSubOscGraphTakesItsColour", sub != nullptr && tinted > grey * 4,
+              juce::String(tinted) + " tinted against " + juce::String(grey) + " grey bright pixels");
+        processor.getSubOscEnabledParam().setValueNotifyingHost(0.0f);
+        editor->debugTimerTick();
     }
 }
 } // namespace px3tests

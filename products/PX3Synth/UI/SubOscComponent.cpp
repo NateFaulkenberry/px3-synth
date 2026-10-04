@@ -235,7 +235,12 @@ void SubOscComponent::paint(juce::Graphics& g)
     // by OscPanel using this component's bounds - a parent painting into a
     // child's area, which is the same ownership mistake that left stale
     // outlines behind when panels were swapped.
-    const auto effectiveAccent = currentEnabled ? accent : juce::Colour::fromRGBA(150, 150, 150, 180);
+    // Read from the card's style at paint time, the same place the stripe
+    // takes it, rather than from the copy resized() made: in the scene the
+    // config can arrive without a resize, and the copy kept the pre-config
+    // grey while the stripe beside it turned blue.
+    const auto identity = card.style().border.colour;
+    const auto effectiveAccent = currentEnabled ? identity : juce::Colour::fromRGBA(150, 150, 150, 180);
 
     // Enabled state is runtime, not style, so it modulates the parsed style
     // rather than living in the configuration.
