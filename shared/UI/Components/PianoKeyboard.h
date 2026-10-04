@@ -57,6 +57,9 @@ public:
         px3::ui::CornerRadii backgroundRadius {};
         // Inset from the component to the first key.
         float padding { 8.0f };
+        // The end cheek past the top key: the solid block a real keyboard
+        // ends in, so the keys stop against a frame rather than at the edge.
+        float cheekRight { 0.0f };
 
         // White keys. Drawn square, so a radius of 0 is the default rather than
         // an omission.
@@ -95,6 +98,7 @@ public:
     // strip is drawn around it, and because it used to be narrower than the
     // component - it no longer is, now that the sparks live in the overlay.
     juce::Rectangle<int> keyboardArea() const;
+    juce::Rectangle<float> keysArea() const;
 
     // Silenced when every oscillator source is bypassed: nothing this keyboard
     // does can make a sound, so it stops animating, greys out, stops responding

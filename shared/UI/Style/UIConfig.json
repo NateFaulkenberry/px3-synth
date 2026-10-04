@@ -95,6 +95,9 @@
         "left": 18
       },
       "margin": 0
+    },
+    "cheek": {
+      "right": 14
     }
   },
   "performanceStrip": {

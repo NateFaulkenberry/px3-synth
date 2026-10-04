@@ -706,6 +706,7 @@ void testBreakpointEnvelope()
                            .getChildFile("global-settings.xml");
         scratch.getParentDirectory().createDirectory();
         scratch.deleteFile();
+        const auto previousSettings = px3::GlobalSettings::settingsFile();
         px3::GlobalSettings::debugUseSettingsFile(scratch);
         px3::GlobalSettings::getInstance().debugReloadFromDisk();
 
@@ -809,8 +810,9 @@ void testBreakpointEnvelope()
                           : "nothing was written to the settings file");
         }
 
-        // Back to the real file for anything that follows.
-        px3::GlobalSettings::debugUseSettingsFile({});
+        // Back to the run's settings file for anything that follows.
+        px3::GlobalSettings::debugUseSettingsFile(previousSettings);
+        px3::GlobalSettings::getInstance().debugReloadFromDisk();
         scratch.deleteFile();
     }
 

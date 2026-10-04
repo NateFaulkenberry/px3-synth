@@ -1,4 +1,5 @@
 #include "TestSupport.h"
+#include "GlobalSettings.h"
 
 // The runner, and the exploratory sweep reports it prints. Those measure and
 // print rather than asserting anything, which is why they live beside main
@@ -637,6 +638,10 @@ int main(int argc, char* argv[])
         scratchPresets.createDirectory();
         ::setenv("PX3_PRESET_ROOT", scratchPresets.getFullPathName().toRawUTF8(), 1);
     }
+    // The same for preferences: the run starts from defaults (animations on)
+    // rather than from whatever the developer last chose in SETTINGS.
+    px3::GlobalSettings::debugUseSettingsFile(scratchPresets.getChildFile("settings.xml"));
+    px3::GlobalSettings::getInstance().debugReloadFromDisk();
     struct ScratchCleanup
     {
         juce::File dir;

@@ -25,6 +25,13 @@ void PianoKeyboard::setActiveNotes(const std::array<bool, PianoKeyboard::totalKe
     }
 }
 
+juce::Rectangle<float> PianoKeyboard::keysArea() const
+{
+    // Whole pixels, so the last key's edge and the cheek meet on one.
+    return keyboardArea().toFloat().reduced(style.padding)
+        .withTrimmedRight(std::round(juce::jmax(0.0f, style.cheekRight)));
+}
+
 void PianoKeyboard::paintKeyboard(juce::Graphics& g)
 {
     // Only the keyboard's own rectangle is filled. fillAll would paint the
@@ -32,11 +39,31 @@ void PianoKeyboard::paintKeyboard(juce::Graphics& g)
     g.setColour(style.background.withMultipliedAlpha(juce::jlimit(0.0f, 1.0f, style.backgroundOpacity)));
     px3::ui::fillRounded(g, keyboardArea().toFloat(), style.backgroundRadius);
 
-    const auto area = keyboardArea().toFloat().reduced(style.padding);
+    const auto area = keysArea();
     const auto whiteKeyWidth = area.getWidth() / static_cast<float>(whiteKeys);
     const auto whiteKeyHeight = area.getHeight();
     const auto blackKeyWidth = whiteKeyWidth * style.blackWidthRatio;
     const auto blackKeyHeight = whiteKeyHeight * style.blackHeightRatio;
+
+    // The end cheek: a raised block from the last key to the keyboard's edge,
+    // lit along its top and its inner face like the moulded end of a real
+    // keyboard's case.
+    if (style.cheekRight > 0.0f)
+    {
+        const auto frame = keyboardArea().toFloat();
+        const auto cheek = juce::Rectangle<float>(area.getRight(), frame.getY(),
+                                                  frame.getRight() - area.getRight(), frame.getHeight());
+        juce::ColourGradient face(juce::Colour::fromRGB(48, 52, 57), cheek.getX(), cheek.getY(),
+                                  juce::Colour::fromRGB(30, 33, 37), cheek.getX(), cheek.getBottom(), false);
+        g.setGradientFill(face);
+        g.fillRect(cheek);
+        g.setColour(juce::Colours::white.withAlpha(0.10f));
+        g.fillRect(cheek.withHeight(1.0f));
+        g.setColour(juce::Colours::black.withAlpha(0.55f));
+        g.fillRect(cheek.withWidth(1.0f));
+        g.setColour(juce::Colours::white.withAlpha(0.07f));
+        g.fillRect(cheek.withTrimmedLeft(1.0f).withWidth(1.0f));
+    }
 
     std::vector<KeyGeometry> whites;
     std::vector<KeyGeometry> blacks;
@@ -264,6 +291,7 @@ PianoKeyboard::Style PianoKeyboard::Style::fromConfig(const UIConfig* config, co
     s.backgroundOpacity = styleFloat(config, prefix + ".background.opacity", s.backgroundOpacity);
     s.backgroundRadius = px3::ui::CornerRadii::fromConfig(config, prefix + ".background", s.backgroundRadius);
     s.padding = styleFloat(config, prefix + ".padding", s.padding);
+    s.cheekRight = styleFloat(config, prefix + ".cheek.right", s.cheekRight);
 
     s.whiteFill = styleColour(config, prefix + ".whiteKey.fill", s.whiteFill);
     s.whiteActiveFill = styleColour(config, prefix + ".whiteKey.activeFill", s.whiteActiveFill);
@@ -726,7 +754,7 @@ bool PianoKeyboard::getKeyBoundsForNote(int midiNote, juce::Rectangle<float>& bo
         return false;
     }
 
-    const auto area = keyboardArea().toFloat().reduced(style.padding);
+    const auto area = keysArea();
     const auto whiteKeyWidth = area.getWidth() / static_cast<float>(whiteKeys);
     const auto whiteKeyHeight = area.getHeight();
     const auto blackKeyWidth = whiteKeyWidth * style.blackWidthRatio;
@@ -757,7 +785,7 @@ bool PianoKeyboard::getKeyBoundsForNote(int midiNote, juce::Rectangle<float>& bo
 
 int PianoKeyboard::midiNoteAt(juce::Point<float> position) const
 {
-    const auto area = keyboardArea().toFloat().reduced(style.padding);
+    const auto area = keysArea();
     if (!area.contains(position))
     {
         return -1;
