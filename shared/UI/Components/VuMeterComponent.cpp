@@ -369,16 +369,22 @@ void VuMeterComponent::paint(juce::Graphics& g)
 
     auto blade = needlePath(aim.length, width);
 
+    // Bypassed, the movement fades as ONE object. Fading each part on its own
+    // let the blade, its shadow and the cap show through one another, so the
+    // overlap at the pivot read darker than either - a glass needle.
+    const auto layered = ! live;
+    if (layered) { g.beginTransparencyLayer(0.35f); }
+
     // A soft shadow just off the pivot axis, which is what stops the needle
     // reading as a sticker on the glass.
-    g.setColour(juce::Colour::fromRGBA(0, 0, 0, live ? 46 : 18));
+    g.setColour(juce::Colour::fromRGBA(0, 0, 0, 46));
     g.fillPath(blade, transform.translated(1.0f, 1.5f));
 
-    g.setColour(needleColour.withAlpha(needleOpacity * (live ? 1.0f : 0.35f)));
+    g.setColour(needleColour.withAlpha(needleOpacity));
     g.fillPath(blade, transform);
 
     // A highlight down one side of the blade.
-    g.setColour(juce::Colours::white.withAlpha(live ? 0.16f : 0.05f));
+    g.setColour(juce::Colours::white.withAlpha(0.16f));
     g.strokePath(blade, juce::PathStrokeType(0.6f), transform);
 
     // The cap, on its own centre. A radius of 0 removes it entirely, for a face
@@ -389,11 +395,13 @@ void VuMeterComponent::paint(juce::Graphics& g)
         const auto capBounds = juce::Rectangle<float>(baseRadius * 2.0f, baseRadius * 2.0f)
                                    .withCentre(baseCentre);
 
-        g.setColour(baseColour.withAlpha(baseOpacity * (live ? 1.0f : 0.35f)));
+        g.setColour(baseColour.withAlpha(baseOpacity));
         g.fillEllipse(capBounds);
-        g.setColour(juce::Colours::white.withAlpha(live ? 0.22f : 0.06f));
+        g.setColour(juce::Colours::white.withAlpha(0.22f));
         g.drawEllipse(capBounds, 0.8f);
     }
+
+    if (layered) { g.endTransparencyLayer(); }
 }
 
 } // namespace px3::ui

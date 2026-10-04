@@ -562,6 +562,43 @@ void testVuBallistics()
                   + (worstMiss < 0.01f ? juce::String() : " at " + offender));
     }
 
+    // ---- a bypassed needle fades as one object -----------------------------
+    // Bypassed, the blade, its shadow and the cap were each drawn at 35%, so
+    // they showed through one another: where the cap sits on the blade read
+    // darker than the cap alone. The cap must read the same over the blade as
+    // beside it.
+    {
+        px3::ui::VuMeterComponent meter;
+        meter.isLive = [] { return false; };
+        // The shipped needle: pivot and cap raised 40 px into the glass.
+        juce::String error;
+        meter.setUIConfig(UIConfig::fromJsonText(R"({"busInserts":{"comp":{"meterNeedle":{
+            "color":"#18181A","opacity":1,"width":1.6,"lengthScale":0.47,"offsetY":-40,
+            "base":{"color":"#18181A","radius":8.6,"offsetY":-40,"opacity":1}}}}})", error));
+        // Proportioned like the sheet's meter, so the raised cap is on the glass.
+        meter.setSize(150, 180);
+        juce::Image img(juce::Image::ARGB, 150, 180, true);
+        {
+            juce::Graphics g(img);
+            meter.paintEntireComponent(g, false);
+        }
+        auto glass = meter.getLocalBounds().toFloat().reduced(7.0f);
+        glass = glass.withTrimmedBottom(glass.getHeight() * 0.24f);
+        const auto arc = px3::ui::vuArcFor(glass);
+        const auto aim = px3::ui::VuMeterComponent::aimAt(arc, meter.needlePosition(), -40.0f, 0.47f);
+        const auto cap = arc.pivot.translated(0.0f, -40.0f);
+        // Across the blade, inside the 8.6 px cap.
+        const juce::Point<float> across { std::cos(aim.angleRadians), std::sin(aim.angleRadians) };
+        const auto pixel = [&img](juce::Point<float> p)
+        { return img.getPixelAt(juce::roundToInt(p.x), juce::roundToInt(p.y)); };
+        const auto onBlade = pixel(cap);
+        const auto besideBlade = pixel(cap + across * 5.0f);
+        const auto difference = std::abs(onBlade.getPerceivedBrightness() - besideBlade.getPerceivedBrightness());
+        check("Vu_BypassedNeedleFadesAsOneObject", difference < 0.02f && glass.contains(cap.translated(0.0f, 9.0f)),
+              "cap over the blade " + onBlade.toDisplayString(false) + ", cap beside it "
+                  + besideBlade.toDisplayString(false));
+    }
+
     // ---- it settles rather than ringing ------------------------------------
     {
         px3::ui::VuBallistics movement;
