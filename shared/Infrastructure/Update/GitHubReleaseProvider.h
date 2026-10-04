@@ -64,16 +64,30 @@ public:
     // Accepts either shape: the object /releases/latest returns, or the array
     // /releases returns. One function, so the transport hands it whatever body
     // it got without having to know which endpoint produced it.
+    //
+    // `now` is when the lookup happens; a test passes its own. It decides
+    // whether a release with no installer yet is still being published (see
+    // kPublishingGrace) or genuinely has none.
     static LookupResult parseLatestRelease(const juce::String& jsonText,
                                            const juce::String& productId,
                                            const juce::String& platform,
-                                           const juce::String& architecture);
+                                           const juce::String& architecture,
+                                           juce::Time now = juce::Time::getCurrentTime());
 
     // One release document.
     static LookupResult parseRelease(const juce::var& releaseDocument,
                                      const juce::String& productId,
                                      const juce::String& platform,
-                                     const juce::String& architecture);
+                                     const juce::String& architecture,
+                                     juce::Time now = juce::Time::getCurrentTime());
+
+    // A release is published first and its installers are built, signed,
+    // notarised and attached by CI afterwards - tens of minutes with nothing to
+    // download. A release this young with no complete installer is treated as
+    // not yet available (no update offered), not as "no installer for your
+    // system". Older than this, a missing installer is a real fault and is
+    // reported as one.
+    static constexpr int kPublishingGraceHours = 6;
 
     // The transport, so a test can answer without a network. Returns the body,
     // and sets the result on failure.

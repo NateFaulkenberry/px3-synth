@@ -231,6 +231,61 @@ void testUpdater()
                   + "; with both offered, chose " + both.release.installerFilename);
     }
 
+    {
+        // A release is published first; CI attaches its installers tens of
+        // minutes later. In that window there is nothing to download, and the
+        // updater must not offer the release (or report an error) until a
+        // complete installer is attached. v0.8.0 shipped without this.
+        const auto now = juce::Time(2026, 9, 4, 20, 0, 0, 0, false);   // 2026-10-04 20:00 UTC
+        const auto at = [](const juce::String& tag, const juce::String& publishedAt, const juce::String& assets,
+                           bool prerelease = false)
+        {
+            return "{\"tag_name\":\"" + tag + "\",\"published_at\":\"" + publishedAt + "\",\"prerelease\":"
+                   + juce::String(prerelease ? "true" : "false") + ",\"body\":\"\",\"assets\":[" + assets + "]}";
+        };
+        const auto stated = [](const juce::String& name, const juce::String& state)
+        {
+            return "{\"name\":\"" + name + "\",\"state\":\"" + state + "\",\"browser_download_url\":"
+                   "\"https://example.invalid/" + name + "\"}";
+        };
+        const auto fresh = juce::String("2026-10-04T19:40:00Z");   // 20 minutes before `now`
+        const auto old = juce::String("2026-10-04T12:00:00Z");     // 8 hours before
+
+        const auto none = GitHubReleaseProvider::parseLatestRelease(at("v0.8.1", fresh, ""), "px3-synth", "macOS", "arm64", now);
+        const auto onlyUninstaller = GitHubReleaseProvider::parseLatestRelease(
+            at("v0.8.1", fresh, stated("PX3-Uninstaller-v0.8.1-macOS.zip", "uploaded")), "px3-synth", "macOS", "arm64", now);
+        const auto inFlight = GitHubReleaseProvider::parseLatestRelease(
+            at("v0.8.1", fresh, stated("PX3-v0.8.1-macOS.pkg", "starter")), "px3-synth", "macOS", "arm64", now);
+        const auto ready = GitHubReleaseProvider::parseLatestRelease(
+            at("v0.8.1", fresh, stated("PX3-v0.8.1-macOS.pkg", "uploaded")), "px3-synth", "macOS", "arm64", now);
+        const auto stale = GitHubReleaseProvider::parseLatestRelease(at("v0.8.1", old, ""), "px3-synth", "macOS", "arm64", now);
+
+        const auto notOffered = [](const UpdateProvider::LookupResult& r) { return r.result.ok() && ! r.release.isValid(); };
+        check("Update_AReleaseStillBeingPublishedIsNotOffered",
+              notOffered(none) && notOffered(onlyUninstaller) && notOffered(inFlight)
+                  && ready.result.ok() && ready.release.isValid()
+                  && stale.result.error == UpdateError::noMatchingInstaller,
+              juce::String("no assets: ") + (notOffered(none) ? "not offered" : "OFFERED/ERROR")
+                  + "; uninstaller only: " + (notOffered(onlyUninstaller) ? "not offered" : "OFFERED/ERROR")
+                  + "; installer still uploading: " + (notOffered(inFlight) ? "not offered" : "OFFERED/ERROR")
+                  + "; installer uploaded: " + (ready.release.isValid() ? "offered" : "NOT OFFERED")
+                  + "; 8 h old with none: " + describe(stale.result.error));
+
+        // The pre-release channel reads the list: a newest release still being
+        // published falls back to the newest one that is complete.
+        const auto list = "[" + at("v0.8.2-beta.1", fresh, "", true) + ","
+                          + at("v0.8.1", old, stated("PX3-v0.8.1-macOS.pkg", "uploaded")) + "]";
+        const auto fromList = GitHubReleaseProvider::parseLatestRelease(list, "px3-synth", "macOS", "arm64", now);
+        check("Update_TheListSkipsAReleaseStillBeingPublished",
+              fromList.result.ok() && fromList.release.version.toString() == "0.8.1",
+              "chose " + (fromList.release.isValid() ? fromList.release.version.toString() : juce::String("nothing")));
+
+        // GitHub's timestamps are UTC.
+        check("Update_ReleaseDatesAreReadAsUtc",
+              ready.release.releaseDate == juce::Time(2026, 9, 4, 19, 40, 0, 0, false),
+              "read " + ready.release.releaseDate.toISO8601(false));
+    }
+
     // ========================================================================
     // The registry
     // ========================================================================

@@ -838,7 +838,27 @@ jobs:
           # uploads instead of erroring. This uploads to the release that
           # already exists; it never creates one, so the notes the developer
           # wrote are untouched.
-          gh release upload "$TAG" assets/* --clobber --repo "$GITHUB_REPOSITORY"
+          # The installers first. An app that checks for updates while this
+          # runs sees the release with whatever has been attached so far; the
+          # updater (0.8.1+) waits for a complete installer, and uploading it
+          # first makes that wait as short as possible for older versions too.
+          # The rest in a second call that does NOT repeat them: --clobber
+          # deletes and re-uploads, which would reopen the gap.
+          shopt -s nullglob
+          first=()
+          rest=()
+          for f in assets/*; do
+            case "$f" in
+              *.pkg|*-Installer.zip) first+=("$f") ;;
+              *) rest+=("$f") ;;
+            esac
+          done
+          if [ ${#first[@]} -gt 0 ]; then
+            gh release upload "$TAG" "${first[@]}" --clobber --repo "$GITHUB_REPOSITORY"
+          fi
+          if [ ${#rest[@]} -gt 0 ]; then
+            gh release upload "$TAG" "${rest[@]}" --clobber --repo "$GITHUB_REPOSITORY"
+          fi
 
       - name: Report signing state on the release run
         env:

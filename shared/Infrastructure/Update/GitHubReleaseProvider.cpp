@@ -47,12 +47,17 @@ juce::Time parseIso8601(const juce::String& text)
     // "2026-09-02T15:41:14Z". Not worth a dependency; a bad date costs a
     // display, not a decision.
     if (text.length() < 19) { return {}; }
+    // GitHub's timestamps are UTC ("Z"); read as local time they were off by
+    // the machine's offset - up to half a day, which matters to the
+    // publishing grace period below.
     return juce::Time(text.substring(0, 4).getIntValue(),
                       juce::jmax(0, text.substring(5, 7).getIntValue() - 1),
                       text.substring(8, 10).getIntValue(),
                       text.substring(11, 13).getIntValue(),
                       text.substring(14, 16).getIntValue(),
-                      text.substring(17, 19).getIntValue());
+                      text.substring(17, 19).getIntValue(),
+                      0,
+                      false);
 }
 } // namespace
 
@@ -272,7 +277,8 @@ UpdateProvider::LookupResult
 GitHubReleaseProvider::parseLatestRelease(const juce::String& jsonText,
                                           const juce::String& productId,
                                           const juce::String& platform,
-                                          const juce::String& architecture)
+                                          const juce::String& architecture,
+                                          juce::Time now)
 {
     LookupResult out;
 
@@ -306,7 +312,7 @@ GitHubReleaseProvider::parseLatestRelease(const juce::String& jsonText,
             // A draft is not published, whatever channel the user is on.
             if (static_cast<bool>(entry.getProperty("draft", false))) { continue; }
 
-            const auto candidate = parseRelease(entry, productId, platform, architecture);
+            const auto candidate = parseRelease(entry, productId, platform, architecture, now);
             if (! candidate.result.ok() || ! candidate.release.isValid()) { continue; }
 
             // Newest by VERSION, not by the order the list arrives in - GitHub
@@ -329,14 +335,15 @@ GitHubReleaseProvider::parseLatestRelease(const juce::String& jsonText,
         return out;
     }
 
-    return parseRelease(document, productId, platform, architecture);
+    return parseRelease(document, productId, platform, architecture, now);
 }
 
 UpdateProvider::LookupResult
 GitHubReleaseProvider::parseRelease(const juce::var& document,
                                     const juce::String& productId,
                                     const juce::String& platform,
-                                    const juce::String& architecture)
+                                    const juce::String& architecture,
+                                    juce::Time now)
 {
     LookupResult out;
 
@@ -383,6 +390,10 @@ GitHubReleaseProvider::parseRelease(const juce::var& document,
         const auto assetUrl = entry.getProperty("browser_download_url", juce::var()).toString();
 
         if (assetUrl.isEmpty()) { continue; }
+        // Still uploading: listed, but not downloadable yet. GitHub reports
+        // "uploaded" once an asset is complete; an older response without the
+        // field is taken as complete.
+        if (entry.hasProperty("state") && entry.getProperty("state", juce::var()).toString() != "uploaded") { continue; }
         if (namesForeignBuild(assetName, platform, architecture)) { continue; }
 
         const auto isPkg = assetName.endsWithIgnoreCase(".pkg");
@@ -411,6 +422,17 @@ GitHubReleaseProvider::parseRelease(const juce::var& document,
 
     if (chosenName.isEmpty())
     {
+        // Published moments ago and CI is still attaching the installers:
+        // nothing to offer YET. Reported as "no release" (an ok result with no
+        // release), so the user reads "you're up to date" rather than an error
+        // or an update with nothing to download.
+        const auto published = parseIso8601(document.getProperty("published_at", juce::var()).toString());
+        const auto age = now - published;
+        if (published.toMilliseconds() > 0 && age.inHours() < static_cast<double>(kPublishingGraceHours))
+        {
+            return out;
+        }
+
         out.result = UpdateResult::failure(UpdateError::noMatchingInstaller,
                                            "release " + tag + " has no installer for "
                                                + platform + "/" + architecture);
