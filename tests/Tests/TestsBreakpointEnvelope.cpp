@@ -731,17 +731,11 @@ void testBreakpointEnvelope()
         {
             for (auto* e : { editorA, editorB, editorC }) { e->setSize(1400, 900); }
 
-            // Whether an instance's own keyboard will spark is the observable
-            // end of the chain, so that is what every case below reads.
+            // What each editor last applied is the observable end of the chain.
             const auto animatesIn = [](PX3SynthAudioProcessorEditor* editor)
             {
-                // Ask the keyboard to spark and see whether it did. When the
-                // preference is off the propagation has already cleared any
-                // live sparks and the spawn is refused, so this reads false;
-                // when it is on the spawn succeeds and it reads true.
-                auto& keyboard = editor->debugPianoKeyboard();
-                keyboard.debugSpawnSparks(60);
-                return keyboard.hasSparks();
+                juce::MessageManager::getInstance()->runDispatchLoopUntil(20);
+                return editor->debugAnimationsApplied();
             };
 
             // A: they start agreeing.
@@ -816,211 +810,83 @@ void testBreakpointEnvelope()
         scratch.deleteFile();
     }
 
-    // ---- a held key still lights up with animations off ---------------------
+    // ---- a held key is pressed in and lit, and still ------------------------
     //
-    // Two halves to this, and they must not be confused: the WIGGLE is an
-    // animation, the colour is feedback. Turning animations off should stop the
-    // key moving without taking away the thing that tells you which note is
-    // sounding.
+    // The keys no longer wiggle or throw sparks: a held key sits a pixel lower
+    // under the key rail's shadow, in its lit colour, and does not move.
     {
-        const auto renderHeldKey = [](bool animations)
+        PianoKeyboard keyboard;
+        keyboard.setSize(900, 120);
+        const auto idle = keyboard.createComponentSnapshot(keyboard.getLocalBounds());
+
+        std::array<bool, PianoKeyboard::totalKeys> held {};
+        std::array<float, PianoKeyboard::totalKeys> velocities {};
+        held[static_cast<std::size_t>(60 - PianoKeyboard::firstMidiNote)] = true;
+        velocities[static_cast<std::size_t>(60 - PianoKeyboard::firstMidiNote)] = 1.0f;
+        keyboard.setActiveNotes(held, velocities);
+
+        const auto first = keyboard.createComponentSnapshot(keyboard.getLocalBounds());
+        for (int i = 0; i < 12; ++i) { keyboard.debugTimerTick(); }
+        const auto second = keyboard.createComponentSnapshot(keyboard.getLocalBounds());
+
+        const auto differing = [](const juce::Image& a, const juce::Image& b)
         {
-            PianoKeyboard keyboard;
-            keyboard.setAnimationsEnabled(animations);
-            keyboard.setSize(900, 120);
-
-            std::array<bool, PianoKeyboard::totalKeys> held {};
-            std::array<float, PianoKeyboard::totalKeys> velocities {};
-            held[static_cast<std::size_t>(60 - PianoKeyboard::firstMidiNote)] = true;
-            velocities[static_cast<std::size_t>(60 - PianoKeyboard::firstMidiNote)] = 1.0f;
-            keyboard.setActiveNotes(held, velocities);
-
-            // Two frames apart: with the wiggle running the key has moved
-            // between them, so the images differ. Static, they are identical.
-            const auto first = keyboard.createComponentSnapshot(keyboard.getLocalBounds());
-            for (int i = 0; i < 12; ++i) { keyboard.debugAdvanceAnimationFrame(); }
-            const auto second = keyboard.createComponentSnapshot(keyboard.getLocalBounds());
-
-            auto movedPixels = 0;
-            for (int y = 0; y < first.getHeight(); y += 2)
-            {
-                for (int x = 0; x < first.getWidth(); x += 2)
-                {
-                    if (first.getPixelAt(x, y) != second.getPixelAt(x, y)) { ++movedPixels; }
-                }
-            }
-            return std::pair<juce::Image, int> { first, movedPixels };
+            auto n = 0;
+            for (int y = 0; y < a.getHeight(); ++y)
+                for (int x = 0; x < a.getWidth(); ++x)
+                    if (a.getPixelAt(x, y) != b.getPixelAt(x, y)) { ++n; }
+            return n;
         };
+        const auto moved = differing(first, second);
+        const auto lit = differing(first, idle);
 
-        const auto animated = renderHeldKey(true);
-        const auto still = renderHeldKey(false);
-
-        check("Keyboard_TheHeldKeyStopsWigglingWithAnimationsOff",
-              animated.second > 0 && still.second == 0,
-              juce::String(animated.second) + " pixels move between frames with animations on, "
-                  + juce::String(still.second) + " with them off");
-
-        // And it is still lit: the held key differs from the same key unheld,
-        // by the same amount either way. Without this the test above would
-        // pass on a keyboard that had stopped drawing the key at all.
-        const auto renderIdleKeyboard = [](bool animations)
+        // Pressed in: the key's top row, just under the rail, is now the
+        // shadow over the lit colour rather than the key's own top edge.
+        const auto keyArea = keyboard.keysArea();
+        const auto whiteWidth = keyArea.getWidth() / static_cast<float>(PianoKeyboard::whiteKeys);
+        auto cX = keyArea.getX();
+        for (int n = PianoKeyboard::firstMidiNote; n < 60; ++n)
         {
-            PianoKeyboard keyboard;
-            keyboard.setAnimationsEnabled(animations);
-            keyboard.setSize(900, 120);
-            return keyboard.createComponentSnapshot(keyboard.getLocalBounds());
-        };
-
-        const auto litPixels = [](const juce::Image& held, const juce::Image& idle)
-        {
-            auto differing = 0;
-            for (int y = 0; y < held.getHeight(); y += 2)
-            {
-                for (int x = 0; x < held.getWidth(); x += 2)
-                {
-                    if (held.getPixelAt(x, y) != idle.getPixelAt(x, y)) { ++differing; }
-                }
-            }
-            return differing;
-        };
-
-        const auto litWithAnimations = litPixels(animated.first, renderIdleKeyboard(true));
-        const auto litWithout = litPixels(still.first, renderIdleKeyboard(false));
-
-        // And it comes to rest in the right PLACE.
-        //
-        // Freezing the wiggle's clock is not the same as not applying it: with
-        // the clock stopped but the offset still applied, the key sits
-        // permanently displaced by whatever phase it happened to stop at. The
-        // check above cannot see that - both frames are identical either way -
-        // so this compares a keyboard that animated for a while before being
-        // turned off against one that never animated at all. They must be the
-        // same picture.
-        {
-            const auto restingImage = [](int framesBeforeTurningOff)
-            {
-                PianoKeyboard keyboard;
-                keyboard.setSize(900, 120);
-
-                std::array<bool, PianoKeyboard::totalKeys> held {};
-                std::array<float, PianoKeyboard::totalKeys> velocities {};
-                held[static_cast<std::size_t>(60 - PianoKeyboard::firstMidiNote)] = true;
-                velocities[static_cast<std::size_t>(60 - PianoKeyboard::firstMidiNote)] = 1.0f;
-                keyboard.setActiveNotes(held, velocities);
-
-                for (int i = 0; i < framesBeforeTurningOff; ++i)
-                {
-                    keyboard.debugAdvanceAnimationFrame();
-                }
-
-                keyboard.setAnimationsEnabled(false);
-                return keyboard.createComponentSnapshot(keyboard.getLocalBounds());
-            };
-
-            const auto neverAnimated = restingImage(0);
-            const auto animatedFirst = restingImage(37);
-
-            auto differing = 0;
-            for (int y = 0; y < neverAnimated.getHeight(); y += 2)
-            {
-                for (int x = 0; x < neverAnimated.getWidth(); x += 2)
-                {
-                    if (neverAnimated.getPixelAt(x, y) != animatedFirst.getPixelAt(x, y))
-                    {
-                        ++differing;
-                    }
-                }
-            }
-
-            check("Keyboard_TheHeldKeyRestsInThePlaceItBelongs",
-                  differing == 0,
-                  differing == 0
-                      ? "the key rests in the same place however long it animated first"
-                      : juce::String(differing) + " pixels differ, so it froze mid-wiggle");
+            const auto s = n % 12;
+            if (! (s == 1 || s == 3 || s == 6 || s == 8 || s == 10)) { cX += whiteWidth; }
         }
+        const auto probe = juce::Point<int>(juce::roundToInt(cX + whiteWidth * 0.5f), juce::roundToInt(keyArea.getCentreY()));
+        const auto topProbe = juce::Point<int>(probe.x, juce::roundToInt(keyArea.getY() + 2.0f));
+        const auto shadowed = first.getPixelAt(topProbe.x, topProbe.y).getBrightness()
+                              < first.getPixelAt(probe.x, probe.y).getBrightness() - 0.03f;
 
-        check("Keyboard_TheHeldKeyStillLightsUpWithAnimationsOff",
-              litWithout > 0 && std::abs(litWithout - litWithAnimations) < litWithAnimations / 2 + 8,
-              juce::String(litWithout) + " pixels mark the held key with animations off, against "
-                  + juce::String(litWithAnimations) + " with them on");
+        check("Keyboard_AHeldKeyIsPressedInLitAndStill", moved == 0 && lit > 0 && shadowed,
+              juce::String(lit) + " pixels mark the held key, " + juce::String(moved)
+                  + " move over 12 ticks, rail shadow " + (shadowed ? "present" : "MISSING"));
     }
 
-    // ---- the animation preference reaches the things that animate -----------
+    // ---- the animation preference reaches the editor -------------------------
     //
-    // Checked THROUGH THE EDITOR, which is the part that was broken while the
-    // component-level tests passed: PianoKeyboard and PerformanceControls have
-    // to be told, and the push lived in the constructor instead of the tick, so
-    // toggling the setting never reached them. The logo reads the flag itself
-    // and so appeared to work, which is exactly what made the fault look like
-    // "only the logo is gated".
+    // Checked THROUGH THE EDITOR: the push once lived in the constructor
+    // instead of the listener, so toggling the setting never reached it.
     {
         PX3SynthAudioProcessor processor;
-        processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
-        processor.prepareToPlay(kSampleRate, kBlockSize);
-
         std::unique_ptr<juce::AudioProcessorEditor> base(processor.createEditor());
         auto* editor = dynamic_cast<PX3SynthAudioProcessorEditor*>(base.get());
-
         if (editor != nullptr)
         {
-            editor->setSize(1400, 900);
-
-            auto& keyboard = editor->debugPianoKeyboard();
-
-            // Long enough for the editor's timer to tick at least once.
-            const auto settle = []
-            { juce::MessageManager::getInstance()->runDispatchLoopUntil(120); };
-
+            const auto settle = [] { juce::MessageManager::getInstance()->runDispatchLoopUntil(120); };
             settle();
-            keyboard.debugSpawnSparks(60);
-            const auto sparkedWhileOn = keyboard.hasSparks();
-
+            const auto onAtFirst = editor->debugAnimationsApplied();
             px3::GlobalSettings::getInstance().setAnimationsEnabled(false);
             settle();
-
-            const auto clearedByTheSetting = ! keyboard.hasSparks();
-
-            keyboard.debugSpawnSparks(60);
-            const auto sparkedWhileOff = keyboard.hasSparks();
-
+            const auto offApplied = ! editor->debugAnimationsApplied();
             px3::GlobalSettings::getInstance().setAnimationsEnabled(true);
             settle();
-            keyboard.debugSpawnSparks(60);
-            const auto sparkedAgain = keyboard.hasSparks();
-
-            check("Settings_TurningAnimationsOffReachesTheKeyboard",
-                  sparkedWhileOn && clearedByTheSetting && ! sparkedWhileOff && sparkedAgain,
-                  juce::String(sparkedWhileOn ? "sparks while on" : "no sparks even while on")
-                      + ", " + (clearedByTheSetting ? "cleared when turned off"
-                                                    : "left running when turned off")
-                      + ", " + (sparkedWhileOff ? "still sparks while off" : "silent while off")
-                      + ", " + (sparkedAgain ? "sparks again when re-enabled"
-                                             : "stayed silent when re-enabled"));
+            const auto onAgain = editor->debugAnimationsApplied();
+            check("Settings_TurningAnimationsOffReachesTheEditor", onAtFirst && offApplied && onAgain,
+                  juce::String(onAtFirst ? "on" : "OFF") + " at first, " + (offApplied ? "off" : "STILL ON")
+                      + " after turning off, " + (onAgain ? "on" : "OFF") + " again");
         }
     }
 
     // ---- SETTINGS: what the two controls actually do ------------------------
     {
-        // ---- animations ----------------------------------------------------
-        {
-            PianoKeyboard keyboard;
-            keyboard.setSize(600, 80);
-
-            keyboard.debugSpawnSparks(60);
-            const auto sparkedWhenOn = keyboard.hasSparks();
-
-            keyboard.setAnimationsEnabled(false);
-            const auto clearedWhenTurnedOff = ! keyboard.hasSparks();
-            keyboard.debugSpawnSparks(60);
-            const auto sparkedWhenOff = keyboard.hasSparks();
-
-            check("Settings_TheKeyboardStopsSparkingWhenAnimationsAreOff",
-                  sparkedWhenOn && clearedWhenTurnedOff && ! sparkedWhenOff,
-                  juce::String(sparkedWhenOn ? "sparks when on" : "no sparks even when on")
-                      + ", " + (clearedWhenTurnedOff ? "cleared on turning off" : "left running")
-                      + ", " + (sparkedWhenOff ? "still sparks when off" : "silent when off"));
-        }
-
         // ---- the setting itself, and where it is kept ----------------------
         {
             PX3SynthAudioProcessor processor;

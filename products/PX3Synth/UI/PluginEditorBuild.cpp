@@ -128,7 +128,6 @@ void PX3SynthAudioProcessorEditor::buildImagesAndMasks()
 
     addAndMakeVisible(performanceControls);
     addAndMakeVisible(pianoKeyboard);
-    addAndMakeVisible(sparkOverlay);
     addChildComponent(noticeBanner);
 
 }
@@ -137,10 +136,6 @@ void PX3SynthAudioProcessorEditor::buildImagesAndMasks()
 // The keyboard and the performance strip, and what the editor does when they move.
 void PX3SynthAudioProcessorEditor::buildKeyboardCallbacks()
 {
-    // Each animator asks the overlay to repaint; neither draws its own
-    // particles any more.
-    pianoKeyboard.onSparksChanged = [this]() { sparkOverlay.repaintParticles(); };
-
     performanceControls.onPitchBendChanged = [this](float normalized)
     {
         audioProcessor.setPitchBendNormalizedFromUI(normalized);

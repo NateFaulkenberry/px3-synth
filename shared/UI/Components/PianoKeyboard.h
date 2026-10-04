@@ -84,10 +84,6 @@ public:
         // The veil over a keyboard that cannot sound.
         juce::Colour silencedVeil { juce::Colour::fromRGBA(0, 0, 0, 110) };
 
-        // Spark tint per key colour, so the animation belongs to the key it
-        // came off.
-        juce::Colour whiteSparkColour { juce::Colour::fromRGB(255, 220, 120) };
-        juce::Colour blackSparkColour { juce::Colour::fromRGB(225, 95, 75) };
 
         static Style fromConfig(const UIConfig* config, const juce::String& prefix);
     };
@@ -95,8 +91,7 @@ public:
     void setStyle(const Style& style);
 
     // The keys. Kept as a named accessor because the editor's performance
-    // strip is drawn around it, and because it used to be narrower than the
-    // component - it no longer is, now that the sparks live in the overlay.
+    // strip is drawn around it.
     juce::Rectangle<int> keyboardArea() const;
     juce::Rectangle<float> keysArea() const;
     // The end cheek, shared with the wheels so the bottom row ends the same at
@@ -123,37 +118,9 @@ public:
     bool isSilenced() const noexcept { return silenced; }
 
     void paint(juce::Graphics& g) override;
-    // Draws this keyboard's sparks into another component's graphics context,
-    // translated by `offset`. See the definition for why they do not belong to
-    // this component's own paint any more.
-    void paintSparksInto(juce::Graphics& g, juce::Point<int> offset) const;
-    bool hasSparks() const noexcept { return ! sparks.empty(); }
+    // For the tests: one tick of the keyboard's clock, without waiting on it.
+    void debugTimerTick() { timerCallback(); }
 
-    // Off means no new sparks and none left running. Gated at the SOURCE
-    // rather than at the draw: a keyboard that keeps spawning particles nobody
-    // paints is still doing the work every frame, and turning animations off
-    // is meant to stop the work, not hide it.
-    void setAnimationsEnabled(bool shouldBeEnabled);
-
-    // For the tests: fire a burst directly, without needing a real key press
-    // routed through the mouse or MIDI.
-    void debugSpawnSparks(int midiNote) { spawnLightningBurst(midiNote, false, 1.0f); }
-
-    // For the tests: one animation frame, without waiting on the timer.
-    void debugAdvanceAnimationFrame() { timerCallback(); }
-    // The area the live sparks actually occupy, in this component's
-    // coordinates. Empty when there are none.
-    juce::Rectangle<float> sparkBounds() const;
-    // Raised on every animation frame that changed something, so the overlay
-    // that draws the sparks knows to repaint.
-    std::function<void()> onSparksChanged;
-
-private:
-    bool animationsEnabled { true };
-
-public:
-    // The headroom is not part of the instrument, so clicks pass through it to
-    // whatever is behind.
     void mouseDown(const juce::MouseEvent& event) override;
     void mouseDrag(const juce::MouseEvent& event) override;
     void mouseUp(const juce::MouseEvent& event) override;
@@ -167,21 +134,9 @@ private:
         juce::Rectangle<float> bounds;
     };
 
-    struct Spark
-    {
-        juce::Point<float> position;
-        juce::Point<float> velocity;
-        juce::Colour colour;
-        float lifetimeSeconds { 0.0f };
-        float maxLifetimeSeconds { 0.0f };
-        float width { 1.0f };
-        float segmentLength { 6.0f };
-        float zigzagAmplitude { 2.0f };
-    };
-
     void paintKeyboard(juce::Graphics& g);
+    static void paintPressShadow(juce::Graphics& g, juce::Rectangle<float> key);
     void timerCallback() override;
-    void spawnLightningBurst(int midiNote, bool isBlackKey, float velocityNorm);
     bool getKeyBoundsForNote(int midiNote, juce::Rectangle<float>& bounds, bool& isBlack) const;
     int midiNoteAt(juce::Point<float> position) const;
 
@@ -190,11 +145,7 @@ private:
     static juce::String noteNameFor(int midiNote);
 
     std::array<bool, totalKeys> activeNotes {};
-    std::array<bool, totalKeys> previousActiveNotes {};
     std::array<float, totalKeys> noteVelocities {};
-    std::vector<Spark> sparks;
-    juce::Random rng;
-    float vibrationPhase { 0.0f };
     int heldMidiNote { -1 };
     float clickVelocityNorm { 0.65f };
     bool silenced { false };
@@ -221,6 +172,5 @@ public:
 
 private:
     Style style;
-    bool hadSparksLastFrame { false };
     WarningStyle warningStyle;
 };

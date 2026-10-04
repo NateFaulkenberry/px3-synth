@@ -490,7 +490,6 @@ void PX3SynthAudioProcessorEditor::applySceneLayout()
     const auto performanceShown = isPerformanceSectionShown();
     pianoKeyboard.setVisible(performanceShown);
     performanceControls.setVisible(performanceShown);
-    sparkOverlay.setVisible(performanceShown);
 
     // OSC, FILTER and AMP share one row. On OSC at a size that fits, all three
     // show (the composite); otherwise the selected one takes the row. Off the
@@ -541,19 +540,11 @@ void PX3SynthAudioProcessorEditor::applySceneLayout()
 
     if (! performanceShown)
     {
-        sparkOverlay.setBounds({});
         return;
     }
 
-    // The spark overlay is a decoration over the keyboard row plus the room
-    // the keys' sparks rise into; it takes no clicks.
-    const auto keyboardRow = rect("keys");
-    const auto headroom = juce::jmin(keyboardSparkHeadroom, controlsArea.getHeight());
-    sparkOverlay.setBounds(keyboardRow.withTop(keyboardRow.getY() - headroom)
-                               .getIntersection(getLocalBounds()));
     pianoKeyboard.toFront(false);
     performanceControls.toFront(false);
-    sparkOverlay.toFront(false);
     // Raising the keyboard row put it above an open macro depth panel and its
     // scrim, which are not always-on-top: after a resize the keys and wheels
     // took the clicks that should have dismissed the panel.
@@ -608,16 +599,6 @@ void PX3SynthAudioProcessorEditor::applyUiConfig()
     applyUILayoutSectionOrder();
     applyInstrumentSceneStyles();
     {
-        // How far above the keys the sparks are allowed to travel. The keyboard
-        // component is grown upward by this much and draws the keys at the
-        // bottom of itself; the headroom is transparent and passes clicks
-        // through. 0 restores the old behaviour, where sparks were clipped at
-        // the top edge of the keys.
-        // Sized from the spark physics, not from taste: the burst runs at 60 Hz
-        // with a starting speed of up to 8.4 px/frame decaying by 0.93 each
-        // frame, over a lifetime of up to 0.45 s. That integrates to about
-        // 102 px of travel, which is why the first value of 46 still clipped.
-        keyboardSparkHeadroom = uiConfig != nullptr ? uiConfig->getInt("keyboard.sparkHeadroom", 112) : 112;
         // The instrument and the wheels, both fully styled from config.
         pianoKeyboard.setStyle(PianoKeyboard::Style::fromConfig(uiConfig.get(), "keyboard"));
         performanceControls.setStyle(PerformanceControls::Style::fromConfig(uiConfig.get(), "performance"));

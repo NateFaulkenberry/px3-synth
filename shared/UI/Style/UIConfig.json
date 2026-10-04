@@ -72,11 +72,6 @@
       "fontSize": 11
     },
     "silencedVeil": "#0000006E",
-    "sparks": {
-      "whiteKeyColor": "#FFDC78",
-      "blackKeyColor": "#E15F4B"
-    },
-    "sparkHeadroom": 112,
     "warning": {
       "align": "center",
       "fontSize": 15,

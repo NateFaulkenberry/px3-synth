@@ -114,7 +114,7 @@ void testKeyboardNotes()
         auto pressed = -1, released = -1, releases = 0;
         pressAKey(keyboard, pressed, released, releases);
         const auto releasedBeforeFrame = released;
-        keyboard.debugAdvanceAnimationFrame();
+        keyboard.debugTimerTick();
 
         check("Keyboard_AMouseUpThatNeverArrivesIsReleasedOnTheNextFrame",
               pressed >= PianoKeyboard::firstMidiNote && releasedBeforeFrame == -1 && released == pressed,

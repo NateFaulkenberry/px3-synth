@@ -9,9 +9,9 @@
 PianoKeyboard::PianoKeyboard()
 {
     activeNotes.fill(false);
-    previousActiveNotes.fill(false);
     noteVelocities.fill(0.0f);
-    startTimerHz(60);
+    // Only to notice a press whose mouse-up never arrived (see timerCallback).
+    startTimerHz(10);
 }
 
 void PianoKeyboard::setActiveNotes(const std::array<bool, PianoKeyboard::totalKeys>& noteStates,
@@ -54,8 +54,6 @@ void PianoKeyboard::paintEndCheek(juce::Graphics& g, juce::Rectangle<float> chee
 
 void PianoKeyboard::paintKeyboard(juce::Graphics& g)
 {
-    // Only the keyboard's own rectangle is filled. fillAll would paint the
-    // spark headroom too, which sits over the panel above.
     g.setColour(style.background.withMultipliedAlpha(juce::jlimit(0.0f, 1.0f, style.backgroundOpacity)));
     px3::ui::fillRounded(g, keyboardArea().toFloat(), style.backgroundRadius);
 
@@ -112,16 +110,14 @@ void PianoKeyboard::paintKeyboard(juce::Graphics& g)
     {
         const auto noteIndex = key.midiNote - firstMidiNote;
         const auto isActive = activeNotes[static_cast<std::size_t>(noteIndex)];
-        // The held key LIGHTS UP either way; only the wiggle is an animation.
-        // Turning animations off should not cost you the feedback that tells
-        // you which note is sounding.
-        const auto shaking = isActive && animationsEnabled;
-        const auto shakeX = shaking ? std::sin(vibrationPhase * 10.5f + static_cast<float>(key.midiNote) * 0.73f) * 1.3f : 0.0f;
-        const auto shakeY = shaking ? std::cos(vibrationPhase * 8.1f + static_cast<float>(key.midiNote) * 0.51f) * 0.45f : 0.0f;
-        const auto drawBounds = key.bounds.translated(shakeX, shakeY);
+        // A held key is pressed in and lit: it drops a pixel from the key
+        // rail and the rail casts a short shadow onto it. Still - nothing
+        // moves while it is held.
+        const auto drawBounds = isActive ? key.bounds.withTrimmedTop(1.0f) : key.bounds;
 
         g.setColour(isActive ? style.whiteActiveFill : style.whiteFill);
         px3::ui::fillRounded(g, drawBounds, style.whiteRadius);
+        if (isActive) { paintPressShadow(g, drawBounds); }
 
         g.setColour(style.whiteBorder);
         px3::ui::drawRounded(g, drawBounds, style.whiteRadius, style.whiteBorderWidth);
@@ -144,13 +140,13 @@ void PianoKeyboard::paintKeyboard(juce::Graphics& g)
     {
         const auto noteIndex = key.midiNote - firstMidiNote;
         const auto isActive = activeNotes[static_cast<std::size_t>(noteIndex)];
-        const auto shaking = isActive && animationsEnabled;
-        const auto shakeX = shaking ? std::sin(vibrationPhase * 11.7f + static_cast<float>(key.midiNote) * 0.57f) * 0.9f : 0.0f;
-        const auto shakeY = shaking ? std::cos(vibrationPhase * 9.6f + static_cast<float>(key.midiNote) * 0.63f) * 0.35f : 0.0f;
-        const auto drawBounds = key.bounds.translated(shakeX, shakeY);
+        // Pressed, a black key's front tips down out of view: it reads a
+        // little shorter from above.
+        const auto drawBounds = isActive ? key.bounds.withTrimmedTop(1.0f).withTrimmedBottom(2.0f) : key.bounds;
 
         g.setColour(isActive ? style.blackActiveFill : style.blackFill);
         px3::ui::fillRounded(g, drawBounds, style.blackRadius);
+        if (isActive) { paintPressShadow(g, drawBounds); }
 
         g.setColour(style.blackBorder);
         px3::ui::drawRounded(g, drawBounds, style.blackRadius, style.blackBorderWidth);
@@ -158,125 +154,13 @@ void PianoKeyboard::paintKeyboard(juce::Graphics& g)
 
 }
 
-// The keys occupy the whole component again. They stopped doing so when the
-// sparks needed room to spill into; now that the sparks are drawn by the
-// overlay above, the component is just the instrument.
-// Sparks are painted by the shared overlay above the keyboard row, not by the
-// keyboard itself.
-//
-// Two components were each spilling particles over the other - the keys over
-// the wheels, the wheels over the keys - and z-order can only ever favour one,
-// so whichever went in front hid the other's particles behind its own opaque
-// face. A single transparent layer above both is the only arrangement where
-// neither loses.
-//
-// `offset` translates from this component's coordinates into the overlay's.
-// The box the live sparks occupy. The overlay repaints only this, rather than
-// the whole strip: it is transparent, so repainting it costs a redraw of
-// everything beneath it too - measured at 3.6 ms for the full region, which is
-// 22% of a 60 Hz frame spent redrawing a mixer panel that did not change.
-//
-// Each spark contributes its OWN reach rather than a shared worst case. A bolt
-// is drawn forward from its position over four segments of its own length, with
-// its own zigzag either side and its own stroke width, so a single constant is
-// either too small for the biggest bolt or far too large for the rest. It was
-// too small - 56 px against a true maximum of 62.9 - and the far end of a long
-// bolt was drawn outside the region that ever gets erased, which is precisely
-// how a fragment gets left behind on screen.
-juce::Rectangle<float> PianoKeyboard::sparkBounds() const
+// The key rail's shadow on a key that has gone down.
+void PianoKeyboard::paintPressShadow(juce::Graphics& g, juce::Rectangle<float> key)
 {
-    if (sparks.empty())
-    {
-        return {};
-    }
-
-    juce::Rectangle<float> bounds;
-    auto first = true;
-
-    for (const auto& spark : sparks)
-    {
-        // Four segments along the direction of travel, plus the zigzag either
-        // side of it and half the outer stroke. Taken as a radius because the
-        // direction is arbitrary.
-        const auto reach = spark.segmentLength * 4.0f
-                           + spark.zigzagAmplitude
-                           + spark.width * 1.45f * 0.5f
-                           + 2.0f;
-
-        const auto box = juce::Rectangle<float>(spark.position, spark.position).expanded(reach);
-        bounds = first ? box : bounds.getUnion(box);
-        first = false;
-    }
-
-    return bounds;
-}
-
-void PianoKeyboard::paintSparksInto(juce::Graphics& g, juce::Point<int> offset) const
-{
-    if (sparks.empty())
-    {
-        return;
-    }
-
-    juce::Graphics::ScopedSaveState state(g);
-    g.addTransform(juce::AffineTransform::translation(static_cast<float>(offset.getX()),
-                                                      static_cast<float>(offset.getY())));
-
-    // Only the sparks this paint can show. The overlay is painted once per
-    // dirty rectangle it touches - the LFO and wave displays above the keys
-    // are rectangles of their own - and drawing all of up to 450 sparks into
-    // each, clipped, was most of the editor's CPU with a chord held.
-    const auto clip = g.getClipBounds().toFloat();
-
-    for (const auto& spark : sparks)
-    {
-        const auto reach = 4.0f * (spark.segmentLength + std::abs(spark.zigzagAmplitude)) + spark.width * 1.45f + 2.0f;
-        if (! clip.intersects(juce::Rectangle<float>(spark.position, spark.position).expanded(reach)))
-        {
-            continue;
-        }
-
-        const auto lifeDivisor = (spark.maxLifetimeSeconds > 0.0001f) ? spark.maxLifetimeSeconds : 0.0001f;
-        auto lifeNorm = spark.lifetimeSeconds / lifeDivisor;
-        lifeNorm = (lifeNorm < 0.0f) ? 0.0f : lifeNorm;
-        lifeNorm = (lifeNorm > 1.0f) ? 1.0f : lifeNorm;
-        const auto alpha = lifeNorm;
-        const auto colour = spark.colour.withMultipliedAlpha(alpha);
-
-        const auto velocityLen = std::sqrt(spark.velocity.getX() * spark.velocity.getX()
-                                           + spark.velocity.getY() * spark.velocity.getY());
-        if (velocityLen <= 0.0001f)
-        {
-            continue;
-        }
-
-        const auto direction = spark.velocity / velocityLen;
-        const auto perp = juce::Point<float>(-direction.getY(), direction.getX());
-
-        juce::Path bolt;
-        bolt.startNewSubPath(spark.position);
-
-        auto current = spark.position;
-        for (int seg = 0; seg < 4; ++seg)
-        {
-            const auto zigSign = (seg % 2 == 0) ? 1.0f : -1.0f;
-            const auto zigAmount = spark.zigzagAmplitude * zigSign * (0.85f + 0.15f * lifeNorm);
-            const auto next = current + (direction * spark.segmentLength) + (perp * zigAmount);
-            bolt.lineTo(next);
-            current = next;
-        }
-
-        g.setColour(colour.withMultipliedAlpha(0.42f));
-        const auto outerWidth = (spark.width * 1.45f * alpha > 1.0f) ? spark.width * 1.45f * alpha : 1.0f;
-        g.strokePath(bolt, juce::PathStrokeType(outerWidth));
-
-        g.setColour(colour);
-        const auto innerWidth = (spark.width * alpha > 0.9f) ? spark.width * alpha : 0.9f;
-        g.strokePath(bolt, juce::PathStrokeType(innerWidth));
-
-        g.setColour(colour.withMultipliedAlpha(0.65f * alpha));
-        g.fillEllipse(spark.position.getX() - 1.1f, spark.position.getY() - 1.1f, 2.2f, 2.2f);
-    }
+    const auto depth = juce::jmin(5.0f, key.getHeight() * 0.25f);
+    g.setGradientFill(juce::ColourGradient(juce::Colours::black.withAlpha(0.30f), 0.0f, key.getY(),
+                                           juce::Colours::transparentBlack, 0.0f, key.getY() + depth, false));
+    g.fillRect(key.withHeight(depth));
 }
 
 namespace
@@ -334,8 +218,6 @@ PianoKeyboard::Style PianoKeyboard::Style::fromConfig(const UIConfig* config, co
     s.labelSize = styleFloat(config, prefix + ".label.fontSize", s.labelSize);
 
     s.silencedVeil = styleColour(config, prefix + ".silencedVeil", s.silencedVeil);
-    s.whiteSparkColour = styleColour(config, prefix + ".sparks.whiteKeyColor", s.whiteSparkColour);
-    s.blackSparkColour = styleColour(config, prefix + ".sparks.blackKeyColor", s.blackSparkColour);
     return s;
 }
 
@@ -367,25 +249,13 @@ void PianoKeyboard::setSilenced(bool shouldBeSilenced)
 
     if (silenced)
     {
-        // Drop everything in flight. A key held when the last oscillator was
-        // bypassed would otherwise stay lit under the grey, and its sparks
-        // would keep animating over a keyboard that can no longer sound.
-        sparks.clear();
+        // Drop everything held. A key held when the last oscillator was
+        // bypassed would otherwise stay lit under the grey.
         // Released, not just forgotten: dropping the key here without its
         // note-off left the note sounding and the key held for good.
         releaseHeldNote();
         activeNotes.fill(false);
-        previousActiveNotes.fill(false);
         noteVelocities.fill(0.0f);
-
-        // The sparks are drawn on the overlay above, so clearing them here and
-        // repainting THIS component leaves the last frame of them on screen
-        // over a greyed-out keyboard. The overlay has to be told.
-        if (onSparksChanged != nullptr)
-        {
-            onSparksChanged();
-        }
-        hadSparksLastFrame = false;
     }
 
     // The timer is deliberately NOT stopped and restarted here. A component
@@ -619,154 +489,6 @@ void PianoKeyboard::timerCallback()
     if (heldMidiNote >= 0 && ! juce::ModifierKeys::getCurrentModifiersRealtime().isAnyMouseButtonDown())
     {
         releaseHeldNote();
-    }
-
-    if (silenced)
-    {
-        // Nothing to advance: no sparks, no held keys, no vibration. But if
-        // anything was drawn on the overlay last frame it still has to be
-        // cleared, or it stays there for as long as the keyboard is silent.
-        if (hadSparksLastFrame && onSparksChanged != nullptr)
-        {
-            onSparksChanged();
-            hadSparksLastFrame = false;
-        }
-        return;
-    }
-
-
-    constexpr float dt = 1.0f / 60.0f;
-
-    // The wiggle's clock. Left alone when animations are off, so it does not
-    // wander while nothing reads it and the keys do not jump when it comes
-    // back on.
-    if (animationsEnabled)
-    {
-        vibrationPhase += dt;
-    }
-
-    bool anyActive = false;
-
-    for (int midiNote = firstMidiNote; midiNote <= lastMidiNote; ++midiNote)
-    {
-        const auto index = static_cast<std::size_t>(midiNote - firstMidiNote);
-        const auto isActive = activeNotes[index];
-        const auto velocityNorm = juce::jlimit(0.0f, 1.0f, noteVelocities[index]);
-
-        if (isActive)
-        {
-            anyActive = true;
-        }
-
-        if (isActive && !previousActiveNotes[index])
-        {
-            spawnLightningBurst(midiNote, isBlackKey(midiNote), velocityNorm);
-        }
-
-        const auto sustainSpawnChance = 0.05f + 0.35f * velocityNorm;
-
-        if (isActive && rng.nextFloat() < sustainSpawnChance)
-        {
-            spawnLightningBurst(midiNote, isBlackKey(midiNote), velocityNorm);
-        }
-
-        previousActiveNotes[index] = isActive;
-    }
-
-    for (auto& spark : sparks)
-    {
-        spark.position += spark.velocity;
-        spark.velocity *= 0.93f;
-        spark.lifetimeSeconds -= dt;
-    }
-
-    sparks.erase(std::remove_if(sparks.begin(),
-                                sparks.end(),
-                                [](const Spark& spark) { return spark.lifetimeSeconds <= 0.0f; }),
-                 sparks.end());
-
-    if (sparks.size() > 450)
-    {
-        sparks.erase(sparks.begin(), sparks.begin() + static_cast<std::ptrdiff_t>(sparks.size() - 450));
-    }
-
-    // Only while something is actually moving. With animations off the held
-    // key is a static colour, and setActiveNotes already repaints when a key
-    // goes down or comes up - so repainting the whole keyboard sixty times a
-    // second would be redrawing an unchanged picture.
-    if (anyActive && animationsEnabled)
-    {
-        repaint();
-    }
-
-    // The sparks live in the overlay above, so a frame that only moved them
-    // repaints that rather than the keyboard.
-    //
-    // Reported for one frame AFTER the last spark dies as well, or the overlay
-    // is never told to clear the final one and it stays on screen.
-    if ((! sparks.empty() || hadSparksLastFrame) && onSparksChanged != nullptr)
-    {
-        onSparksChanged();
-    }
-    hadSparksLastFrame = ! sparks.empty();
-}
-
-void PianoKeyboard::setAnimationsEnabled(bool shouldBeEnabled)
-{
-    if (animationsEnabled == shouldBeEnabled) { return; }
-
-    animationsEnabled = shouldBeEnabled;
-
-    if (! animationsEnabled)
-    {
-        sparks.clear();
-        if (onSparksChanged != nullptr) { onSparksChanged(); }
-    }
-}
-
-void PianoKeyboard::spawnLightningBurst(int midiNote, bool keyIsBlack, float velocityNorm)
-{
-    if (! animationsEnabled) { return; }
-
-    juce::Rectangle<float> keyBounds;
-    bool actualBlack = false;
-
-    if (!getKeyBoundsForNote(midiNote, keyBounds, actualBlack))
-    {
-        return;
-    }
-
-    juce::ignoreUnused(keyIsBlack);
-
-    const auto intensity = juce::jlimit(0.1f, 1.0f, velocityNorm);
-
-    const auto colour = actualBlack ? style.blackSparkColour : style.whiteSparkColour;
-
-    const auto sparkCount = juce::jlimit(1, 6, static_cast<int>(std::lround(1.0 + intensity * 5.0)));
-
-    for (int i = 0; i < sparkCount; ++i)
-    {
-        const auto centerX = keyBounds.getCentreX();
-        const auto centerY = keyBounds.getCentreY();
-        const auto spreadX = keyBounds.getWidth() * (actualBlack ? 0.95f : 0.80f);
-        const auto spreadY = keyBounds.getHeight() * (actualBlack ? 0.62f : 0.52f);
-
-        const auto spawnX = centerX + (rng.nextFloat() * 2.0f - 1.0f) * spreadX;
-        const auto spawnY = centerY + (rng.nextFloat() * 2.0f - 1.0f) * spreadY;
-
-        const auto angle = rng.nextFloat() * juce::MathConstants<float>::twoPi;
-        const auto speed = (1.4f + rng.nextFloat() * 4.2f) * (0.55f + intensity * 0.95f);
-
-        Spark spark;
-        spark.position = { spawnX, spawnY };
-        spark.velocity = { std::cos(angle) * speed, std::sin(angle) * speed };
-        spark.colour = colour;
-        spark.lifetimeSeconds = (0.10f + rng.nextFloat() * 0.24f) * (0.62f + intensity * 0.70f);
-        spark.maxLifetimeSeconds = spark.lifetimeSeconds;
-        spark.width = (0.9f + rng.nextFloat() * 2.0f) * (0.55f + intensity * 0.85f);
-        spark.segmentLength = (4.0f + rng.nextFloat() * 7.0f) * (0.60f + intensity * 0.75f);
-        spark.zigzagAmplitude = (1.2f + rng.nextFloat() * 4.2f) * (0.55f + intensity * 0.90f);
-        sparks.push_back(spark);
     }
 }
 

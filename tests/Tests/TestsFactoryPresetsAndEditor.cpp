@@ -907,10 +907,6 @@ void testEditorLifecycle()
         // A row across the middle of the KEYS, counted against the grey the
         // silenced keyboard is filled with. Only meaningful while silenced.
         //
-        // The keys are not the middle of the component: it is grown upward by
-        // the spark headroom, which is transparent, so the component's own
-        // centre line sits above the keyboard and crosses neither the keys nor
-        // the warning box.
         auto brightPixelsAcrossTheMiddle = [](PianoKeyboard& keys)
         {
             const auto area = keys.keyboardArea();
@@ -946,27 +942,13 @@ void testEditorLifecycle()
         const auto osc2Only = silencedWith(false, true, false, false);
 
         {
-            // The sparks used to be clipped at the top edge of the keys, because
-            // a component cannot paint outside its own bounds. The component is
-            // now taller than the keyboard it draws, and the extra strip has to
-            // be BOTH transparent to the mouse and outside the keyboard area -
-            // otherwise it would eat clicks meant for the panel above it.
             setParam(processor, "voice.osc1.enabled", 1.0f);
             std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
             editor->setSize(1320, 798);
             editor->setVisible(true);
 
             auto* keys = keyboardOf(*editor);
-            // Particles are drawn by a shared overlay above BOTH the keyboard
-            // and the wheels.
-            //
-            // They used to be drawn inside each component, which meant each had
-            // to be grown outward to give them room - and since the two
-            // overlap, z-order could only ever favour one. The keyboard's
-            // sparks ended up behind the wheels' opaque face. One transparent
-            // layer above the pair is the only arrangement where neither loses.
             PerformanceControls* wheels = nullptr;
-            juce::Component* overlay = nullptr;
             {
                 std::function<void(juce::Component&)> walk = [&](juce::Component& root)
                 {
@@ -974,45 +956,13 @@ void testEditorLifecycle()
                     {
                         if (child == nullptr) continue;
                         if (auto* p = dynamic_cast<PerformanceControls*>(child)) wheels = p;
-                        if (child->getName() == "SparkOverlay") overlay = child;
                         walk(*child);
                     }
                 };
                 walk(*editor);
             }
 
-            const auto coversBoth = overlay != nullptr && keys != nullptr && wheels != nullptr
-                                    && overlay->getBounds().contains(keys->getBounds())
-                                    && overlay->getBounds().contains(wheels->getBounds());
-
-            // Room above the keys is the point of it, so it has to extend past
-            // them rather than merely wrap them.
-            const auto reachesAbove = overlay != nullptr && keys != nullptr
-                                      && overlay->getY() < keys->getY();
-
-            check("SparkOverlay_CoversBothAnimatorsWithRoomToSpare",
-                  coversBoth && reachesAbove,
-                  overlay == nullptr
-                      ? juce::String("no SparkOverlay in the editor")
-                      : "overlay " + overlay->getBounds().toString() + " over keys "
-                            + (keys != nullptr ? keys->getBounds().toString() : juce::String("none"))
-                            + " and wheels "
-                            + (wheels != nullptr ? wheels->getBounds().toString() : juce::String("none")));
-
-            // Above both in z-order, or it would be drawn under the very
-            // components whose particles it exists to lift clear.
-            const auto overlayIndex = overlay != nullptr ? editor->getIndexOfChildComponent(overlay) : -1;
-            const auto keysIndex = keys != nullptr ? editor->getIndexOfChildComponent(keys) : -1;
-            const auto wheelsIndex = wheels != nullptr ? editor->getIndexOfChildComponent(wheels) : -1;
-
-            check("SparkOverlay_SitsAboveBothOfThem",
-                  overlayIndex > keysIndex && overlayIndex > wheelsIndex,
-                  "child order - overlay " + juce::String(overlayIndex) + ", keys "
-                      + juce::String(keysIndex) + ", wheels " + juce::String(wheelsIndex)
-                      + " (a HIGHER index is nearer the front in JUCE - child 0 is the back)");
-
-            // And invisible to the mouse. It covers both of them completely, so
-            // if it took a single click neither would work at all.
+            // The keyboard and the wheels each take their own clicks.
             const auto ownerOf = [](juce::Component* c, juce::Component* wanted)
             {
                 while (c != nullptr && c != wanted)
@@ -1030,16 +980,6 @@ void testEditorLifecycle()
                 overWheels = editor->getComponentAt(wheels->getBounds().getCentre());
             }
 
-            // The overlay is transparent, so invalidating it redraws everything
-            // beneath - the mixer panel included. Measured, redrawing the whole
-            // strip costs 3.62 ms of a 16.7 ms frame at 60 Hz, against 0.53 ms
-            // for a 160x160 slice, so it repaints only where particles are.
-            //
-            // With none alive it must invalidate NOTHING. The trap is the
-            // opposite one: it also has to keep invalidating for one frame
-            // after the last particle dies, or the final frame is never drawn
-            // over and stays on screen - which is why the region is unioned
-            // with the previous frame's rather than replacing it.
             // Every property the keyboard and the wheels are drawn with has to
             // be reachable, or it is a hard-coded look wearing a configurable
             // one's clothes. Parsed from a config that changes ALL of them away
@@ -1057,8 +997,7 @@ void testEditorLifecycle()
                                     "border": { "color": "#070809", "width": 3.5, "radius": 6 },
                                     "widthRatio": 0.5, "heightRatio": 0.4 },
                       "label": { "color": "#0A0B0C", "fontSize": 21 },
-                      "silencedVeil": "#0D0E0F80",
-                      "sparks": { "whiteKeyColor": "#111213", "blackKeyColor": "#141516" }
+                      "silencedVeil": "#0D0E0F80"
                     },
                     "performance": {
                       "background": { "color": "#203040", "opacity": 0.25 },
@@ -1105,8 +1044,6 @@ void testEditorLifecycle()
                 expectMoved("label.color", k.labelColour != kDefault.labelColour);
                 expectMoved("label.fontSize", k.labelSize != kDefault.labelSize);
                 expectMoved("silencedVeil", k.silencedVeil != kDefault.silencedVeil);
-                expectMoved("sparks.whiteKeyColor", k.whiteSparkColour != kDefault.whiteSparkColour);
-                expectMoved("sparks.blackKeyColor", k.blackSparkColour != kDefault.blackSparkColour);
 
                 expectMoved("performance.background.color", w.background != wDefault.background);
                 expectMoved("performance.background.opacity", w.backgroundOpacity != wDefault.backgroundOpacity);
@@ -1347,26 +1284,6 @@ void testEditorLifecycle()
                       "a 500px radius on a 40x20 box clamps to " + fmt(clamped.topLeft, 1));
             }
 
-            // Silencing the keyboard drops every spark in flight - but they are
-            // drawn on the overlay, so clearing them here and repainting the
-            // KEYBOARD leaves the last frame of them on screen over a greyed
-            // instrument. The overlay has to be told, and once silenced the
-            // timer returns immediately, so it cannot be told later either.
-            {
-                PianoKeyboard standalone;
-                standalone.setSize(600, 100);
-
-                auto notifications = 0;
-                standalone.onSparksChanged = [&notifications]() { ++notifications; };
-
-                standalone.setSilenced(true);
-
-                check("Keyboard_SilencingClearsWhatTheOverlayHasDrawn",
-                      notifications > 0,
-                      juce::String(notifications) + " overlay notification(s) on silencing"
-                          + (notifications > 0 ? "" : " - the last frame of sparks would stay on screen"));
-            }
-
             // WHAT ACTUALLY PAINTS THE SECTION'S BACKGROUND.
             //
             // Three layers stack here, back to front:
@@ -1415,23 +1332,15 @@ void testEditorLifecycle()
                           + "), which is what lets the strip beneath through");
             }
 
-            check("SparkOverlay_InvalidatesNothingWithNoParticles",
-                  keys != nullptr
-                      && keys->sparkBounds().isEmpty()
-                      && ! keys->hasSparks(),
-                  "no particles alive, so the box is empty and the overlay "
-                  "leaves the panel beneath it untouched");
-
-            check("SparkOverlay_TakesNoMouseEvents",
-                  overlay != nullptr && ownerOf(overKeys, keys) && ownerOf(overWheels, wheels),
+            check("PerformanceRow_EachPartTakesItsOwnClicks",
+                  ownerOf(overKeys, keys) && ownerOf(overWheels, wheels),
                   juce::String("centre of the keys resolves to ")
                       + (ownerOf(overKeys, keys) ? "the keyboard" : "SOMETHING ELSE")
                       + ", centre of the wheels to "
                       + (ownerOf(overWheels, wheels) ? "the wheels" : "SOMETHING ELSE"));
 
-            // Neither component is grown any more: that machinery existed only
-            // to give particles somewhere to go inside their own bounds.
-            check("SparkAnimators_AreNotGrownBeyondTheirControls",
+            // Neither component is grown beyond what it draws.
+            check("PerformanceRow_IsNotGrownBeyondItsControls",
                   keys != nullptr && wheels != nullptr
                       && keys->keyboardArea() == keys->getLocalBounds()
                       && wheels->controlsArea() == wheels->getLocalBounds(),

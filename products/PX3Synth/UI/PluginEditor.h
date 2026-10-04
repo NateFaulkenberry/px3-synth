@@ -297,6 +297,9 @@ public:
     px3::ui::SheetCloseButton& debugUpdateNoticeClose() { return updateNoticeCloseButton; }
     juce::String debugUpdateNoticeText() const { return updateNotice.getText(); }
     void debugTimerTick() { timerCallback(); }
+    // The animation preference this editor last applied - what the tests read
+    // to see the setting reach every open window.
+    bool debugAnimationsApplied() const noexcept { return animationsApplied; }
     juce::String debugPresetDisplayName() const
     {
         return (hasCurrentPreset ? currentPreset.metadata.name : juce::String("INIT")) + (currentPresetDirty ? "*" : "");
@@ -588,7 +591,7 @@ private:
     // Open SETTINGS, or close it and go back to where you were.
     void toggleSettingsView();
     // Keeps an open macro depth panel and its scrim above the layers a layout
-    // pass raises (keyboard, wheels, sparks).
+    // pass raises (keyboard, wheels).
     void raiseMacroDepthLayers();
     // Pushes the animation preference down to the things that animate. One
     // call site for the flag, so the three of them cannot drift apart.
@@ -801,6 +804,7 @@ private:
     juce::Image logoGlitchMaskB;
     bool anyKeyDown { false };
     float logoVibrationPhase { 0.0f };
+    bool animationsApplied { true };
     float logoVibrationIntensity { 0.0f };
     double lastAnimationTickSeconds { 0.0 };
     // UIConfig hot-reload polls the filesystem. The editor timer runs at 30 Hz,
@@ -1096,79 +1100,7 @@ private:
     // settings page, the macro depth panel and the sheets close with.
     px3::ui::SheetCloseButton presetBrowserCloseGlyph;
     juce::Label presetBrowserDetails;
-    // Draws the keyboard's sparks above the keyboard row, so they can rise over
-    // the panel above it. It takes no mouse events at all, so nothing
-    // underneath it changes behaviour.
-    class SparkOverlay final : public juce::Component
-    {
-    public:
-        explicit SparkOverlay(PianoKeyboard& keysIn)
-            : keys(keysIn)
-        {
-            setName("SparkOverlay");
-            setInterceptsMouseClicks(false, false);
-        }
 
-        void paint(juce::Graphics& g) override
-        {
-            keys.paintSparksInto(g, keys.getPosition() - getPosition());
-        }
-
-        // Repaints only where particles actually are.
-        //
-        // This layer is transparent, so invalidating it redraws everything
-        // beneath it as well - the mixer panel, the keys, the wheels. Doing
-        // that for the whole strip measured 3.6 ms a frame, 22% of a 60 Hz
-        // budget spent redrawing things that had not changed. A burst from one
-        // key occupies a small fraction of the strip, and this repaints that
-        // fraction.
-        void repaintParticles()
-        {
-            const auto region = boundsOf(keys.sparkBounds(), keys.getPosition());
-
-            // The union with LAST frame's region, not just this one.
-            //
-            // Two things break without it. Particles move, so invalidating
-            // only where they are now leaves the previous frame still drawn
-            // where they were - a trail. And when the last particle dies the
-            // current region is empty, so nothing would be invalidated at all
-            // and the final frame would stay on screen for good.
-            const auto invalid = region.getUnion(previousParticleRegion);
-            previousParticleRegion = region;
-
-            if (invalid.isEmpty())
-            {
-                return;
-            }
-
-            repaint(invalid.getIntersection(getLocalBounds()));
-        }
-
-        // Exposed so the invalidated area can be asserted rather than inferred
-        // from what appears on screen.
-        juce::Rectangle<int> lastParticleRegion() const { return previousParticleRegion; }
-
-    private:
-        // Translates a child's particle box into this overlay's coordinates,
-        // returning an empty rectangle unchanged so an absent set of particles
-        // does not drag the union to the origin.
-        juce::Rectangle<int> boundsOf(juce::Rectangle<float> box, juce::Point<int> childOrigin) const
-        {
-            if (box.isEmpty())
-            {
-                return {};
-            }
-
-            return box.getSmallestIntegerContainer()
-                .translated(childOrigin.getX() - getX(), childOrigin.getY() - getY());
-        }
-
-
-        PianoKeyboard& keys;
-        juce::Rectangle<int> previousParticleRegion;
-    };
-
-    SparkOverlay sparkOverlay { pianoKeyboard };
 
     ModalDismissScrim presetBrowserScrim { *this };
     UnsavedChangesPrompt unsavedPrompt;
@@ -1199,9 +1131,6 @@ private:
     // Host RSS when this editor opened, so the overlay can show the change
     // rather than only the absolute figure. See processResidentMemoryMb.
     double debugHostRssBaselineMb { 0.0 };
-    // The keyboard's own headroom above the keys, read from the config and
-    // clamped to the panel area in resized().
-    int keyboardSparkHeadroom { 112 };
 
     juce::Component debugPanel;
 
