@@ -357,9 +357,17 @@ public:
             g.setColour(kInk);
             g.drawText(label, tag, juce::Justification::centred, false);
         }
-        drawCable(g, owner.start, owner.current, colour, 4.0f, 0.95f);
+        // Over a matrix destination row the plug lands in that row's input
+        // jack (its centre), not at the pointer.
+        auto end = owner.current;
+        if (dynamic_cast<DestinationProvider*>(owner.hoverTarget.getComponent()) != nullptr && ! owner.hoverRect.isEmpty())
+        {
+            end = getLocalPoint(&owner.root, juce::Point<float>(static_cast<float>(owner.hoverRect.getX()) + 7.0f,
+                                                               owner.hoverRect.toFloat().getCentreY()));
+        }
+        drawCable(g, owner.start, end, colour, 4.0f, 0.95f);
         drawPlug(g, owner.start, colour, 6.0f);
-        drawPlug(g, owner.current, colour, 7.0f);
+        drawPlug(g, end, colour, 7.0f);
     }
 
 private:
