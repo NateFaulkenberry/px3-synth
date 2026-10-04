@@ -252,14 +252,15 @@
       "presetClusterMenuWidth": 94,
       "prevNextWidth": 51,
       "presetHorizontalPad": 0,
-      "presetSmallGap": 0,
+      "presetSmallGap": 1,
       "menuButtonMinWidth": 64,
       "menuButtonMaxWidth": 400,
       "menuButtonInset": 0,
       "stripPadX": 1,
       "stripPadY": 1,
       "presetMenuGap": 1,
-      "presetClusterGap": 0
+      "presetClusterGap": 1,
+      "buttonGap": 1
     },
     "sections": {
       "flex": {

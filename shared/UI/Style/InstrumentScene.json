@@ -12,7 +12,7 @@
   ],
   "nodes": [
     {"id": "instrument", "label": "PX3 SYNTH", "style": "surface", "layout": "flex", "direction": "column", "gap": 1, "padding": 1, "note": "Dense single-surface instrument: the 1 px module seam also runs round the window edge, so no module meets the frame."},
-    {"id": "header", "parent": "instrument", "kind": "panel", "label": "HEADER", "layout": "flex", "height": 38, "shrink": 0, "gap": 1, "order": 0},
+    {"id": "header", "parent": "instrument", "kind": "panel", "label": "HEADER", "layout": "flex", "height": 44, "shrink": 0, "gap": 1, "order": 0},
     {"id": "header.logo", "parent": "header", "kind": "display", "label": "LOGO", "width": 96, "shrink": 0, "order": 0},
     {"id": "header.menu", "parent": "header", "kind": "container", "label": "TOP MENU", "grow": 1, "order": 1},
     {"id": "header.gain", "parent": "header", "kind": "container", "label": "GAIN", "layout": "flex", "width": 44, "shrink": 0, "padding": 3, "alignItems": "center", "justify": "center", "order": 2},

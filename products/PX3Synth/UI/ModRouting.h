@@ -225,6 +225,8 @@ private:
     class AmountControl;
     class DestinationBrowser;
     void rebuildRows();
+    void fitRowsToRoutesArea();
+    int routeRowWidth() const;
     juce::Point<float> sourceAnchor(int source) const;
 
     ModDragController& controller;

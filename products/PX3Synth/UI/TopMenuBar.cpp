@@ -532,13 +532,11 @@ void TopMenuBar::resized()
     // ---- section buttons ---------------------------------------------------
     // Every button takes an equal share of the row and its full height: they
     // are the bar's primary navigation, so they fill it rather than floating in
-    // it.
+    // it. They are placed in whole pixels with buttonGap between them - the
+    // same gap as everywhere else in the bar - rather than by a flex gap,
+    // whose half-margins round independently and made some seams 2 px wide.
+    const auto buttonGap = uiConfig != nullptr ? uiConfig->getInt("topMenu.layout.buttonGap", 1) : 1;
     {
-        const FlexStyle fallback { true, FlexDirection::row, FlexWrapMode::noWrap,
-                                   JustifyContent::spaceBetween, AlignItems::stretch,
-                                   AlignItems::centre, 6.0f };
-        auto box = readFlex("topMenu.sections.flex", fallback).toFlexBox();
-        const auto gap = readFlex("topMenu.sections.flex", fallback).gapMargin();
         const auto row = topMenuSectionButtonsArea;
         std::vector<int> shownSections;
         for (const auto section : sectionDisplayOrder)
@@ -546,31 +544,18 @@ void TopMenuBar::resized()
             if (! isMergedIntoVoice(section)) { shownSections.push_back(section); }
         }
         const auto count = static_cast<int>(shownSections.size());
+        const auto spare = juce::jmax(0, row.getWidth() - buttonGap * juce::jmax(0, count - 1));
 
-        const auto laidOutWidth = static_cast<float>(juce::jmax(1, row.getWidth())) + gap.left + gap.right;
-        const std::vector<float> natural(static_cast<std::size_t>(count),
-                                         laidOutWidth / static_cast<float>(juce::jmax(1, count)));
-        const auto widths = fitRowItemWidths(natural, gap.left + gap.right, laidOutWidth);
-
-        for (const auto width : widths)
-        {
-            auto item = juce::FlexItem(width, static_cast<float>(row.getHeight())).withMargin(gap);
-            item.flexGrow = 1.0f;
-            box.items.add(item);
-        }
-        // Laid out into a row widened by half a gap on each side, so the outer
-        // half-margins fall outside it and the first and last buttons sit flush
-        // with the bar's edges. Gap belongs BETWEEN buttons; without this the
-        // row keeps half a gap of padding at each end and never fills.
-        const auto halfGap = gap.left;
-        box.performLayout(row.toFloat().expanded(halfGap, 0.0f));
-
+        auto x = row.getX();
         for (int i = 0; i < count; ++i)
         {
+            // Spread the remainder one pixel at a time, so widths differ by at most 1.
+            const auto width = spare / count + (i < spare % count ? 1 : 0);
             const auto section = shownSections[static_cast<std::size_t>(i)];
             auto* button = topMenuSectionButtons[static_cast<std::size_t>(section)];
-            button->setBounds(box.items.getReference(i).currentBounds.toNearestInt());
-            button->setShowSeam(i < count - 1);
+            button->setBounds(x, row.getY(), width, row.getHeight());
+            button->setShowSeam(false);
+            x += width + buttonGap;
 
             // The tab lights in the colour of the panel it opens, so the strip
             // carries the same identity language as the cards below it.
@@ -619,6 +604,7 @@ void TopMenuBar::resized()
                                        : 48;
         auto settingsArea = presetLayout.removeFromRight(settingsWidth);
         settingsButton.setBounds(settingsArea);
+        presetLayout.removeFromRight(buttonGap);
 
         auto menuSectionArea = presetLayout.removeFromRight(menuWidth);
         presetLayout.removeFromRight(menuGap);
@@ -630,8 +616,10 @@ void TopMenuBar::resized()
         selector.removeFromRight(smallGap);
         presetNameButton.setBounds(selector);
 
-        const auto menuButtonWidth = juce::jlimit(menuButtonMinWidth,
-                                                  menuButtonMaxWidth,
+        // The menu button fills its slot unless an inset is configured, so the
+        // gaps either side of it are the bar's gap and nothing wider.
+        const auto menuButtonWidth = juce::jlimit(juce::jmin(menuButtonMinWidth, menuSectionArea.getWidth()),
+                                                  juce::jmax(menuButtonMaxWidth, menuSectionArea.getWidth()),
                                                   menuSectionArea.getWidth() - menuButtonInset);
         presetMenuButton.setBounds(juce::Rectangle<int>(menuButtonWidth, menuSectionArea.getHeight())
                                        .withCentre(menuSectionArea.getCentre()));

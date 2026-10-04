@@ -1104,6 +1104,12 @@ public:
         void visibleAreaChanged(const juce::Rectangle<int>&) override { if (onScroll) { onScroll(); } }
     };
 
+    // The scene places this column directly, so the panel's resized() does not
+    // always run when it changes size: the column asks for its rows to be
+    // refitted itself, or they keep a stale width and the right-hand plugs
+    // fall outside it.
+    std::function<void()> onResized;
+
     RoutesArea()
     {
         setComponentID("mod.routing.list");
@@ -1114,6 +1120,7 @@ public:
     void resized() override
     {
         viewport.setBounds(getLocalBounds().withTrimmedTop(static_cast<int>(kBand) + kLegend));
+        if (onResized) { onResized(); }
     }
     void paint(juce::Graphics& g) override
     {
@@ -1451,6 +1458,7 @@ ModRoutingPanel::ModRoutingPanel(ModDragController& controllerIn)
     listContent = std::make_unique<ListContent>();
     routesArea->viewport.setViewedComponent(listContent.get(), false);
     routesArea->viewport.onScroll = [this] { repaint(); };
+    routesArea->onResized = [this] { fitRowsToRoutesArea(); };
     addAndMakeVisible(*routesArea);
     destinations = std::make_unique<DestinationBrowser>(*this);
     destinations->viewport.onScroll = [this] { repaint(); };
@@ -1602,13 +1610,29 @@ void ModRoutingPanel::refresh()
     if (depthsMoved) { listContent->repaint(); }
 }
 
+int ModRoutingPanel::routeRowWidth() const
+{
+    const auto& viewport = routesArea->viewport;
+    return juce::jmax(1, viewport.getWidth() - viewport.getScrollBarThickness());
+}
+
+void ModRoutingPanel::fitRowsToRoutesArea()
+{
+    if (listContent == nullptr) { return; }
+    const auto width = routeRowWidth();
+    if (listContent->getWidth() == width) { return; }
+    for (auto& row : listContent->rows) { row->setSize(width, row->getHeight()); }
+    listContent->setSize(width, juce::jmax(listContent->getHeight(), routesArea->viewport.getHeight()));
+    repaint();
+}
+
 void ModRoutingPanel::rebuildRows()
 {
     // Only the routes changed: the scroll position is kept.
     auto& viewport = routesArea->viewport;
     const auto scroll = viewport.getViewPosition();
     listContent->rows.clear();
-    const auto width = juce::jmax(1, viewport.getWidth() - viewport.getScrollBarThickness());
+    const auto width = routeRowWidth();
     constexpr int rowHeight = 30;
     int y = 0;
     for (const auto& route : routes)

@@ -229,6 +229,35 @@ void testDenseLayout()
               juce::String(counted) + " buttons; " + faults.joinIntoString(", "));
     }
 
+    // ---- the route list fits its column at every size -------------------------
+    // The scene places the ROUTES column itself, so the list must refit when
+    // the column changes size - it kept a stale width once, and the right-hand
+    // destination plugs were drawn half outside the column.
+    {
+        editor->debugSelectSection(1);
+        juce::StringArray over;
+        const int sizes[][2] = { { 2400, 1400 }, { 1518, 938 }, { 1100, 700 } };
+        for (const auto& size : sizes)
+        {
+            editor->setSize(size[0], size[1]);
+            auto* routes = byId(*editor, "mod.routing.list");
+            juce::Viewport* port = nullptr;
+            if (routes != nullptr)
+            {
+                walkAll(*routes, [&](juce::Component& c) { if (port == nullptr) { port = dynamic_cast<juce::Viewport*>(&c); } });
+            }
+            auto* list = port != nullptr ? port->getViewedComponent() : nullptr;
+            if (list == nullptr || list->getWidth() > port->getMaximumVisibleWidth())
+            {
+                over.add(juce::String(size[0]) + "x" + juce::String(size[1]) + ": "
+                         + (list != nullptr ? juce::String(list->getWidth()) + " in " + juce::String(port->getMaximumVisibleWidth())
+                                            : juce::String("no list")));
+            }
+        }
+        editor->setSize(1518, 938);
+        check("Dense_RouteListFitsItsColumnAtEverySize", over.isEmpty(), over.joinIntoString(", "));
+    }
+
     // ---- the MOD page is the modulation matrix --------------------------------
     {
         using namespace px3::ui::modrouting;
