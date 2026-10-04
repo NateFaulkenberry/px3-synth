@@ -2138,7 +2138,8 @@ void testMacroSystem()
             &processor.getFilterResonanceParam(0),
             &processor.getReverbAmountParam(),
             &processor.getFilterCutoffParam(1),
-            &processor.getDelayAmountParam()
+            &processor.getDelayAmountParam(),
+            &processor.getVibeAmountParam()
         };
 
         check("Macro_TheIsolationTestCoversEveryMacro",

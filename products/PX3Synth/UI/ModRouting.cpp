@@ -611,9 +611,7 @@ public:
         auto area = getLocalBounds().toFloat();
         g.setColour(th::colour::rail);
         g.fillRect(area);
-        g.setColour(kMatrixAccent);
-        g.fillRect(area.removeFromLeft(3.0f));
-        area.removeFromLeft(8.0f);
+        area.removeFromLeft(11.0f);
         th::drawLabel(g, "MODULATION MATRIX", area.removeFromLeft(170.0f), th::Type::heading,
                       th::colour::textPrimary, juce::Justification::centredLeft);
         const auto graphRoutes = std::count_if(owner.routes.begin(), owner.routes.end(),

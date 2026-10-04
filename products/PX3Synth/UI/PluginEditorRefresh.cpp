@@ -685,12 +685,16 @@ void PX3SynthAudioProcessorEditor::timerCallback()
         debugRefreshTickCounter = 0;
     }
 
-    if (isPanelVisible(kSectionOsc) && oscPanel != nullptr)
+    // "Enable animations" covers the card displays too: with it off the osc,
+    // sub and LFO waves hold still (the envelope playheads are dropped where
+    // they are fed, in EnvelopeComponent).
+    const auto animate = px3::GlobalSettings::getInstance().areAnimationsEnabled();
+    if (animate && isPanelVisible(kSectionOsc) && oscPanel != nullptr)
     {
         oscPanel->advanceAnimation(0.09f);
     }
 
-    if (modPanel != nullptr && modPanel->isVisible())
+    if (animate && modPanel != nullptr && modPanel->isVisible())
     {
         modPanel->advanceAnimation(deltaSeconds);
     }

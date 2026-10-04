@@ -2,6 +2,7 @@
 
 #include <cmath>
 
+#include "Theme.h"
 #include "UIConfig.h"
 
 FaderStyle FaderStyle::fromUIConfig(const std::shared_ptr<const UIConfig>& uiConfig, const juce::String& pathPrefix)
@@ -214,142 +215,46 @@ MixerToggleButton::MixerToggleButton(const juce::String& text)
 
 void MixerToggleButton::paintButton(juce::Graphics& g, bool shouldDrawButtonAsHighlighted, bool shouldDrawButtonAsDown)
 {
-    // A console lamp switch: a dark square cap with a round recessed lamp in
-    // its face and the legend beneath in the lamp's own colour.
-    //
-    // The lamp is the state, not the cap - the cap stays dark whether the
-    // button is on or off, which is what lets the legend keep one colour and
-    // stay readable either way.
+    // The theme's switch, the same key every card's toggles use (see
+    // ToggleChipButton): a recessed well with the legend inside it. On tints
+    // the well, lights a stripe along its foot and turns the legend the
+    // switch's own colour. The old console lamp cap - a domed pale button with
+    // a round lamp and the legend beneath - was the last skeuomorphic control
+    // left on the mixer, so the legend placement in the style no longer moves
+    // anything: the name is always on the key.
+    namespace th = px3::ui::theme;
     const auto enabled = isEnabled();
     const auto on = isLit() && enabled;
-    auto area = getLocalBounds().toFloat();
-
-    // The legend takes its slice off whichever edge it sits on, and the cap is
-    // what is left. Measuring the text rather than assuming a width, so a
-    // longer legend beside the cap does not clip.
-    constexpr float legendGap = 3.0f;
-    const auto legendHeight = juce::jmin(area.getHeight() * 0.34f, style.textSize + 2.0f);
-
-    auto capArea = area;
-    juce::Rectangle<float> legendArea;
-
-    switch (style.legendPlacement)
-    {
-        case Style::LegendPlacement::left:
-        case Style::LegendPlacement::right:
-        {
-            juce::Font legendFont(juce::FontOptions(style.textSize, juce::Font::bold));
-            const auto textWidth = juce::GlyphArrangement::getStringWidth(legendFont, getName()) + 4.0f;
-            const auto slice = juce::jmin(textWidth, area.getWidth() * 0.6f);
-
-            legendArea = style.legendPlacement == Style::LegendPlacement::left
-                             ? area.removeFromLeft(slice)
-                             : area.removeFromRight(slice);
-            capArea = style.legendPlacement == Style::LegendPlacement::left
-                          ? area.withTrimmedLeft(legendGap)
-                          : area.withTrimmedRight(legendGap);
-            break;
-        }
-
-        case Style::LegendPlacement::below:
-        default:
-            legendArea = area.withTop(area.getBottom() - legendHeight);
-            capArea = area.withTrimmedBottom(legendHeight + legendGap);
-            break;
-    }
-    const auto press = shouldDrawButtonAsDown ? 1.0f : 0.0f;
-
-    const auto capSide = juce::jmin(capArea.getWidth(), capArea.getHeight());
-    auto cap = juce::Rectangle<float>(capSide, capSide)
-                   .withCentre(capArea.getCentre())
-                   .translated(0.0f, press);
-    if (cap.getWidth() <= 0.0f)
+    const auto area = getLocalBounds().toFloat().reduced(1.0f);
+    if (area.isEmpty())
     {
         return;
     }
-    const auto capRadius = juce::jmax(2.0f, style.cornerRadius);
 
-    // ---- cap ---------------------------------------------------------------
-    g.setColour(juce::Colour::fromRGBA(0, 0, 0, 80));
-    g.fillRoundedRectangle(cap.translated(0.0f, 1.2f), capRadius);
+    const auto lit = enabled ? style.activeColour.withAlpha(1.0f)
+                             : style.activeColour.withSaturation(0.0f).withAlpha(1.0f);
 
-    // A soft white wash rather than a dark plastic face: light at the top,
-    // falling away down the cap. Shallow on purpose - the sheen above does the
-    // shaping, and a steep ramp here reads as a bevel instead of a surface.
-    auto top = juce::Colour::fromRGB(189, 195, 210);
-    auto bottom = juce::Colour::fromRGB(126, 132, 145);
-    if (!enabled)
-    {
-        top = style.disabledColour.brighter(0.12f);
-        bottom = style.disabledColour.darker(0.12f);
-    }
-    else if (shouldDrawButtonAsHighlighted)
-    {
-        top = top.brighter(0.14f);
-        bottom = bottom.brighter(0.12f);
-    }
-
-    juce::ColourGradient face(top, cap.getX(), cap.getY(),
-                              bottom, cap.getX(), cap.getBottom(), false);
-    g.setGradientFill(face);
-    g.fillRoundedRectangle(cap, capRadius);
-
-    // Specular sheen across the upper half - the moulded plastic highlight that
-    // gives the cap its pop and makes it read as domed rather than flat.
-    auto sheen = cap.withHeight(cap.getHeight() * 0.48f).reduced(1.2f, 0.0f);
-    juce::ColourGradient gloss(juce::Colour::fromRGBA(255, 255, 255, on ? 64 : 44),
-                               sheen.getX(), sheen.getY(),
-                               juce::Colour::fromRGBA(255, 255, 255, 0),
-                               sheen.getX(), sheen.getBottom(), false);
-    g.setGradientFill(gloss);
-    g.fillRoundedRectangle(sheen, capRadius);
-
-    paintSurfaceNoise(g, cap, 0.05f);
-
-    // Rim: a bright inner edge with only a whisper of a dark outer one. The
-    // cap still reads raised, but the outline no longer draws a hard black box
-    // around a pale face.
-    g.setColour(style.insetColour.withMultipliedAlpha(juce::jlimit(0.0f, 1.0f, style.insetOpacity)));
-    g.drawRoundedRectangle(cap.reduced(0.5f), capRadius, 1.0f);
-    g.setColour(style.outerEdgeColour.withMultipliedAlpha(juce::jlimit(0.0f, 1.0f, style.outerEdgeOpacity)));
-    g.drawRoundedRectangle(cap.expanded(0.4f), capRadius, 1.0f);
-
-    // ---- lamp --------------------------------------------------------------
-    const auto lampDiameter = capSide * 0.46f;
-    const auto lamp = juce::Rectangle<float>(lampDiameter, lampDiameter).withCentre(cap.getCentre());
-
-    // The well the lamp sits in, always visible so the switch reads as hardware
-    // even with nothing lit.
-    g.setColour(juce::Colour::fromRGBA(0, 0, 0, 190));
-    g.fillEllipse(lamp.expanded(1.4f));
-
+    th::drawInset(g, area, th::space::insetRadius);
     if (on)
     {
-        g.setColour(style.activeColour.withAlpha(0.28f));
-        g.fillEllipse(lamp.expanded(3.4f));
-        g.setColour(style.activeColour.brighter(0.35f));
-        g.fillEllipse(lamp);
-        // A small specular dot, the highlight on a domed lens.
-        g.setColour(juce::Colour::fromRGBA(255, 255, 255, 130));
-        g.fillEllipse(lamp.withSizeKeepingCentre(lamp.getWidth() * 0.34f, lamp.getHeight() * 0.34f)
-                          .translated(-lamp.getWidth() * 0.13f, -lamp.getHeight() * 0.15f));
+        g.setColour(lit.withAlpha(0.16f));
+        g.fillRoundedRectangle(area.reduced(1.0f), th::space::insetRadius);
+        g.setColour(lit.withAlpha(0.9f));
+        g.fillRoundedRectangle(area.reduced(4.0f, 0.0f).removeFromBottom(2.0f).translated(0.0f, -1.0f), 1.0f);
     }
-    else
+    if (enabled && (shouldDrawButtonAsHighlighted || shouldDrawButtonAsDown))
     {
-        g.setColour(style.activeColour.withMultipliedAlpha(enabled ? 0.20f : 0.10f));
-        g.fillEllipse(lamp);
+        g.setColour(juce::Colours::white.withAlpha(shouldDrawButtonAsDown ? 0.10f : 0.05f));
+        g.fillRoundedRectangle(area.reduced(1.0f), th::space::insetRadius);
     }
 
-    // ---- legend ------------------------------------------------------------
-    // Beneath the cap, in the same colour and weight as the strip's other small
-    // labels - PAN, SEND - so it belongs to the panel rather than to the lamp.
-    // The lamp carries the state; the letter only names the switch.
-    g.setColour(style.textColour.withMultipliedAlpha(enabled ? (on ? 1.0f : 0.80f) : 0.45f));
-    g.setFont(juce::FontOptions(style.textSize));
-    g.drawFittedText(getName(),
-                     legendArea.toNearestInt(),
-                     juce::Justification::centred,
-                     1);
+    const auto textColour = (on ? lit.interpolatedWith(th::colour::textValue, 0.35f) : th::colour::textLabel)
+                                .withAlpha(enabled ? 1.0f : 0.5f);
+    g.setColour(textColour);
+    g.setFont(th::font(th::Type::label)
+                  .withHeight(juce::jmin(th::size(th::Type::label), area.getHeight() - 4.0f)));
+    g.drawFittedText(getName(), area.reduced(3.0f, 0.0f).toNearestInt(),
+                     juce::Justification::centred, 1, 0.75f);
 }
 
 void MixerToggleButton::applyStyle(const Style& styleIn)

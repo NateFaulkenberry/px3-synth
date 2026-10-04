@@ -224,6 +224,7 @@
     {"id": "patchbar.m3", "parent": "patchbar", "kind": "control", "label": "M3 JACK", "width": 64, "height": 24, "shrink": 0, "order": 9},
     {"id": "patchbar.m4", "parent": "patchbar", "kind": "control", "label": "M4 JACK", "width": 64, "height": 24, "shrink": 0, "order": 10},
     {"id": "patchbar.m5", "parent": "patchbar", "kind": "control", "label": "M5 JACK", "width": 64, "height": 24, "shrink": 0, "order": 11},
+    {"id": "patchbar.m6", "parent": "patchbar", "kind": "control", "label": "M6 JACK", "width": 64, "height": 24, "shrink": 0, "order": 12},
     {"id": "keys", "parent": "instrument", "kind": "container", "label": "PERFORMANCE", "layout": "flex", "gap": 0, "height": 72, "shrink": 0, "order": 3, "note": "Keyboard + wheels along the bottom edge as ONE panel: no seam inside it. Set visible false to retire it."},
     {"id": "keys.performance", "parent": "keys", "kind": "display", "label": "WHEELS", "basis": 190, "minWidth": 112, "maxWidth": 190, "shrink": 0, "order": 0},
     {"id": "keys.keyboard", "parent": "keys", "kind": "display", "label": "KEYBOARD", "grow": 1, "order": 1}

@@ -96,6 +96,9 @@ void LfoComponent::attachClock(juce::AudioParameterChoice& mode, juce::AudioPara
         label->setColour(juce::Label::textColourId, juce::Colour(0xffdadada));
         addAndMakeVisible(*label);
     }
+    // Centred over their boxes, like every other caption on the card.
+    clockModeLabel.setJustificationType(juce::Justification::centred);
+    clockDivisionLabel.setJustificationType(juce::Justification::centred);
     addAndMakeVisible(clockModeBox);
     addAndMakeVisible(clockDivisionBox);
     clockModeBox.setTooltip("LFO clock mode");

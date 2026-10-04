@@ -424,7 +424,7 @@ void PX3SynthAudioProcessorEditor::buildEnvelopeAndLfoControls()
     lfoWaveformBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
     lfoWaveformBox.setColour(juce::ComboBox::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 105));
     lfoWaveformLabel.setText("WAVE", juce::dontSendNotification);
-    lfoWaveformLabel.setJustificationType(juce::Justification::centredLeft);
+    lfoWaveformLabel.setJustificationType(juce::Justification::centred);
     lfoWaveformLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
     lfoWaveformLabel.setFont(juce::FontOptions(11.5f));
     enableLabelHoverOverlay(lfoWaveformLabel, "Waveform");

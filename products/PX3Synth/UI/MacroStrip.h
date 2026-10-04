@@ -14,7 +14,7 @@
 class PX3SynthAudioProcessor;
 class UIConfig;
 
-// The four macro knobs, stacked, on the left of every panel.
+// The macro knobs, stacked, on the left of every panel.
 //
 // ONE of these exists. It is placed outside the rectangle the panels are laid
 // out in, so "the same four macros on every panel" is not something the code
@@ -27,7 +27,7 @@ public:
     // The processor is only forward-declared here, so its kMacroCount cannot
     // size this strip's array. A static_assert in the .cpp keeps the two in
     // step, and fails the build rather than silently sizing the strip wrong.
-    static constexpr int kCount = 5;
+    static constexpr int kCount = 6;
 
     MacroStrip(PX3SynthAudioProcessor& processorIn, juce::LookAndFeel* knobLookAndFeel);
     ~MacroStrip() override;

@@ -221,7 +221,7 @@ public:
     // an LFO and two macros at once without any of them destroying the others.
     //==========================================================================
 
-    static constexpr int kMacroCount = 5;
+    static constexpr int kMacroCount = 6;
     static constexpr int kGraphRouteSlots = 64;
     struct GraphRouteConfiguration
     {
@@ -239,7 +239,7 @@ public:
 
     juce::AudioParameterFloat& getMacroParam(int macroIndex) const;
     static juce::String macroParameterId(int macroIndex);
-    // "MACRO 1".."MACRO 5", for the indicator inside a destination knob.
+    // "MACRO 1".."MACRO 6", for the indicator inside a destination knob.
     static juce::String macroDisplayName(int macroIndex);
 
     struct MacroDestination

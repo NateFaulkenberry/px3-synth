@@ -129,7 +129,7 @@ protected:
     // is where a title-row control belongs; the inner panel's top left puts it
     // on the face itself, which is what the EQ sheet wants now that its header
     // row is zero-height.
-    enum class EnableAnchor { headerTopRight, innerTopLeft };
+    enum class EnableAnchor { headerTopRight, innerTopLeft, titleBand };
     EnableAnchor enableAnchor { EnableAnchor::headerTopRight };
     juce::LookAndFeel* knobLookAndFeel { nullptr };
 

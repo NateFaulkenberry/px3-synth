@@ -136,6 +136,9 @@ void PX3SynthAudioProcessorEditor::openPresetBrowser()
     presetBrowserBackdropSnapshot = createComponentSnapshot(getLocalBounds());
     presetBrowserVisible = true;
     presetBrowserDragging = false;
+    // Every opening starts centred; a drag only lasts while it is open.
+    presetBrowserMoved = false;
+    presetBrowserPanel.setCentrePosition(getLocalBounds().getCentre());
     presetBrowserScrim.setBounds(getLocalBounds());
     presetBrowserScrim.setVisible(true);
     presetBrowserScrim.setAlwaysOnTop(true);

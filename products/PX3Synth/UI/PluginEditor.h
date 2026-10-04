@@ -1149,6 +1149,9 @@ private:
     bool busInsertVisible { false };
     bool presetBrowserVisible { false };
     bool presetBrowserDragging { false };
+    // True once the browser has been dragged since it last opened. Until then
+    // it is centred on the window, whatever size the window has become.
+    bool presetBrowserMoved { false };
     juce::Point<int> presetBrowserDragOffset;
     juce::Image presetBrowserBackdropSnapshot;
 

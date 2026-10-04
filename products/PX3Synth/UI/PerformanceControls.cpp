@@ -7,8 +7,6 @@
 
 namespace
 {
-constexpr float kTrackWidth = 10.0f;
-
 inline float clamp01(float value)
 {
     return juce::jlimit(0.0f, 1.0f, value);
@@ -233,6 +231,9 @@ PerformanceControls::Style PerformanceControls::Style::fromConfig(const UIConfig
     s.titleHeight = cfgFloat(config, prefix + ".title.height", s.titleHeight);
 
     s.trackRadius = px3::ui::CornerRadii::fromConfig(config, prefix + ".track", s.trackRadius);
+    s.trackWidth = cfgFloat(config, prefix + ".track.width", s.trackWidth);
+    s.trackInsetTop = cfgFloat(config, prefix + ".track.insetTop", s.trackInsetTop);
+    s.trackInsetBottom = cfgFloat(config, prefix + ".track.insetBottom", s.trackInsetBottom);
     s.trackFillAlpha = cfgFloat(config, prefix + ".track.fillOpacity", s.trackFillAlpha);
     s.trackFillGlowAlpha = cfgFloat(config, prefix + ".track.fillGlowOpacity", s.trackFillGlowAlpha);
     s.trackBorderAlpha = cfgFloat(config, prefix + ".track.borderOpacity", s.trackBorderAlpha);
@@ -636,6 +637,16 @@ void PerformanceControls::updateFromMousePosition(juce::Point<float> position)
     }
 }
 
+juce::Rectangle<float> PerformanceControls::trackIn(juce::Rectangle<float> panel) const
+{
+    const auto top = panel.getY() + style.trackInsetTop;
+    const auto bottom = juce::jmax(top, panel.getBottom() - style.trackInsetBottom);
+    // Whole pixels, or a 6 px slot centred in an odd-width panel lands on a
+    // half pixel and both its edges blur.
+    const auto left = std::round(panel.getCentreX() - style.trackWidth * 0.5f);
+    return { left, std::round(top), style.trackWidth, std::round(bottom) - std::round(top) };
+}
+
 PerformanceControls::WheelVisual PerformanceControls::getPitchVisual() const
 {
     // Whole pixels, so the seam between the panels is exactly panelGap wide
@@ -646,11 +657,7 @@ PerformanceControls::WheelVisual PerformanceControls::getPitchVisual() const
 
     WheelVisual visual;
     visual.panel = area.removeFromLeft(panelWidth).toFloat();
-    const auto trackArea = visual.panel.reduced(12.0f, 22.0f);
-    visual.track = juce::Rectangle<float>(trackArea.getCentreX() - kTrackWidth * 0.5f,
-                                          trackArea.getY(),
-                                          kTrackWidth,
-                                          trackArea.getHeight());
+    visual.track = trackIn(visual.panel);
     return visual;
 }
 
@@ -663,11 +670,7 @@ PerformanceControls::WheelVisual PerformanceControls::getModVisual() const
 
     WheelVisual visual;
     visual.panel = area.toFloat();
-    const auto trackArea = visual.panel.reduced(12.0f, 22.0f);
-    visual.track = juce::Rectangle<float>(trackArea.getCentreX() - kTrackWidth * 0.5f,
-                                          trackArea.getY(),
-                                          kTrackWidth,
-                                          trackArea.getHeight());
+    visual.track = trackIn(visual.panel);
     return visual;
 }
 

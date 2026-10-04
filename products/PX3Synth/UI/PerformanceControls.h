@@ -62,6 +62,12 @@ public:
         // The slot the handle rides in. Its tint is the wheel's accent, at an
         // alpha that rises with activity - so both ends of that range are here.
         px3::ui::CornerRadii trackRadius { px3::ui::CornerRadii::all(8.0f) };
+        // The slot's width, and how far it stands off the wheel panel's top
+        // and bottom edges. The handle travels the slot's length less its own
+        // radius at each end, so these set how far a wheel can move.
+        float trackWidth { 10.0f };
+        float trackInsetTop { 22.0f };
+        float trackInsetBottom { 22.0f };
         float trackFillAlpha { 0.22f };
         float trackFillGlowAlpha { 0.28f };
         float trackBorderAlpha { 0.36f };
@@ -170,6 +176,7 @@ private:
     void emitSparkles(juce::Point<float> centre, float radius, float intensity);
     static juce::Path createSparklePath(float size);
 
+    juce::Rectangle<float> trackIn(juce::Rectangle<float> panel) const;
     WheelVisual getPitchVisual() const;
     WheelVisual getModVisual() const;
 

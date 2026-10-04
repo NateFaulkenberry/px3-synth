@@ -1,5 +1,6 @@
 #include "ParameterKnob.h"
 #include "BusInsertOverlay.h"
+#include "Theme.h"
 
 #include "PluginProcessor.h"
 #include "UIConfig.h"
@@ -143,7 +144,8 @@ void BusInsertOverlay::refreshHeaderButtonStyles()
             if (const auto v = uiConfig->getValue(base + ".anchor"); ! v.isVoid())
             {
                 const auto text = v.toString().trim().toLowerCase();
-                if (text == "innertopleft")       enableAnchor = EnableAnchor::innerTopLeft;
+                if (text == "titleband")          enableAnchor = EnableAnchor::titleBand;
+                else if (text == "innertopleft")  enableAnchor = EnableAnchor::innerTopLeft;
                 else if (text == "headertopright") enableAnchor = EnableAnchor::headerTopRight;
             }
         }
@@ -170,16 +172,37 @@ void BusInsertOverlay::layoutHeaderButtons()
     const auto header = headerBounds();
 
     const auto& close = closeButton.getStyle();
-    closeButton.setBounds(header.getRight() - close.size + close.offsetX,
-                          header.getY() + close.offsetY,
-                          close.size,
-                          close.size);
-
     const auto width = juce::jmax(8, enableStyle.width);
     const auto height = juce::jmax(8, enableStyle.height);
     const auto gap = configInt(uiConfig, "busInserts.headerButtonGap", 8);
 
-    if (enableAnchor == EnableAnchor::innerTopLeft)
+    // In the sheet's title band, where every card keeps its header controls:
+    // ON where a card's power button sits, close mirrored at the right, both
+    // centred below the accent stripe and no taller than the band - so neither
+    // can cross the band's divider into the panel the way corner offsets tuned
+    // for the old, taller header did.
+    namespace th = px3::ui::theme;
+    const auto cardBox = card.bounds();
+    const auto bandTop = cardBox.getY() + th::space::accentBar;
+    const auto bandHeight = juce::jmax(0.0f, card.titleBandHeight() - th::space::accentBar);
+    const auto inBand = [&](float x, int side, int h)
+    {
+        const auto fitted = juce::jmin(h, juce::roundToInt(bandHeight - 2.0f * th::space::powerPadding));
+        const auto y = bandTop + (bandHeight - static_cast<float>(fitted)) * 0.5f + th::space::powerNudge;
+        return juce::Rectangle<int>(juce::roundToInt(x), juce::roundToInt(y), side, juce::jmax(8, fitted));
+    };
+    {
+        const auto side = juce::jmin(close.size, juce::roundToInt(bandHeight - 2.0f * th::space::powerPadding));
+        closeButton.setBounds(inBand(cardBox.getRight() - th::space::powerInset - static_cast<float>(side), side, side)
+                                  .translated(close.offsetX, close.offsetY));
+    }
+
+    if (enableAnchor == EnableAnchor::titleBand)
+    {
+        enableButton.setBounds(inBand(cardBox.getX() + th::space::powerInset, width, height)
+                                   .translated(enableOffsetX, enableOffsetY));
+    }
+    else if (enableAnchor == EnableAnchor::innerTopLeft)
     {
         const auto inner = innerOverlayBounds();
         enableButton.setBounds(inner.getX() + enableOffsetX,

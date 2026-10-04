@@ -145,6 +145,9 @@
     },
     "track": {
       "radius": 0,
+      "width": 6,
+      "insetTop": 20,
+      "insetBottom": 8,
       "borderWidth": 1,
       "fillOpacity": 0.22,
       "fillGlowOpacity": 0.28,
@@ -804,16 +807,17 @@
     "eq": {
       "enableButton": {
         "size": {
-          "height": 40
+          "width": 42,
+          "height": 20
         },
         "offsetX": 0,
-        "offsetY": -36,
+        "offsetY": 0,
         "legendPlacement": "right",
-        "anchor": "innerTopLeft"
+        "anchor": "titleBand"
       },
       "closeButton": {
-        "offsetX": -3,
-        "offsetY": -16
+        "offsetX": 0,
+        "offsetY": 0
       },
       "widthFraction": 0.7,
       "heightFraction": 0.62,
@@ -831,16 +835,17 @@
     "comp": {
       "enableButton": {
         "size": {
-          "height": 40
+          "width": 42,
+          "height": 20
         },
         "offsetX": 0,
-        "offsetY": -36,
+        "offsetY": 0,
         "legendPlacement": "right",
-        "anchor": "innerTopLeft"
+        "anchor": "titleBand"
       },
       "closeButton": {
-        "offsetX": -3,
-        "offsetY": -16
+        "offsetX": 0,
+        "offsetY": 0
       },
       "widthFraction": 0.58,
       "heightFraction": 0.44,
@@ -2896,7 +2901,8 @@
       "releaseNotesFontSize": 11,
       "updateHeadingHeight": 22,
       "updateButtonWidth": 150,
-      "updateButtonHeight": 26
+      "updateButtonHeight": 26,
+      "cornerRadius": 0
     }
   },
   "envelope": {

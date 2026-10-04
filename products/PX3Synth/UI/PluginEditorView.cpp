@@ -205,7 +205,10 @@ void PX3SynthAudioProcessorEditor::resized()
     auto browserX = (getWidth() - browserWidth) / 2;
     auto browserY = (getHeight() - browserHeight) / 2;
 
-    if (presetBrowserPanel.getWidth() > 0 && presetBrowserPanel.getHeight() > 0)
+    // A dragged browser stays where it was put; otherwise it is centred. Keeping
+    // any earlier position held it where the FIRST layout - at the editor's
+    // construction size - centred it, which is off-centre in a larger window.
+    if (presetBrowserMoved && presetBrowserPanel.getWidth() > 0 && presetBrowserPanel.getHeight() > 0)
     {
         browserX = presetBrowserPanel.getX();
         browserY = presetBrowserPanel.getY();

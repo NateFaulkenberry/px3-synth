@@ -375,6 +375,7 @@ void PX3SynthAudioProcessorEditor::mouseDrag(const juce::MouseEvent& event)
             newTopLeft.x = juce::jlimit(margin, juce::jmax(margin, maxX), newTopLeft.x);
             newTopLeft.y = juce::jlimit(margin, juce::jmax(margin, maxY), newTopLeft.y);
             presetBrowserPanel.setTopLeftPosition(newTopLeft);
+            presetBrowserMoved = true;
             repaint();
         }
         return;

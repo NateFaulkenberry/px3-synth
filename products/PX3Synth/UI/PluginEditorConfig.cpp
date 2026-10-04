@@ -324,7 +324,7 @@ void PX3SynthAudioProcessorEditor::bindSceneComponents()
     {
         b.bind("patchbar", *modPatchBar);
         b.bind("patchbar.title", modPatchBar->getTitle());
-        const char* jacks[] { "lfo1", "lfo2", "lfo3", "env1", "env2", "env3", "m1", "m2", "m3", "m4", "m5" };
+        const char* jacks[] { "lfo1", "lfo2", "lfo3", "env1", "env2", "env3", "m1", "m2", "m3", "m4", "m5", "m6" };
         for (int source = 0; source < px3::ui::modrouting::kSourceCount; ++source)
         {
             b.bind(juce::String("patchbar.") + jacks[source], modPatchBar->getSocket(source));

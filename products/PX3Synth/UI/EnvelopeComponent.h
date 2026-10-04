@@ -3,6 +3,7 @@
 #include <JuceHeader.h>
 
 #include "Card.h"
+#include "GlobalSettings.h"
 #include "ChipLabel.h"
 #include "CardInner.h"
 
@@ -153,9 +154,13 @@ public:
     // a second instance is a second set of colours to keep in step.
     void setKnobLookAndFeel(juce::LookAndFeel* lookAndFeel);
 
+    // With "Enable animations" off the playhead is not drawn: the graph shows
+    // the shape alone, as it does with no note held.
     void setEnvelopeProgress(EnvelopePosition progress)
     {
-        breakpointEditor.setProgress(progress);
+        breakpointEditor.setProgress(px3::GlobalSettings::getInstance().areAnimationsEnabled()
+                                         ? progress
+                                         : EnvelopePosition {});
     }
     std::function<void(const px3::BreakpointEnvelope&)> onEnvelopeEdited;
 

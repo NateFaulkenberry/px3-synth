@@ -533,7 +533,7 @@ void SettingsPanel::onUpdateButtonClicked()
 void SettingsPanel::paint(juce::Graphics& g)
 {
     const auto area = getLocalBounds().toFloat();
-    const auto radius = static_cast<float>(intFrom(uiConfig.get(), "settings.layout.cornerRadius", 8));
+    const auto radius = static_cast<float>(intFrom(uiConfig.get(), "settings.layout.cornerRadius", 0));
 
     g.setColour(colourFrom(uiConfig.get(), "settings.colors.background",
                            juce::Colour::fromRGBA(22, 24, 28, 190)));

@@ -112,7 +112,7 @@ void ModPanel::configureOwnedLfoBundle(int lfoIndex, LfoBundle& bundle)
     bundle.rateValueLabel.setInterceptsMouseClicks(false, false);
 
     bundle.waveformLabel.setText("WAVE", juce::dontSendNotification);
-    bundle.waveformLabel.setJustificationType(juce::Justification::centredLeft);
+    bundle.waveformLabel.setJustificationType(juce::Justification::centred);
     bundle.waveformLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
     bundle.waveformLabel.setFont(juce::FontOptions(11.5f));
     bundle.waveformLabel.setInterceptsMouseClicks(true, false);
