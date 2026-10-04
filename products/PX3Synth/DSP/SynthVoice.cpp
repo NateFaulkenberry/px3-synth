@@ -249,6 +249,7 @@ void SynthVoice::startNote(int midiNoteNumber, float velocity, juce::Synthesiser
         {
             modEnvelopeGenerators[envIndex].reset();
             modEnvelopeValues[envIndex] = 0.0f;
+            modEnvelopeBlockPeaks[envIndex] = 0.0f;
         }
     }
     noteAgeSamples = 0;
@@ -379,6 +380,7 @@ void SynthVoice::retireVoice()
         modEnvelope.reset();
     }
     modEnvelopeValues.fill(0.0f);
+    modEnvelopeBlockPeaks.fill(0.0f);
     fastReleaseTotalSamples = 0;
     fastReleaseSamplesRemaining = 0;
     clearCurrentNote();
@@ -464,41 +466,7 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
     const auto vibeDepth = juce::jlimit(0.0f, 3.50f, vibeBase * (0.30f + 3.10f * vibeBase));
     const auto vibeActive = vibeDepth > 0.0001f;
 
-    for (int sourceIndex = 0; sourceIndex < kVoiceMixerSourceCount; ++sourceIndex)
-    {
-        for (int filterIndex = 0; filterIndex < kFilterInstanceCount; ++filterIndex)
-        {
-            auto runtimeFilter = filterSettings[static_cast<std::size_t>(filterIndex)];
-
-            auto targetCutoffHz = runtimeFilter.cutoffHz;
-            auto targetResonanceQ = runtimeFilter.resonanceQ;
-
-            if (runtimeFilter.keyTrack != 0.0f && currentMidiNote >= 0)
-            {
-                targetCutoffHz *= std::exp2((static_cast<float>(currentMidiNote) - runtimeFilter.keyTrackReference)
-                                            / 12.0f * runtimeFilter.keyTrack);
-            }
-
-            if (vibeActive)
-            {
-                const auto temperatureCutoff = vibeShared.temperature * vibeTuning.temperatureDrift * 0.34f;
-                const auto psuCutoff = vibeShared.psu * vibeTuning.psuMovement * 0.22f;
-                const auto voiceCutoff = vibeVariation.cutoffOffset * vibeTuning.voiceVariation;
-                const auto chaosCutoff = vibeShared.chaos * vibeTuning.correlatedChaos * 0.28f;
-                const auto cutoffMul = 1.0f + (temperatureCutoff + psuCutoff + voiceCutoff + chaosCutoff) * vibeDepth;
-
-                const auto resoDelta = (vibeVariation.resonanceOffset * vibeTuning.voiceVariation
-                            + vibeShared.chaos * vibeTuning.filterVariation * 0.16f) * vibeDepth;
-
-                targetCutoffHz *= cutoffMul;
-                targetResonanceQ *= (1.0f + resoDelta);
-            }
-
-            runtimeFilter.cutoffHz = juce::jlimit(20.0f, 20000.0f, targetCutoffHz);
-            runtimeFilter.resonanceQ = juce::jlimit(0.20f, px3::analogfilter::kMaxUserQ, targetResonanceQ);
-            sourceFilters[static_cast<std::size_t>(sourceIndex)][static_cast<std::size_t>(filterIndex)].setTargetSettings(runtimeFilter);
-        }
-    }
+    pushFilterTargets(vibeActive, vibeDepth);
 
     std::array<float, 3> modEnvelopePeakValues { { 0.0f, 0.0f, 0.0f } };
     auto blockPeak = 0.0f;
@@ -550,6 +518,7 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
                 slopValue[i] += (slopTarget[i] - slopValue[i]) * slopGlide;
                 slopCents = layer.slop * 12.0f * slopValue[i];
             }
+            blockSlopCents[static_cast<std::size_t>(oscIndex)] = slopCents;
             ratios[static_cast<std::size_t>(oscIndex)] =
                 px3::tuning::pitchRatio(layer.coarseOctaves, layer.fineCents + slopCents, layer.pitchModSemitones, layer.semitones);
             changed = changed || ratios[static_cast<std::size_t>(oscIndex)] != sourceRatioTarget[static_cast<std::size_t>(oscIndex)];
@@ -564,7 +533,11 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
         {
             sourceRatioStart = sourceRatioCurrent;
             sourceRatioTarget = ratios;
-            sourceRatioRampLength = controlBlockLength;
+            // With in-voice envelope routes the target is refreshed every
+            // control interval, so it ramps across one interval, not the host
+            // block - or the glide's length would follow the host's buffer.
+            sourceRatioRampLength = activePlan != nullptr ? juce::jmin(controlBlockLength, kEnvelopeControlSamples)
+                                                          : controlBlockLength;
             sourceRatioRampPosition = 0;
         }
     }
@@ -583,6 +556,15 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
             {
                 modEnvelopeValues[envIndex] = 0.0f;
             }
+        }
+
+        // Envelope routes into the filters and the oscillators' pitch follow
+        // the envelope every kEnvelopeControlSamples, whatever the host's
+        // buffer: once per host block, a pluck or a pitch drop was a staircase
+        // whose step was the buffer size (21 ms at 1024 samples).
+        if (activePlan != nullptr && sample > 0 && sample % kEnvelopeControlSamples == 0)
+        {
+            refreshEnvelopeTargets(vibeActive, vibeDepth, juce::jmin(kEnvelopeControlSamples, numSamples - sample));
         }
 
         // Pull AMP ENV once per sample and use it consistently across all
@@ -1204,9 +1186,9 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
     {
         for (std::size_t envIndex = 0; envIndex < modEnvelopeGenerators.size(); ++envIndex)
         {
-            modEnvelopeValues[envIndex] = modEnvelopeEnabled[envIndex]
-                                              ? juce::jlimit(0.0f, 1.0f, modEnvelopePeakValues[envIndex])
-                                              : 0.0f;
+            modEnvelopeBlockPeaks[envIndex] = modEnvelopeEnabled[envIndex]
+                                                  ? juce::jlimit(0.0f, 1.0f, modEnvelopePeakValues[envIndex])
+                                                  : 0.0f;
         }
     }
 
@@ -1304,6 +1286,7 @@ void SynthVoice::setModEnvelopeSettings(const std::array<EnvelopeSettings, 3>& s
         {
             modEnvelopeGenerators[envIndex].reset();
             modEnvelopeValues[envIndex] = 0.0f;
+            modEnvelopeBlockPeaks[envIndex] = 0.0f;
         }
     }
 }
@@ -1315,7 +1298,7 @@ float SynthVoice::getModEnvelopeValue(int envIndex) const
         return 0.0f;
     }
 
-    return modEnvelopeValues[static_cast<std::size_t>(envIndex)];
+    return modEnvelopeBlockPeaks[static_cast<std::size_t>(envIndex)];
 }
 
 void SynthVoice::setFilterSettings(const std::array<FilterSettings, kFilterInstanceCount>& settings)
@@ -1390,8 +1373,111 @@ void SynthVoice::setOscillatorLayerSettings(const std::array<OscillatorLayerSett
     }
 }
 
+void SynthVoice::pushFilterTargets(bool vibeActive, float vibeDepth)
+{
+    for (int sourceIndex = 0; sourceIndex < kVoiceMixerSourceCount; ++sourceIndex)
+    {
+        for (int filterIndex = 0; filterIndex < kFilterInstanceCount; ++filterIndex)
+        {
+            auto runtimeFilter = filterSettings[static_cast<std::size_t>(filterIndex)];
+
+            auto targetCutoffHz = runtimeFilter.cutoffHz;
+            auto targetResonanceQ = runtimeFilter.resonanceQ;
+
+            if (runtimeFilter.keyTrack != 0.0f && currentMidiNote >= 0)
+            {
+                targetCutoffHz *= std::exp2((static_cast<float>(currentMidiNote) - runtimeFilter.keyTrackReference)
+                                            / 12.0f * runtimeFilter.keyTrack);
+            }
+
+            if (vibeActive)
+            {
+                const auto temperatureCutoff = vibeShared.temperature * vibeTuning.temperatureDrift * 0.34f;
+                const auto psuCutoff = vibeShared.psu * vibeTuning.psuMovement * 0.22f;
+                const auto voiceCutoff = vibeVariation.cutoffOffset * vibeTuning.voiceVariation;
+                const auto chaosCutoff = vibeShared.chaos * vibeTuning.correlatedChaos * 0.28f;
+                const auto cutoffMul = 1.0f + (temperatureCutoff + psuCutoff + voiceCutoff + chaosCutoff) * vibeDepth;
+
+                const auto resoDelta = (vibeVariation.resonanceOffset * vibeTuning.voiceVariation
+                            + vibeShared.chaos * vibeTuning.filterVariation * 0.16f) * vibeDepth;
+
+                targetCutoffHz *= cutoffMul;
+                targetResonanceQ *= (1.0f + resoDelta);
+            }
+
+            runtimeFilter.cutoffHz = juce::jlimit(20.0f, 20000.0f, targetCutoffHz);
+            runtimeFilter.resonanceQ = juce::jlimit(0.20f, px3::analogfilter::kMaxUserQ, targetResonanceQ);
+            sourceFilters[static_cast<std::size_t>(sourceIndex)][static_cast<std::size_t>(filterIndex)].setTargetSettings(runtimeFilter);
+        }
+    }
+
+}
+
+float SynthVoice::envelopePlanValue(const px3::synth::VoiceModDestination& d) const noexcept
+{
+    auto delta = 0.0f;
+    for (int r = 0; r < d.routeCount; ++r)
+    {
+        const auto& route = d.routes[static_cast<std::size_t>(r)];
+        const auto envelope = static_cast<std::size_t>(juce::jlimit(0, 2, route.envelope));
+        delta += px3::synth::routeContribution(route.sourceBipolar, modEnvelopeValues[envelope],
+                                               route.polarity, route.curve, route.depth, d.base);
+    }
+    return px3::synth::rangeFrom0to1(d, px3::synth::foldUnit(d.unfolded + delta));
+}
+
+void SynthVoice::refreshEnvelopeTargets(bool vibeActive, float vibeDepth, int rampSamples)
+{
+    using T = px3::synth::VoiceModTarget;
+    const auto& plan = *activePlan;
+    const auto at = [&plan](T t) -> const px3::synth::VoiceModDestination& { return plan.destinations[static_cast<std::size_t>(t)]; };
+
+    auto filtersMoved = false;
+    for (const auto& [target, filterIndex, cutoff] : { std::tuple<T, int, bool> { T::filter1Cutoff, 0, true },
+                                                       { T::filter2Cutoff, 1, true },
+                                                       { T::filter1Resonance, 0, false },
+                                                       { T::filter2Resonance, 1, false } })
+    {
+        const auto& d = at(target);
+        if (d.routeCount == 0) { continue; }
+        auto& settings = filterSettings[static_cast<std::size_t>(filterIndex)];
+        (cutoff ? settings.cutoffHz : settings.resonanceQ) = envelopePlanValue(d);
+        filtersMoved = true;
+    }
+    if (filtersMoved) { pushFilterTargets(vibeActive, vibeDepth); }
+
+    auto pitchMoved = false;
+    for (int osc = 0; osc < kOscillatorSourceCount; ++osc)
+    {
+        auto& layer = oscillatorLayerSettings[static_cast<std::size_t>(osc)];
+        const auto& fine = at(static_cast<T>(static_cast<int>(T::osc1Fine) + osc));
+        const auto& pitch = at(static_cast<T>(static_cast<int>(T::osc1PitchMod) + osc));
+        if (fine.routeCount > 0) { layer.fineCents = envelopePlanValue(fine); pitchMoved = true; }
+        if (pitch.routeCount > 0) { layer.pitchModSemitones = envelopePlanValue(pitch); pitchMoved = true; }
+    }
+    if (pitchMoved && sourceRatiosPrimed)
+    {
+        // From wherever the ratio is now to the new one, across the next
+        // control interval: a glide, never a step.
+        for (int osc = 0; osc < kOscillatorSourceCount; ++osc)
+        {
+            const auto& layer = oscillatorLayerSettings[static_cast<std::size_t>(osc)];
+            sourceRatioTarget[static_cast<std::size_t>(osc)] =
+                px3::tuning::pitchRatio(layer.coarseOctaves, layer.fineCents + blockSlopCents[static_cast<std::size_t>(osc)],
+                                        layer.pitchModSemitones, layer.semitones);
+        }
+        sourceRatioStart = sourceRatioCurrent;
+        sourceRatioRampLength = juce::jmax(1, rampSamples);
+        sourceRatioRampPosition = 0;
+    }
+}
+
 void SynthVoice::setVoiceModulationPlan(const px3::synth::VoiceModulationPlan& plan)
 {
+    // Kept for the render, which refreshes the filter and pitch targets from
+    // the live envelopes inside the block. The plan is the processor's, and
+    // outlives the block it is set for.
+    activePlan = plan.active ? &plan : nullptr;
     using T = px3::synth::VoiceModTarget;
     std::array<bool, kOscillatorSourceCount> oscillatorChanged { { false, false, false } };
     for (int target = 0; plan.active && target < px3::synth::kVoiceModTargetCount; ++target)

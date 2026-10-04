@@ -169,7 +169,15 @@ private:
     std::array<EnvelopeGenerator, 3> modEnvelopeGenerators;
     std::array<EnvelopeSettings, 3> modEnvelopeSettings;
     std::array<bool, 3> modEnvelopeEnabled { { true, true, true } };
+    // The envelopes' live values, sample by sample: what in-voice modulation reads.
     std::array<float, 3> modEnvelopeValues { { 0.0f, 0.0f, 0.0f } };
+    // Each envelope's peak over the last block: what the processor's global
+    // (cross-voice) read takes, so a short envelope is still seen at block
+    // rate. Kept apart from the live values: written over them, every block
+    // began its in-voice modulation from the last block's PEAK - a decaying
+    // pluck restarted near the top of each block, by an amount set by the
+    // host's buffer size.
+    std::array<float, 3> modEnvelopeBlockPeaks { { 0.0f, 0.0f, 0.0f } };
     std::array<std::array<VoiceFilter, kFilterInstanceCount>, kVoiceMixerSourceCount> sourceFilters;
 
     double currentAngle { 0.0 };
@@ -200,6 +208,15 @@ private:
     // Per-oscillator analog slop: a smoothed random walk in -1..1, advanced once
     // per control block, with its own generator so voices never share a wander.
     std::array<float, 3> slopValue { { 0.0f, 0.0f, 0.0f } };
+    // This block's slop per oscillator, so a pitch retarget inside the block
+    // keeps it.
+    std::array<float, 3> blockSlopCents { { 0.0f, 0.0f, 0.0f } };
+    // In-voice envelope modulation, refreshed inside the block (see render).
+    static constexpr int kEnvelopeControlSamples = 32;
+    const px3::synth::VoiceModulationPlan* activePlan { nullptr };
+    void pushFilterTargets(bool vibeActive, float vibeDepth);
+    float envelopePlanValue(const px3::synth::VoiceModDestination& d) const noexcept;
+    void refreshEnvelopeTargets(bool vibeActive, float vibeDepth, int rampSamples);
     std::array<float, 3> slopTarget { { 0.0f, 0.0f, 0.0f } };
     std::array<int, 3> slopHoldBlocks { { 0, 0, 0 } };
     std::uint32_t slopRandom { 0x9e3779b9u };

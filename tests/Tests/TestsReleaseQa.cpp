@@ -632,5 +632,99 @@ void testReleaseQa()
         check("Qa_NothingLeavesThePluginAboveFullScale", capture.peak() <= 1.0 && capture.isFinite(),
               "peak " + fmt(capture.peak(), 4) + " with every source, fader and the master at the top");
     }
+
+    // ---- envelope modulation inside the voice does not depend on the host buffer -----
+    // ENV routes into in-voice destinations (filter, oscillator pitch) were
+    // applied once per host block, from the envelope value at the end of the
+    // previous block - and as 0 for a note's whole first block. A filter pluck
+    // or a pitch drop was a staircase whose step was the host's buffer: at
+    // 1024 samples, 21 ms steps against a 30 ms decay.
+    {
+        const auto renderPluck = [](int blockSize, const juce::String& destination)
+        {
+            Processor processor;
+            makePlainPatch(processor);
+            setChoice(processor, "voice.osc1.mode", 1);   // SAW
+            setParam(processor, "voice.filter1.enabled", 1.0f);
+            setChoice(processor, "voice.filter1.type", 1);   // LP24
+            setParam(processor, "voice.filter1.cutoff", 300.0f);
+            setParam(processor, "mod.env1.enabled", 1.0f);
+            setParam(processor, "mod.env1.amount", 1.0f);
+            processor.getEnvelopeAttackParam(0).setValueNotifyingHost(processor.getEnvelopeAttackParam(0).convertTo0to1(0.001f));
+            processor.getEnvelopeDecayParam(0).setValueNotifyingHost(processor.getEnvelopeDecayParam(0).convertTo0to1(0.03f));
+            processor.getEnvelopeSustainParam(0).setValueNotifyingHost(0.0f);
+            juce::String error;
+            processor.setGraphRoute(0, { Processor::kLfoSourceCount, destination, px3::synth::ModulationPolarity::native,
+                                         px3::synth::ModulationCurve::linear }, error);
+            auto& depth = processor.getGraphRouteDepthParam(0);
+            depth.setValueNotifyingHost(depth.convertTo0to1(destination.contains("pitch") ? 0.5f : 0.8f));
+            processor.setPlayConfigDetails(0, 2, kSampleRate, blockSize);
+            processor.prepareToPlay(kSampleRate, blockSize);
+            juce::AudioBuffer<float> buffer(2, blockSize);
+            std::vector<float> out;
+            for (int position = 0; position < 9600; position += blockSize)
+            {
+                buffer.clear();
+                juce::MidiBuffer midi;
+                if (position == 0) { midi.addEvent(juce::MidiMessage::noteOn(1, 45, 0.9f), 0); }
+                processor.processBlock(buffer, midi);
+                for (int i = 0; i < blockSize; ++i) { out.push_back(buffer.getSample(0, i)); }
+            }
+            return out;
+        };
+        // Level-free measures, so the voice-count gain stage (which follows
+        // load once per host block and moves the onset level by itself) does
+        // not count: the filter by its brightness, the pitch by its period.
+        const auto brightness = [](const std::vector<float>& x, int from)
+        {
+            // Spectral centroid of a 512-sample Hann window, in Hz.
+            constexpr int order = 9;
+            constexpr int n = 1 << order;
+            std::vector<float> data(static_cast<std::size_t>(n) * 2, 0.0f);
+            for (int i = 0; i < n; ++i)
+            {
+                const auto w = 0.5f - 0.5f * std::cos(juce::MathConstants<float>::twoPi * static_cast<float>(i) / n);
+                data[static_cast<std::size_t>(i)] = x[static_cast<std::size_t>(from + i)] * w;
+            }
+            juce::dsp::FFT(order).performFrequencyOnlyForwardTransform(data.data());
+            double weighted = 0.0, total = 0.0;
+            for (int k = 1; k < n / 2; ++k)
+            {
+                const auto m = static_cast<double>(data[static_cast<std::size_t>(k)]);
+                weighted += k * 48000.0 / n * m;
+                total += m;
+            }
+            return total > 0.0 ? weighted / total : 0.0;
+        };
+        const auto pitchAt = [](const std::vector<float>& x, int from)
+        {
+            return estimateFrequency(x, from, from + 960, 40.0, 2000.0);
+        };
+        auto worstBrightness = 0.0, worstCents = 0.0;
+        {
+            const auto small = renderPluck(64, "voice.filter1.cutoff");
+            const auto large = renderPluck(1024, "voice.filter1.cutoff");
+            for (int from = 0; from + 512 < 2400; from += 96)   // the pluck's sweep, its first 50 ms
+            {
+                const auto a = brightness(small, from);
+                const auto b2 = brightness(large, from);
+                worstBrightness = juce::jmax(worstBrightness, std::abs(std::log2(a / juce::jmax(1.0, b2))) * 12.0);
+            }
+        }
+        {
+            const auto small = renderPluck(64, "voice.osc1.pitch.mod");
+            const auto large = renderPluck(1024, "voice.osc1.pitch.mod");
+            for (int from = 96; from + 960 < 7200; from += 192)
+            {
+                const auto a = pitchAt(small, from);
+                const auto b2 = pitchAt(large, from);
+                if (a > 0.0 && b2 > 0.0) { worstCents = juce::jmax(worstCents, std::abs(1200.0 * std::log2(a / b2))); }
+            }
+        }
+        // Brightness in semitones of centroid shift; pitch in cents.
+        check("Qa_EnvelopeModulationIsIndependentOfTheHostBuffer", worstBrightness < 0.5 && worstCents < 15.0,
+              "64- vs 1024-sample buffers, over the pluck: brightness differs by at most " + fmt(worstBrightness, 2)
+                  + " semitones of centroid, pitch by at most " + fmt(worstCents, 1) + " cents");
+    }
 }
 } // namespace px3tests
