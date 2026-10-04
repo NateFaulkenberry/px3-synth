@@ -614,6 +614,36 @@ void FltPanel::refreshFromParameters()
         resonanceLabels[idx]->setColour(juce::Label::textColourId,
                                         isEnabled ? resonanceLabelBaseColours[idx] : disabledLabelColour);
 
+        // Every other control on the card follows the same switch. Key
+        // tracking and the comb set were left live, so a bypassed filter still
+        // had knobs that turned.
+        const auto bypassKnob = [isEnabled](juce::Slider* knob)
+        {
+            if (knob == nullptr) { return; }
+            knob->setEnabled(isEnabled);
+            knob->setInterceptsMouseClicks(isEnabled, isEnabled);
+            knob->getProperties().set("knobBypassed", ! isEnabled);
+            knob->getProperties().set("psychedelicBypassGray", ! isEnabled);
+        };
+        auto& track = keyTrack[idx];
+        bypassKnob(&track.amount);
+        bypassKnob(&track.key);
+        for (auto* label : { static_cast<juce::Component*>(&track.amountLabel), static_cast<juce::Component*>(&track.keyLabel),
+                             static_cast<juce::Component*>(&track.amountValue), static_cast<juce::Component*>(&track.keyValue) })
+        {
+            label->setEnabled(isEnabled);
+        }
+        for (auto* knob : { combTuneKnobs[idx], combDecayKnobs[idx], combDampingKnobs[idx],
+                            combDispersionKnobs[idx], combDriveKnobs[idx], combMixKnobs[idx] })
+        {
+            bypassKnob(knob);
+        }
+        for (auto* label : { combTuneLabels[idx], combDecayLabels[idx], combDampingLabels[idx],
+                             combDispersionLabels[idx], combDriveLabels[idx], combMixLabels[idx] })
+        {
+            if (label != nullptr) { label->setEnabled(isEnabled); }
+        }
+
         auto& filterComponent = filterComponents[idx];
         if (filterComponent != nullptr)
         {

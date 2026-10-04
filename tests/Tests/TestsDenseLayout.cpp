@@ -3,6 +3,7 @@
 #include "UILayoutEditing.h"
 #include "ModRouting.h"
 #include "SubOscComponent.h"
+#include "FltPanel.h"
 #include "BusInsertOverlay.h"
 
 #include "../../shared/UI/Style/Theme.h"
@@ -488,6 +489,55 @@ void testDenseLayout()
             editor->debugCloseBusInsert();
         }
         check("Dense_InsertSheetHeaderButtonsSitInTheTitleBand", outside.isEmpty(), outside.joinIntoString("; "));
+    }
+
+    // ---- a bypassed filter has no live knobs ---------------------------------
+    // KEY TRK / KEY and the comb set stayed live when the filter was off.
+    {
+        editor->debugSelectSection(0);
+        FltPanel* panel = nullptr;
+        walkAll(*editor, [&](juce::Component& c) { if (auto* f = dynamic_cast<FltPanel*>(&c)) { panel = f; } });
+
+        const auto liveKnobs = [&]
+        {
+            juce::StringArray live;
+            if (panel == nullptr) { return live; }
+            walkAll(*panel, [&](juce::Component& c)
+            {
+                if (auto* slider = dynamic_cast<juce::Slider*>(&c))
+                {
+                    if (shownIn(c, *editor) && slider->isEnabled() && slider->getSliderStyle() != juce::Slider::LinearHorizontal)
+                    {
+                        live.add(slider->getName().isNotEmpty() ? slider->getName() : c.getComponentID());
+                    }
+                }
+            });
+            return live;
+        };
+
+        juce::StringArray stillLive;
+        for (const int mode : { 0, static_cast<int>(px3::FilterMode::comb) })
+        {
+            for (int f = 0; f < 2; ++f)
+            {
+                processor.getFilterTypeParam(f).setValueNotifyingHost(processor.getFilterTypeParam(f).convertTo0to1(static_cast<float>(mode)));
+                processor.getFilterEnabledParam(f).setValueNotifyingHost(0.0f);
+            }
+            juce::MessageManager::getInstance()->runDispatchLoopUntil(20);
+            editor->debugTimerTick();
+            editor->debugTimerTick();
+            for (const auto& name : liveKnobs()) { stillLive.add((mode == 0 ? "LP12 " : "COMB ") + name); }
+        }
+        check("Dense_BypassedFilterHasNoLiveKnobs", panel != nullptr && stillLive.isEmpty(),
+              stillLive.isEmpty() ? juce::String("every filter knob is disabled in both modes") : stillLive.joinIntoString(", "));
+
+        for (int f = 0; f < 2; ++f)
+        {
+            processor.getFilterTypeParam(f).setValueNotifyingHost(processor.getFilterTypeParam(f).convertTo0to1(0.0f));
+            processor.getFilterEnabledParam(f).setValueNotifyingHost(1.0f);
+        }
+        juce::MessageManager::getInstance()->runDispatchLoopUntil(20);
+        editor->debugTimerTick();
     }
 
     // ---- an enabled sub osc draws its wave in its own colour -------------------
