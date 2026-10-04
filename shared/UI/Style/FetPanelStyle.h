@@ -30,6 +30,9 @@ public:
                         juce::TextButton& button,
                         bool shouldDrawButtonAsHighlighted,
                         bool shouldDrawButtonAsDown) override;
+
+    // The latched key's light: the sheet's identity colour.
+    juce::Colour accent { 0xff78baff };
 };
 
 // The geometry of a moving-coil meter's scale.

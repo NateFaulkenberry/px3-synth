@@ -77,6 +77,10 @@ private:
     // The needle as geometry: a tapered blade about a true pivot.
     static juce::Path needlePath(float length, float width);
     juce::Rectangle<int> needleRegion() const;
+public:
+    // The display inside the bezel, for paint and for the tests.
+    juce::Rectangle<float> glassIn(juce::Rectangle<float> bounds) const;
+private:
 
     VuBallistics movement;
     Mode meterMode { Mode::gainReduction };

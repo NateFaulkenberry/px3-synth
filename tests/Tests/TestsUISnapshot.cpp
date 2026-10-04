@@ -77,6 +77,30 @@ int runUISnapshot(const juce::String& outDir, int width, int height)
         dumpComponent(*editor, *editor, 0, text);
         dir.getChildFile("section" + juce::String(section) + ".txt").replaceWithText(text);
     }
+    // The two insert sheets, each live and bypassed, at 2x for detail work.
+    for (const auto wantsEq : { true, false })
+    {
+        for (const auto live : { true, false })
+        {
+            const juce::String id = wantsEq ? "mix.dry.insert.eq.enabled" : "mix.dry.insert.comp.enabled";
+            for (auto* p : processor.getParameters())
+            {
+                if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(p); ranged != nullptr && ranged->getParameterID() == id)
+                {
+                    ranged->setValueNotifyingHost(live ? 1.0f : 0.0f);
+                }
+            }
+            editor->debugOpenBusInsert(PX3SynthAudioProcessor::dryBusInsert, wantsEq);
+            for (int tick = 0; tick < 4; ++tick) { editor->debugTimerTick(); }
+            juce::MessageManager::getInstance()->runDispatchLoopUntil(50);
+            const auto image = editor->createComponentSnapshot(editor->getLocalBounds(), true, 2.0f);
+            auto png = dir.getChildFile(juce::String(wantsEq ? "eq" : "comp") + (live ? "" : "-bypassed") + ".png");
+            png.deleteFile();
+            juce::FileOutputStream stream(png);
+            juce::PNGImageFormat().writeImageToStream(image, stream);
+            editor->debugCloseBusInsert();
+        }
+    }
     std::printf("wrote snapshots to %s\n", dir.getFullPathName().toRawUTF8());
     return 0;
 }

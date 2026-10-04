@@ -1,4 +1,5 @@
 #include "FetPanelStyle.h"
+#include "Theme.h"
 
 namespace px3::ui
 {
@@ -9,33 +10,29 @@ void FetPushButtonLookAndFeel::drawButtonBackground(juce::Graphics& g,
                                                     bool shouldDrawButtonAsHighlighted,
                                                     bool shouldDrawButtonAsDown)
 {
-    const auto bounds = button.getLocalBounds().toFloat().reduced(0.5f);
-    const auto pressed = button.getToggleState() || shouldDrawButtonAsDown;
+    // The theme's switch key, the one the mixer and every card use: a recessed
+    // well; latched, it tints, lights a stripe along its foot and turns the
+    // legend the accent. The domed silver caps were the last skeuomorphic keys.
+    namespace th = theme;
+    const auto area = button.getLocalBounds().toFloat().reduced(0.5f);
+    if (area.isEmpty()) { return; }
+    const auto enabled = button.isEnabled();
+    const auto on = button.getToggleState();
+    const auto lit = enabled ? accent : accent.withSaturation(0.0f);
 
-    // The well the cap travels in.
-    g.setColour(juce::Colour::fromRGB(58, 58, 62));
-    g.fillRoundedRectangle(bounds, 2.0f);
-
-    // A pressed cap sits lower in its well and loses its top highlight, which
-    // is the whole of how a latching push button reads as latched.
-    auto cap = bounds.reduced(1.6f);
-    cap = pressed ? cap.withTrimmedTop(2.4f) : cap.withTrimmedBottom(2.4f);
-
-    const auto top = pressed ? juce::Colour::fromRGB(176, 178, 182) : juce::Colour::fromRGB(238, 239, 242);
-    const auto bottom = pressed ? juce::Colour::fromRGB(140, 142, 147) : juce::Colour::fromRGB(196, 198, 203);
-
-    g.setGradientFill(juce::ColourGradient(top, cap.getX(), cap.getY(),
-                                           bottom, cap.getX(), cap.getBottom(), false));
-    g.fillRoundedRectangle(cap, 1.6f);
-
-    if (shouldDrawButtonAsHighlighted && ! pressed)
+    th::drawInset(g, area, th::space::insetRadius);
+    if (on)
     {
-        g.setColour(juce::Colour::fromRGBA(255, 255, 255, 60));
-        g.fillRoundedRectangle(cap, 1.6f);
+        g.setColour(lit.withAlpha(enabled ? 0.18f : 0.10f));
+        g.fillRect(area.reduced(1.0f));
+        g.setColour(lit.withAlpha(enabled ? 0.9f : 0.45f));
+        g.fillRect(area.reduced(4.0f, 0.0f).removeFromBottom(2.0f).translated(0.0f, -1.0f));
     }
-
-    g.setColour(juce::Colour::fromRGBA(30, 30, 34, 120));
-    g.drawRoundedRectangle(cap, 1.6f, 0.8f);
+    if (enabled && (shouldDrawButtonAsHighlighted || shouldDrawButtonAsDown))
+    {
+        g.setColour(juce::Colours::white.withAlpha(shouldDrawButtonAsDown ? 0.10f : 0.05f));
+        g.fillRect(area.reduced(1.0f));
+    }
 }
 
 void FetPushButtonLookAndFeel::drawButtonText(juce::Graphics& g,
@@ -43,9 +40,14 @@ void FetPushButtonLookAndFeel::drawButtonText(juce::Graphics& g,
                                               bool,
                                               bool)
 {
-    g.setColour(juce::Colour::fromRGB(28, 29, 32).withAlpha(button.isEnabled() ? 1.0f : 0.4f));
-    g.setFont(juce::FontOptions(juce::jmin(11.0f, static_cast<float>(button.getHeight()) * 0.52f), juce::Font::bold));
-    g.drawText(button.getButtonText(), button.getLocalBounds(), juce::Justification::centred, false);
+    namespace th = theme;
+    const auto enabled = button.isEnabled();
+    const auto on = button.getToggleState();
+    const auto colour = on ? accent.interpolatedWith(th::colour::textValue, 0.35f) : th::colour::textLabel;
+    g.setColour(colour.withAlpha(enabled ? 1.0f : 0.45f));
+    g.setFont(th::font(th::Type::label).withHeight(juce::jmin(th::size(th::Type::label),
+                                                              static_cast<float>(button.getHeight()) - 4.0f)));
+    g.drawFittedText(button.getButtonText(), button.getLocalBounds().reduced(3, 0), juce::Justification::centred, 1, 0.75f);
 }
 
 float VuArc::angleForPosition(float position) const
@@ -150,7 +152,8 @@ void drawKnobScale(juce::Graphics& g,
     const auto centre = knobBounds.getCentre();
     const auto radius = juce::jmin(knobBounds.getWidth(), knobBounds.getHeight()) * 0.5f;
 
-    g.setFont(juce::FontOptions(8.5f, juce::Font::bold));
+    // The theme's display numerals, as every other scale in the instrument.
+    g.setFont(theme::font(theme::Type::display).withHeight(8.5f));
 
     for (int i = 0; i < marks.size(); ++i)
     {
@@ -176,21 +179,10 @@ void drawLegend(juce::Graphics& g,
                 float fontSize,
                 juce::Justification justification)
 {
-    // Letter-spaced, because panel legends are engraved rather than typeset and
-    // the spacing is most of what makes them read as engraved.
-    juce::String spaced;
-    for (int i = 0; i < text.length(); ++i)
-    {
-        spaced << text[i];
-        if (i < text.length() - 1)
-        {
-            spaced << " ";
-        }
-    }
-
-    g.setColour(ink);
-    g.setFont(juce::FontOptions(fontSize, juce::Font::bold));
-    g.drawText(spaced, area, justification, false);
+    // The theme's label type - the same caption every card prints - in the
+    // panel's own ink. `fontSize` is no longer used: one size, as everywhere.
+    theme::drawLabel(g, text, area, theme::Type::label, ink, justification);
+    juce::ignoreUnused(fontSize);
 }
 } // namespace panel
 

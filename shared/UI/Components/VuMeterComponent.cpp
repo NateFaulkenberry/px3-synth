@@ -1,5 +1,6 @@
 #include "VuMeterComponent.h"
 
+#include "Theme.h"
 #include "UIConfig.h"
 
 namespace px3::ui
@@ -198,26 +199,35 @@ void VuMeterComponent::rebuildFace()
     paintFace(g, bounds.toFloat().withPosition(0.0f, 0.0f));
 }
 
+// The display inside the bezel. The whole of it: the old face left a quarter
+// of the bezel empty under the glass.
+juce::Rectangle<float> VuMeterComponent::glassIn(juce::Rectangle<float> bounds) const
+{
+    return bounds.reduced(cfgF(uiConfig, "busInserts.comp.meterBezelWidth", 3.0f));
+}
+
 void VuMeterComponent::paintFace(juce::Graphics& g, juce::Rectangle<float> bounds) const
 {
-    const auto bezelColour = cfg(uiConfig, "busInserts.comp.meterBezelColor", juce::Colour::fromRGB(26, 52, 96));
-    const auto faceColour = cfg(uiConfig, "busInserts.comp.meterFaceColor", juce::Colour::fromRGB(238, 231, 210));
-    const auto inkColour = cfg(uiConfig, "busInserts.comp.meterInkColor", juce::Colour::fromRGB(38, 36, 32));
-    const auto hotColour = cfg(uiConfig, "busInserts.comp.meterHotColor", juce::Colour::fromRGB(178, 44, 38));
-    const auto glowColour = cfg(uiConfig, "busInserts.comp.meterGlowColor", juce::Colour::fromRGBA(255, 244, 206, 210));
+    // A display, in the instrument's own terms: a dark inset face with a thin
+    // square bezel, light ink and a red hot zone - the same family as every
+    // graph and wave display, rather than a cream light-box in a navy frame.
+    namespace th = theme;
+    const auto bezelColour = cfg(uiConfig, "busInserts.comp.meterBezelColor", th::colour::panelEdge);
+    const auto faceColour = cfg(uiConfig, "busInserts.comp.meterFaceColor", th::colour::inset);
+    const auto inkColour = cfg(uiConfig, "busInserts.comp.meterInkColor", th::colour::textLabel);
+    const auto hotColour = cfg(uiConfig, "busInserts.comp.meterHotColor", juce::Colour::fromRGB(232, 87, 78));
+    const auto glowColour = cfg(uiConfig, "busInserts.comp.meterGlowColor", juce::Colour::fromRGBA(120, 186, 255, 22));
 
     g.setColour(bezelColour);
-    g.fillRoundedRectangle(bounds, 3.0f);
-    g.setColour(juce::Colour::fromRGBA(0, 0, 0, 90));
-    g.drawRoundedRectangle(bounds.reduced(0.5f), 3.0f, 1.0f);
+    g.fillRect(bounds);
 
-    auto glass = bounds.reduced(cfgF(uiConfig, "busInserts.comp.meterBezelWidth", 7.0f));
-    glass = glass.withTrimmedBottom(glass.getHeight() * 0.24f);
+    const auto glass = glassIn(bounds);
 
     g.setColour(faceColour);
     g.fillRect(glass);
 
-    // The lamps behind the face. Revision H's movement is a light-box type.
+    // A faint backlight rising from below, so the face reads as lit glass
+    // rather than as a flat fill.
     for (const auto x : { glass.getX() + glass.getWidth() * 0.28f,
                           glass.getX() + glass.getWidth() * 0.72f })
     {
@@ -228,8 +238,8 @@ void VuMeterComponent::paintFace(juce::Graphics& g, juce::Rectangle<float> bound
         g.fillRect(glass);
     }
 
-    g.setColour(juce::Colour::fromRGBA(0, 0, 0, 70));
-    g.drawRect(glass, 1.0f);
+    g.setColour(th::colour::insetLight);
+    g.fillRect(glass.withHeight(1.0f));
 
     const auto arc = vuArcFor(glass);
 
@@ -284,7 +294,7 @@ void VuMeterComponent::paintFace(juce::Graphics& g, juce::Rectangle<float> bound
         g.strokePath(line, juce::PathStrokeType(1.4f));
     }
 
-    g.setFont(juce::FontOptions(cfgF(uiConfig, "busInserts.comp.meterScaleFontSize", 7.5f), juce::Font::bold));
+    g.setFont(th::font(th::Type::display).withHeight(cfgF(uiConfig, "busInserts.comp.meterScaleFontSize", 8.5f)));
 
     for (const auto& mark : marks)
     {
@@ -305,11 +315,9 @@ void VuMeterComponent::paintFace(juce::Graphics& g, juce::Rectangle<float> bound
         }
     }
 
-    panel::drawLegend(g,
-                      juce::Rectangle<float>(glass.getX(), glass.getBottom() - 14.0f,
-                                             glass.getWidth(), 11.0f),
-                      meterMode == Mode::gainReduction ? "GAIN REDUCTION" : "VU",
-                      inkColour.withAlpha(0.55f), 6.5f);
+    th::drawLabel(g, meterMode == Mode::gainReduction ? "GAIN REDUCTION" : "VU",
+                  juce::Rectangle<float>(glass.getX(), glass.getBottom() - 18.0f, glass.getWidth(), 12.0f),
+                  th::Type::secondary, th::colour::textSecondary);
 }
 
 void VuMeterComponent::paint(juce::Graphics& g)
@@ -320,8 +328,7 @@ void VuMeterComponent::paint(juce::Graphics& g)
     }
 
     const auto bounds = getLocalBounds().toFloat();
-    auto glass = bounds.reduced(cfgF(uiConfig, "busInserts.comp.meterBezelWidth", 7.0f));
-    glass = glass.withTrimmedBottom(glass.getHeight() * 0.24f);
+    const auto glass = glassIn(bounds);
     if (glass.isEmpty())
     {
         return;

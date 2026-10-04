@@ -1099,7 +1099,7 @@ void BusCompOverlay::rebuildFace()
 
     legendUnder(attack.getBounds(), "ATTACK");
     legendUnder(release.getBounds(), "RELEASE");
-    legendUnder(linkButton.getBounds(), "LINK");
+    // LINK carries its name on the key; a second one under it said it twice.
 
     if (! ratioBankArea.isEmpty())
     {
