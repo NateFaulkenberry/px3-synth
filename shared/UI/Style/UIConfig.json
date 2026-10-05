@@ -2275,11 +2275,11 @@
             }
           },
           "row1": {
-            "height": "72%",
+            "height": "70%",
             "padding": 2
           },
           "row2": {
-            "height": "28%",
+            "height": "30%",
             "padding": 2
           }
         }
@@ -2517,11 +2517,11 @@
             "gap": 8
           },
           "row2": {
-            "height": "52%",
+            "height": "46%",
             "gap": 10
           },
           "row3": {
-            "height": "34%",
+            "height": "40%",
             "padding": 4
           }
         }

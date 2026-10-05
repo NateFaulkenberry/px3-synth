@@ -505,8 +505,10 @@ void FltPanel::layoutCardControls()
             // Key tracking: a smaller second line under CUTOFF / RESONANCE.
             if (keyTrackShown)
             {
-                // At least ~64 px when the card is short, so the knobs stay usable.
-                auto keyLine = row.removeFromBottom(juce::jmin(96, juce::jmax(row.getHeight() * 2 / 5, juce::jmin(64, row.getHeight() / 2))));
+                // A fixed line: caption, a usable knob and its readout. It used
+                // to be a share of the row, so a shorter card shrank these to a
+                // dot while CUTOFF / RESONANCE kept their size.
+                auto keyLine = row.removeFromBottom(juce::jmin(76, row.getHeight() / 2));
                 auto flex = filterComponent->rowFlex(1);
                 const auto widths = px3::ui::fitRowItemWidths({ 72.0f, 72.0f }, gapMargin.left + gapMargin.right,
                                                               static_cast<float>(juce::jmax(1, keyLine.getWidth())));
@@ -527,7 +529,9 @@ void FltPanel::layoutCardControls()
             const auto perRow = combMode ? 3 : static_cast<int>(knobs.size());
             const auto rowCount = juce::jmax(1, (static_cast<int>(knobs.size()) + perRow - 1) / perRow);
             const auto knobRowHeight = juce::jmax(1, row.getHeight() / rowCount);
-            const auto knobCap = combMode ? 52 : 84;
+            // CUTOFF / RESONANCE: large, but no larger than reads as large -
+            // the height they do not take is the window's, not theirs.
+            const auto knobCap = combMode ? 52 : 64;
 
             for (int line = 0; line < rowCount; ++line)
             {
