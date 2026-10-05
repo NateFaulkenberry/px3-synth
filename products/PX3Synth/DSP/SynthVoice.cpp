@@ -197,9 +197,12 @@ void SynthVoice::startNote(int midiNoteNumber, float velocity, juce::Synthesiser
     for (std::size_t envIndex = 0; envIndex < modEnvelopeGenerators.size(); ++envIndex)
     {
         // The shape when there is one, for the same reason as the amp envelope.
-        if (hasShapedModEnvelopes)
+        // A disabled envelope runs its bypass settings, as setModEnvelopes
+        // builds it.
+        if (hasShapedModEnvelopes && modEnvelopeEnabled[envIndex])
         {
-            modEnvelopeGenerators[envIndex].setEnvelope(shapedModEnvelopes[envIndex]);
+            modEnvelopeGenerators[envIndex].setSettingsAndEnvelope(modEnvelopeSettings[envIndex],
+                                                                   shapedModEnvelopes[envIndex]);
         }
         else
         {
@@ -511,19 +514,53 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
         }
     }
 
-    for (int sample = 0; sample < numSamples; ++sample)
+    // ENV 1-4 for the block. Only an envelope that is both moving and read is
+    // evaluated sample by sample; a settled one (held sustain, finished) is the
+    // same value all block, and one nothing reads only advances its state. See
+    // EnvelopeGenerator::beginBlock for why each is exact.
+    std::array<bool, kModEnvelopeCount> modEnvelopePerSample {};
+    auto anyModEnvelopePerSample = false;
+    if (numSamples > 0)
     {
         for (std::size_t envIndex = 0; envIndex < modEnvelopeGenerators.size(); ++envIndex)
         {
-            if (modEnvelopeEnabled[envIndex])
+            if (! modEnvelopeEnabled[envIndex])
             {
-                const auto envSample = modEnvelopeGenerators[envIndex].getNextSample();
-                modEnvelopeValues[envIndex] = envSample;
-                modEnvelopePeakValues[envIndex] = juce::jmax(modEnvelopePeakValues[envIndex], envSample);
+                modEnvelopeValues[envIndex] = 0.0f;
+                continue;
+            }
+
+            auto envLevel = 0.0f;
+            auto envPeak = 0.0f;
+            const auto path = modEnvelopeFullEvaluation
+                                  ? EnvelopeGenerator::BlockPath::perSample
+                                  : modEnvelopeGenerators[envIndex].beginBlock(numSamples, modEnvelopeObserved[envIndex],
+                                                                               envLevel, envPeak);
+            if (path == EnvelopeGenerator::BlockPath::perSample)
+            {
+                modEnvelopePerSample[envIndex] = true;
+                anyModEnvelopePerSample = true;
             }
             else
             {
-                modEnvelopeValues[envIndex] = 0.0f;
+                modEnvelopeValues[envIndex] = envLevel;
+                modEnvelopePeakValues[envIndex] = juce::jmax(modEnvelopePeakValues[envIndex], envPeak);
+            }
+        }
+    }
+
+    for (int sample = 0; sample < numSamples; ++sample)
+    {
+        if (anyModEnvelopePerSample)
+        {
+            for (std::size_t envIndex = 0; envIndex < modEnvelopeGenerators.size(); ++envIndex)
+            {
+                if (modEnvelopePerSample[envIndex])
+                {
+                    const auto envSample = modEnvelopeGenerators[envIndex].getNextSample();
+                    modEnvelopeValues[envIndex] = envSample;
+                    modEnvelopePeakValues[envIndex] = juce::jmax(modEnvelopePeakValues[envIndex], envSample);
+                }
             }
         }
 
@@ -1150,20 +1187,6 @@ void SynthVoice::setAmpEnvelopeShape(const px3::BreakpointEnvelope& envelope)
     }
 }
 
-void SynthVoice::setModEnvelopeShapes(const std::array<px3::BreakpointEnvelope, kModEnvelopeCount>& envelopes)
-{
-    shapedModEnvelopes = envelopes;
-    hasShapedModEnvelopes = true;
-
-    for (std::size_t i = 0; i < modEnvelopeGenerators.size(); ++i)
-    {
-        if (modEnvelopeEnabled[i])
-        {
-            modEnvelopeGenerators[i].setEnvelope(envelopes[i]);
-        }
-    }
-}
-
 void SynthVoice::setAmpEnvelopeEnabled(bool shouldEnable)
 {
     ampEnvelopeEnabled = shouldEnable;
@@ -1177,16 +1200,41 @@ void SynthVoice::setAmpEnvelopeEnabled(bool shouldEnable)
     }
 }
 
-void SynthVoice::setModEnvelopeSettings(const std::array<EnvelopeSettings, kModEnvelopeCount>& settings,
-                                        const std::array<bool, kModEnvelopeCount>& enabled)
+void SynthVoice::setModEnvelopes(std::uint32_t generation,
+                                 const std::array<EnvelopeSettings, kModEnvelopeCount>& settings,
+                                 const std::array<bool, kModEnvelopeCount>& enabled,
+                                 const std::array<px3::BreakpointEnvelope, kModEnvelopeCount>* shapes)
 {
+    // Unchanged since the last push: the generators already hold exactly this.
+    // Rebuilding them anyway was fromAdsr + a snapshot rebuild per envelope per
+    // voice per block - for all 64 voices, sounding or not.
+    if (generation == appliedModEnvelopeGeneration)
+    {
+        return;
+    }
+    appliedModEnvelopeGeneration = generation;
+
     modEnvelopeSettings = settings;
     modEnvelopeEnabled = enabled;
-    hasShapedModEnvelopes = false;
+    hasShapedModEnvelopes = shapes != nullptr;
+    if (shapes != nullptr)
+    {
+        shapedModEnvelopes = *shapes;
+    }
 
     for (std::size_t envIndex = 0; envIndex < modEnvelopeGenerators.size(); ++envIndex)
     {
-        modEnvelopeGenerators[envIndex].setSettings(modEnvelopeSettings[envIndex]);
+        // A disabled envelope keeps the bypass settings even when the others
+        // are shaped: the shape only ever went to the enabled ones.
+        if (hasShapedModEnvelopes && modEnvelopeEnabled[envIndex])
+        {
+            modEnvelopeGenerators[envIndex].setSettingsAndEnvelope(modEnvelopeSettings[envIndex],
+                                                                   shapedModEnvelopes[envIndex]);
+        }
+        else
+        {
+            modEnvelopeGenerators[envIndex].setSettings(modEnvelopeSettings[envIndex]);
+        }
         if (!modEnvelopeEnabled[envIndex])
         {
             modEnvelopeGenerators[envIndex].reset();

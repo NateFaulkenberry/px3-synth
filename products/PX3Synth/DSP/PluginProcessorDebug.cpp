@@ -417,6 +417,14 @@ float PX3SynthAudioProcessor::debugGetLfoCurrentValue(int lfoIndex) const
     return lfoCurrentValues[static_cast<std::size_t>(idx)].load(std::memory_order_relaxed);
 }
 
+void PX3SynthAudioProcessor::debugSetFullModEnvelopeEvaluation(bool full)
+{
+    for (auto* voice : typedVoices)
+    {
+        if (voice != nullptr) { voice->setModEnvelopeFullEvaluation(full); }
+    }
+}
+
 float PX3SynthAudioProcessor::debugGetEnvelopeCurrentValue(int envIndex) const
 {
     const auto idx = juce::jlimit(0, kEnvelopeSourceCount - 1, envIndex);

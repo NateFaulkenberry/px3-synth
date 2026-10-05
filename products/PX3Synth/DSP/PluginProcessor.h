@@ -693,6 +693,9 @@ public:
     float debugGetLfoCurrentValue() const;
     float debugGetLfoCurrentValue(int lfoIndex) const;
     float debugGetEnvelopeCurrentValue(int envIndex) const;
+    // Test reference for the lazy ENV evaluation: every voice evaluates every
+    // enabled envelope sample by sample (SynthVoice::setModEnvelopeFullEvaluation).
+    void debugSetFullModEnvelopeEvaluation(bool full);
     float debugGetOscillatorBusRms() const;
     float debugGetDryBusRms() const;
     float debugGetFxBusRms() const;
@@ -867,6 +870,24 @@ private:
     std::atomic<bool> hostPositionAvailable { false };
     float currentLfoSignalForBlock(int lfoIndex, int numSamples);
     void collectModulationEnvelopeValuesFromVoices();
+
+    // ENV 1-4 as the voices take them (SynthVoice::setModEnvelopes): the same
+    // number back while settings, enables and shapes are bit-for-bit what they
+    // were, a new one the moment any of them changes. Audio thread (and the
+    // constructor / prepareToPlay, which never overlap it).
+    std::uint32_t modEnvelopeGenerationFor(const std::array<EnvelopeSettings, kEnvelopeSourceCount>& settings,
+                                           const std::array<bool, kEnvelopeSourceCount>& enabled,
+                                           const std::array<px3::BreakpointEnvelope, kEnvelopeSourceCount>* shapes) noexcept;
+    // Which envelopes a compiled route reads, to any destination - voice,
+    // global, macro. Nothing else reads an envelope's level: the ENV cards
+    // draw from its clock (currentPosition), which advances regardless.
+    std::array<bool, kEnvelopeSourceCount> modEnvelopeObservers(const std::array<bool, kEnvelopeSourceCount>& enabled) const;
+    std::uint32_t modEnvelopeGeneration { 0u };
+    bool modEnvelopeGenerationValid { false };
+    std::array<EnvelopeSettings, kEnvelopeSourceCount> lastModEnvelopeSettings {};
+    std::array<bool, kEnvelopeSourceCount> lastModEnvelopeEnabled {};
+    bool lastModEnvelopesShaped { false };
+    std::array<px3::BreakpointEnvelope, kEnvelopeSourceCount> lastModEnvelopeShapes {};
 
     juce::Synthesiser synth;
     px3::synth::ParameterCatalog parameterCatalog;

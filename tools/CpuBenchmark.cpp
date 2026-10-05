@@ -128,6 +128,8 @@ struct Scenario
     bool compFx { false };
     bool insertsBypassed { false };  // parameters loaded, enables off
     bool combFilters { false };      // both filter slots set to COMB
+    bool shippedModulation { false }; // MOD section left at its defaults (see configure)
+    bool envelopeLoop { false };      // LOOP on every mod envelope
 };
 
 struct Timing
@@ -236,14 +238,24 @@ void configure(PX3SynthAudioProcessor& processor, const Scenario& scenario)
     setParameter(processor, "global.character.enabled", scenario.analog ? 1.0f : 0.0f);
     setParameter(processor, "global.character.profile", scenario.analog ? 0.25f : 0.0f);
 
-    for (int envIndex = 0; envIndex < 3; ++envIndex)
+    // Every envelope and every LFO the processor has, not a fixed three: ENV 4
+    // and LFO 4 default to enabled, so a loop that stopped at 3 left ENV 4
+    // running in every "plain" scenario and charged it to the voices.
+    // shippedModulation leaves the whole MOD section at its defaults - all
+    // four envelopes and LFOs enabled and nothing routed - which is the patch
+    // an instance opens with.
+    if (! scenario.shippedModulation)
     {
-        const auto slot = juce::String(envIndex + 1);
-        setParameter(processor, juce::String("mod.env") + slot + ".enabled", scenario.modEnvelopes ? 1.0f : 0.0f);
-        setParameter(processor, juce::String("mod.env") + slot + ".attack", 0.02f + 0.05f * static_cast<float>(envIndex));
-        setParameter(processor, juce::String("mod.env") + slot + ".decay", 0.25f);
-        setParameter(processor, juce::String("mod.env") + slot + ".sustain", 0.5f);
-        setParameter(processor, juce::String("mod.env") + slot + ".release", 0.8f);
+        for (int envIndex = 0; envIndex < PX3SynthAudioProcessor::kEnvelopeSourceCount; ++envIndex)
+        {
+            const auto prefix = juce::String("mod.env") + juce::String(envIndex + 1) + ".";
+            setParameter(processor, prefix + "enabled", scenario.modEnvelopes ? 1.0f : 0.0f);
+            setParameter(processor, prefix + "attack", 0.02f + 0.05f * static_cast<float>(envIndex));
+            setParameter(processor, prefix + "decay", 0.25f);
+            setParameter(processor, prefix + "sustain", 0.5f);
+            setParameter(processor, prefix + "release", 0.8f);
+            setParameter(processor, prefix + "loop", scenario.envelopeLoop ? 1.0f : 0.0f);
+        }
     }
     // LFO routes in slots 0-3 and envelope routes in 4-7.
     constexpr auto env1 = PX3SynthAudioProcessor::kLfoSourceCount;
@@ -254,14 +266,14 @@ void configure(PX3SynthAudioProcessor& processor, const Scenario& scenario)
         routeModulation(processor, 6, env1 + 2, "mix.osc1.level", 0.7f);
     }
 
-    for (int lfoIndex = 0; lfoIndex < 3; ++lfoIndex)
+    if (! scenario.shippedModulation)
     {
-        const auto slot = juce::String(lfoIndex + 1);
-        const auto prefix = juce::String("mod.lfo") + slot + ".";
-        setParameter(processor, lfoIndex == 0 ? juce::String("mod.lfo1.enabled") : prefix + "enabled",
-                     scenario.lfos ? 1.0f : 0.0f);
-        setParameter(processor, lfoIndex == 0 ? juce::String("mod.lfo1.frequency") : prefix + "frequency",
-                     2.0f + static_cast<float>(lfoIndex));
+        for (int lfoIndex = 0; lfoIndex < PX3SynthAudioProcessor::kLfoSourceCount; ++lfoIndex)
+        {
+            const auto prefix = juce::String("mod.lfo") + juce::String(lfoIndex + 1) + ".";
+            setParameter(processor, prefix + "enabled", scenario.lfos ? 1.0f : 0.0f);
+            setParameter(processor, prefix + "frequency", 2.0f + static_cast<float>(lfoIndex));
+        }
     }
     if (scenario.lfos)
     {
@@ -447,6 +459,16 @@ const Scenario kScenarios[] = {
       true,  true,  true,  true,  false },
     { "64 voices + both buses",        64, true  , true  , true  , true  , true  , true  , true  , true  , true  , true  , true  , false , false , -1,
       true,  true,  true,  true,  false },
+
+    // ---- the shipped MOD section ---------------------------------------------
+    // Every envelope and LFO enabled at its default and nothing routed: what a
+    // fresh instance runs. Read against "16 voices (typical)" / "64 voices
+    // (max)", which turn the MOD section off. The rapid row keeps notes
+    // starting and releasing, so the envelopes spend the window in attack,
+    // decay and release rather than parked at sustain.
+    { .name = "16 voices, shipped MOD",  .voices = 16, .shippedModulation = true },
+    { .name = "64 voices, shipped MOD",  .voices = 64, .shippedModulation = true },
+    { .name = "16 voices, shipped MOD, rapid notes", .voices = 16, .rapidTrigger = true, .shippedModulation = true },
 };
 
 // ---------------------------------------------------------------------------
@@ -664,6 +686,12 @@ int runFingerprints()
         { "everything on, no FX",   { "", 16, true, true, true, true, true, true, true, false, false, false, true, false, false, -1 } },
         { "voice stealing, no FX",  { "", 64, true, true, true, false, false, false, false, false, false, false, false, true, false, -1 } },
         { "rapid retrigger, no FX", { "", 16, false, true, true, false, false, false, false, false, false, false, false, false, true, -1 } },
+        // The mod envelopes off their sustain plateau: retriggered, released
+        // and looping, with routes reading them. And the shipped MOD section,
+        // every envelope running with nothing routed.
+        { "mod envelopes, rapid retrigger", { .voices = 16, .allSources = true, .modEnvelopes = true, .rapidTrigger = true } },
+        { "mod envelopes, LOOP",    { .voices = 8, .allSources = true, .modEnvelopes = true, .envelopeLoop = true } },
+        { "shipped MOD, rapid retrigger", { .voices = 16, .allSources = true, .rapidTrigger = true, .shippedModulation = true } },
     };
 
     for (const auto& variant : variants)

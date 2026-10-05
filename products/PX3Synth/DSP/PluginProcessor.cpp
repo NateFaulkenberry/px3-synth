@@ -1,5 +1,7 @@
 #include "PluginProcessor.h"
 
+#include <bit>
+
 static_assert(PX3SynthAudioProcessor::kEnvelopeSourceCount == SynthVoice::kModEnvelopeCount,
               "the voices run one modulation envelope per ENV source");
 #include "OscillatorTuning.h"
@@ -1067,6 +1069,8 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
         initialModEnvelopeSettings[static_cast<std::size_t>(envIndex)] = currentModEnvelopeSettings(envIndex);
         initialModEnvelopeEnabled[static_cast<std::size_t>(envIndex)] = getEnvelopeEnabledParam(envIndex).get();
     }
+    const auto initialModEnvelopeGeneration = modEnvelopeGenerationFor(initialModEnvelopeSettings,
+                                                                       initialModEnvelopeEnabled, nullptr);
     const auto initialFilter = currentFilterSettings();
     const auto initialFilterParallel = currentFilterRoutingIsParallel();
     const auto initialFilterBalance = currentFilterParallelBalance();
@@ -1080,7 +1084,8 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
         synthVoice->setVoiceIndex(voice);
         synthVoice->setAmpEnvelope(initialAmpEnvelope);
         synthVoice->setAmpEnvelopeEnabled(true);   // see the block setup below
-        synthVoice->setModEnvelopeSettings(initialModEnvelopeSettings, initialModEnvelopeEnabled);
+        synthVoice->setModEnvelopes(initialModEnvelopeGeneration, initialModEnvelopeSettings,
+                                    initialModEnvelopeEnabled, nullptr);
         synthVoice->setFilterSettings(initialFilter);
         synthVoice->setFilterRouting(initialFilterParallel, initialFilterBalance);
         synthVoice->setSubtractiveSettings(initialSubtractive);
@@ -1550,13 +1555,15 @@ void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
                               || ! shapedMod[static_cast<std::size_t>(envIndex)].isPlainAdsr();
     }
 
+    const auto modEnvelopeShapes = anyEnvelopeIsShaped ? &shapedMod : nullptr;
+    const auto modGeneration = modEnvelopeGenerationFor(modEnvelopeSettings, modEnvelopeEnabled, modEnvelopeShapes);
     for (auto* voice : typedVoices)
     {
         if (voice != nullptr)
         {
             voice->setAmpEnvelope(ampEnvelope);
             voice->setAmpEnvelopeEnabled(ampEnvelopeEnabled);
-            voice->setModEnvelopeSettings(modEnvelopeSettings, modEnvelopeEnabled);
+            voice->setModEnvelopes(modGeneration, modEnvelopeSettings, modEnvelopeEnabled, modEnvelopeShapes);
 
             // Only when the envelope is more than ADSR. Pushing the full shape
             // unconditionally would copy 384 bytes per envelope per voice per
@@ -1564,7 +1571,6 @@ void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
             if (anyEnvelopeIsShaped)
             {
                 voice->setAmpEnvelopeShape(shapedAmp);
-                voice->setModEnvelopeShapes(shapedMod);
             }
             voice->setFilterSettings(filter);
             voice->setFilterRouting(filterParallel, filterBalance);
@@ -1899,6 +1905,99 @@ float PX3SynthAudioProcessor::currentLfoSignalForBlock(int lfoIndex, int numSamp
     return signal;
 }
 
+namespace
+{
+bool sameBits(float a, float b) noexcept
+{
+    return std::bit_cast<std::uint32_t>(a) == std::bit_cast<std::uint32_t>(b);
+}
+
+bool sameBits(double a, double b) noexcept
+{
+    return std::bit_cast<std::uint64_t>(a) == std::bit_cast<std::uint64_t>(b);
+}
+
+// Bit for bit, not ==: 0.0 and -0.0 compare equal and need not render equal.
+bool sameEnvelopeSettings(const EnvelopeSettings& a, const EnvelopeSettings& b) noexcept
+{
+    return sameBits(a.attackSeconds, b.attackSeconds) && sameBits(a.decaySeconds, b.decaySeconds)
+           && sameBits(a.sustainLevel, b.sustainLevel) && sameBits(a.releaseSeconds, b.releaseSeconds)
+           && a.loop == b.loop && sameBits(a.keyTrack, b.keyTrack);
+}
+
+bool sameEnvelopeShape(const px3::BreakpointEnvelope& a, const px3::BreakpointEnvelope& b) noexcept
+{
+    if (a.getPointCount() != b.getPointCount() || a.getSustainPoint() != b.getSustainPoint()
+        || a.getMode() != b.getMode())
+    {
+        return false;
+    }
+    for (int i = 0; i < a.getPointCount(); ++i)
+    {
+        const auto& p = a.getPoint(i);
+        const auto& q = b.getPoint(i);
+        if (! sameBits(p.timeSeconds, q.timeSeconds) || ! sameBits(p.value, q.value)
+            || ! sameBits(p.curveToNext, q.curveToNext))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+}
+
+std::uint32_t PX3SynthAudioProcessor::modEnvelopeGenerationFor(
+    const std::array<EnvelopeSettings, kEnvelopeSourceCount>& settings,
+    const std::array<bool, kEnvelopeSourceCount>& enabled,
+    const std::array<px3::BreakpointEnvelope, kEnvelopeSourceCount>* shapes) noexcept
+{
+    auto same = modEnvelopeGenerationValid && lastModEnvelopesShaped == (shapes != nullptr)
+                && lastModEnvelopeEnabled == enabled;
+    for (std::size_t i = 0; same && i < settings.size(); ++i)
+    {
+        same = sameEnvelopeSettings(settings[i], lastModEnvelopeSettings[i])
+               && (shapes == nullptr || sameEnvelopeShape((*shapes)[i], lastModEnvelopeShapes[i]));
+    }
+    if (same)
+    {
+        return modEnvelopeGeneration;
+    }
+
+    lastModEnvelopeSettings = settings;
+    lastModEnvelopeEnabled = enabled;
+    lastModEnvelopesShaped = shapes != nullptr;
+    if (shapes != nullptr)
+    {
+        lastModEnvelopeShapes = *shapes;
+    }
+    modEnvelopeGenerationValid = true;
+    // Never 0: that is what a voice that has been given nothing holds.
+    if (++modEnvelopeGeneration == 0u)
+    {
+        modEnvelopeGeneration = 1u;
+    }
+    return modEnvelopeGeneration;
+}
+
+std::array<bool, PX3SynthAudioProcessor::kEnvelopeSourceCount>
+PX3SynthAudioProcessor::modEnvelopeObservers(const std::array<bool, kEnvelopeSourceCount>& enabled) const
+{
+    std::array<bool, kEnvelopeSourceCount> observed {};
+    auto graph = modulationGraph.read();
+    if (! graph)
+    {
+        // No graph to ask: evaluate everything rather than guess.
+        observed.fill(true);
+        return observed;
+    }
+    for (int envIndex = 0; envIndex < kEnvelopeSourceCount; ++envIndex)
+    {
+        observed[static_cast<std::size_t>(envIndex)] = enabled[static_cast<std::size_t>(envIndex)]
+                                                       && graph->hasRouteFrom(kLfoSourceCount + envIndex);
+    }
+    return observed;
+}
+
 void PX3SynthAudioProcessor::collectModulationEnvelopeValuesFromVoices()
 {
     std::array<float, kEnvelopeSourceCount> sums { { 0.0f, 0.0f, 0.0f } };
@@ -2132,13 +2231,17 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     }
 
     buildVoiceModulationPlan(voiceModulationPlan);
+    const auto modEnvelopeShapes = anyEnvelopeIsShaped ? &shapedMod : nullptr;
+    const auto modGeneration = modEnvelopeGenerationFor(modEnvelopeSettings, modEnvelopeEnabled, modEnvelopeShapes);
+    const auto modObserved = modEnvelopeObservers(modEnvelopeEnabled);
     for (int voiceIndex = 0; voiceIndex < kPolyphonyVoiceCount; ++voiceIndex)
     {
         if (auto* voice = typedVoices[static_cast<std::size_t>(voiceIndex)])
         {
             voice->setAmpEnvelope(ampEnvelope);
             voice->setAmpEnvelopeEnabled(ampEnvelopeEnabled);
-            voice->setModEnvelopeSettings(modEnvelopeSettings, modEnvelopeEnabled);
+            voice->setModEnvelopes(modGeneration, modEnvelopeSettings, modEnvelopeEnabled, modEnvelopeShapes);
+            voice->setModEnvelopeObserved(modObserved);
 
             // Only when the envelope is more than ADSR. Pushing the full shape
             // unconditionally would copy 384 bytes per envelope per voice per
@@ -2146,7 +2249,6 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
             if (anyEnvelopeIsShaped)
             {
                 voice->setAmpEnvelopeShape(shapedAmp);
-                voice->setModEnvelopeShapes(shapedMod);
             }
             voice->setFilterSettings(filter);
             voice->setFilterRouting(filterParallel, filterBalance);

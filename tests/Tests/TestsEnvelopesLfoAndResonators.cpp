@@ -252,6 +252,339 @@ void testAmpEnvelope()
 //==============================================================================
 // PHASE 6 - ENV1 / ENV2 / ENV3 and their destinations
 //==============================================================================
+//==============================================================================
+// ENV 1-4 lazy evaluation (EnvelopeGenerator::beginBlock)
+//==============================================================================
+// An envelope settled on a plateau is one value for the whole block; one that
+// no route reads advances only its clocks. Both are checked against the
+// reference that evaluates every sample, which is what the generator did
+// before: the clocks must agree bit for bit at every block, and the level a
+// route reads after it is added must be the level it would have read.
+namespace
+{
+bool samePosition(const EnvelopePosition& a, const EnvelopePosition& b)
+{
+    return a.active == b.active && a.inRelease == b.inRelease
+           && std::memcmp(&a.heldSeconds, &b.heldSeconds, sizeof(double)) == 0
+           && std::memcmp(&a.releasedSeconds, &b.releasedSeconds, sizeof(double)) == 0
+           && std::memcmp(&a.sustainSeconds, &b.sustainSeconds, sizeof(double)) == 0;
+}
+
+bool sameBits(float a, float b) { return std::memcmp(&a, &b, sizeof(float)) == 0; }
+
+struct LazyRun
+{
+    int clockMismatchBlocks { 0 };      // blocks whose clocks/stage differ from the reference
+    int differingSamplesAfterWake { 0 };
+    double maxDiffAfterWake { 0.0 };
+    int lastDifferingSample { -1 };     // sample index, from note-on
+    int unobservedBlocks { 0 };         // blocks that took the clock-only path
+    int steadyBlocks { 0 };
+};
+
+struct LazyEvent
+{
+    int block;
+    enum Kind { noteOn, noteOff } kind;
+};
+
+// `wakeBlock`: the block a route to the envelope appears. Before it the lazy
+// generator is unobserved, from it on observed. Both generators see the same
+// events at the same block boundaries, as voices do.
+LazyRun runLazyAgainstReference(const std::function<void(EnvelopeGenerator&)>& setup,
+                                const std::vector<LazyEvent>& events,
+                                int wakeBlock, int totalBlocks, int blockSize = 512)
+{
+    EnvelopeGenerator reference, lazy;
+    for (auto* g : { &reference, &lazy })
+    {
+        g->prepare(kSampleRate);
+        setup(*g);
+    }
+
+    LazyRun run;
+    for (int block = 0; block < totalBlocks; ++block)
+    {
+        for (const auto& e : events)
+        {
+            if (e.block != block) { continue; }
+            for (auto* g : { &reference, &lazy })
+            {
+                if (e.kind == LazyEvent::noteOn) { g->noteOn(); } else { g->noteOff(); }
+            }
+        }
+
+        const auto observed = block >= wakeBlock;
+        auto level = 0.0f, peak = 0.0f;
+        const auto path = lazy.beginBlock(blockSize, observed, level, peak);
+        if (path == EnvelopeGenerator::BlockPath::unobserved) { ++run.unobservedBlocks; }
+        if (path == EnvelopeGenerator::BlockPath::steady) { ++run.steadyBlocks; }
+
+        for (int i = 0; i < blockSize; ++i)
+        {
+            const auto want = reference.getNextSample();
+            const auto got = path == EnvelopeGenerator::BlockPath::perSample ? lazy.getNextSample() : level;
+            if (observed && ! sameBits(want, got))
+            {
+                ++run.differingSamplesAfterWake;
+                run.maxDiffAfterWake = juce::jmax(run.maxDiffAfterWake, std::abs(static_cast<double>(want) - got));
+                run.lastDifferingSample = block * blockSize + i;
+            }
+        }
+        if (! samePosition(reference.currentPosition(), lazy.currentPosition())) { ++run.clockMismatchBlocks; }
+    }
+    return run;
+}
+
+EnvelopeSettings adsr(float a, float d, float s, float r, bool loop = false)
+{
+    EnvelopeSettings settings;
+    settings.attackSeconds = a;
+    settings.decaySeconds = d;
+    settings.sustainLevel = s;
+    settings.releaseSeconds = r;
+    settings.loop = loop;
+    return settings;
+}
+
+juce::String describe(const LazyRun& run)
+{
+    return juce::String(run.clockMismatchBlocks) + " clock mismatches, " + juce::String(run.differingSamplesAfterWake)
+           + " differing samples after the route (max " + juce::String(run.maxDiffAfterWake, 8) + "), "
+           + juce::String(run.unobservedBlocks) + " clock-only / " + juce::String(run.steadyBlocks) + " steady blocks";
+}
+}
+
+static void testModEnvelopeLazyEvaluation()
+{
+    suite("ENV 1-4 lazy evaluation");
+
+    // The smoother's ramp (0.8 ms) at 48 kHz, in samples.
+    constexpr int kSmootherSamples = 38;
+
+    // ---- ADSR: route added on the sustain plateau ----------------------------
+    {
+        const auto run = runLazyAgainstReference([](EnvelopeGenerator& g)
+        {
+            g.setSettings(adsr(0.05f, 0.10f, 0.5f, 0.2f));
+            g.setTimeScale(1.37);   // key tracking: a step that is not 1/48000
+        }, { { 0, LazyEvent::noteOn }, { 45, LazyEvent::noteOff }, { 80, LazyEvent::noteOn }, { 100, LazyEvent::noteOff } },
+           25, 140);
+        check("LazyEnv_AdsrRouteAddedOnSustainIsBitIdentical",
+              run.clockMismatchBlocks == 0 && run.differingSamplesAfterWake == 0 && run.unobservedBlocks > 0,
+              describe(run));
+    }
+
+    // ---- ADSR: route added after the release has run out -----------------------
+    {
+        const auto run = runLazyAgainstReference([](EnvelopeGenerator& g) { g.setSettings(adsr(0.03f, 0.05f, 0.7f, 0.15f)); },
+                                                 { { 0, LazyEvent::noteOn }, { 20, LazyEvent::noteOff }, { 60, LazyEvent::noteOn } },
+                                                 50, 90);
+        check("LazyEnv_ReleaseRunsOutOnItsOwnClockWhileUnrouted",
+              run.clockMismatchBlocks == 0 && run.differingSamplesAfterWake == 0,
+              describe(run));
+    }
+
+    // ---- ADSR: route added mid-attack ----------------------------------------
+    // The one inexact case, by construction: the 0.8 ms output smoother is an
+    // IIR over every level before it, and those levels were never computed.
+    // It restarts from the current level, so the difference is the smoother's
+    // lag and it ends where the smoother settles on the sustain.
+    {
+        constexpr float attack = 0.5f;
+        const auto run = runLazyAgainstReference([&](EnvelopeGenerator& g) { g.setSettings(adsr(attack, 0.2f, 0.6f, 0.3f)); },
+                                                 { { 0, LazyEvent::noteOn }, { 120, LazyEvent::noteOff } }, 10, 160);
+        // Lag of a one-pole over kSmootherSamples on a ramp of slope 1/attack.
+        const auto lagBound = kSmootherSamples / (attack * kSampleRate) * 1.05;
+        const auto sustainReached = static_cast<int>((attack + 0.2) * kSampleRate) + kSmootherSamples;
+        check("LazyEnv_RouteAddedMidAttackDiffersOnlyBySmootherLag",
+              run.clockMismatchBlocks == 0 && run.maxDiffAfterWake <= lagBound
+                  && run.lastDifferingSample < sustainReached,
+              describe(run) + "; bound " + juce::String(lagBound, 6) + ", last difference at sample "
+                  + juce::String(run.lastDifferingSample) + " (sustain + ramp at " + juce::String(sustainReached) + ")");
+    }
+
+    // ---- LOOP ------------------------------------------------------------------
+    // Never on a plateau while held, so the route always lands on a moving
+    // envelope: the clocks and every LOOP restart stay exact, the level differs
+    // by the smoother's lag, and once the release has finished they are equal.
+    {
+        constexpr float attack = 0.05f, decay = 0.05f;
+        const auto run = runLazyAgainstReference([&](EnvelopeGenerator& g) { g.setSettings(adsr(attack, decay, 0.3f, 0.2f, true)); },
+                                                 { { 0, LazyEvent::noteOn }, { 70, LazyEvent::noteOff } }, 33, 110);
+        const auto lagBound = kSmootherSamples / (attack * kSampleRate) * 1.05;
+        const auto restSample = static_cast<int>((70 * 512) + 0.2 * kSampleRate) + kSmootherSamples;
+        check("LazyEnv_LoopRestartsStayExactWhileUnrouted",
+              run.clockMismatchBlocks == 0 && run.unobservedBlocks == 33,
+              describe(run));
+        check("LazyEnv_LoopRouteAddedDiffersOnlyBySmootherLag",
+              run.maxDiffAfterWake <= lagBound && run.lastDifferingSample < restSample,
+              "max " + juce::String(run.maxDiffAfterWake, 8) + " against a lag bound of " + juce::String(lagBound, 6)
+                  + "; last difference at sample " + juce::String(run.lastDifferingSample) + ", rest at " + juce::String(restSample));
+    }
+
+    // ---- BREAKPOINT ------------------------------------------------------------
+    // A one-shot with a flat hold in the middle. A route added on the hold is
+    // exact (the smoother has settled on it); one added on a ramp differs by
+    // the lag until the trajectory ends.
+    {
+        auto shape = [](EnvelopeGenerator& g)
+        {
+            px3::BreakpointEnvelope envelope;
+            const px3::BreakpointEnvelope::Point points[] = {
+                { 0.0, 0.0, 0.0 }, { 0.12, 1.0, 0.4 }, { 0.30, 0.45, 0.0 }, { 0.70, 0.45, -0.3 }, { 1.00, 0.0, 0.0 }
+            };
+            envelope.setPoints(points, 5, 2);
+            envelope.setMode(px3::BreakpointEnvelope::Mode::breakpoint);
+            g.setSettings(adsr(0.01f, 0.01f, 1.0f, 0.01f));
+            g.setEnvelope(envelope);
+        };
+        const std::vector<LazyEvent> events { { 0, LazyEvent::noteOn }, { 30, LazyEvent::noteOff }, { 110, LazyEvent::noteOn } };
+        const auto onHold = runLazyAgainstReference(shape, events, 45, 140);      // 0.48 s: on the hold
+        const auto onRamp = runLazyAgainstReference(shape, events, 75, 140);      // 0.80 s: the last ramp
+        check("LazyEnv_BreakpointRouteAddedOnAHoldIsBitIdentical",
+              onHold.clockMismatchBlocks == 0 && onHold.differingSamplesAfterWake == 0,
+              describe(onHold));
+        check("LazyEnv_BreakpointRouteAddedOnARampSettlesAtTheEnd",
+              onRamp.clockMismatchBlocks == 0 && onRamp.maxDiffAfterWake < 0.01
+                  && onRamp.lastDifferingSample < static_cast<int>(1.0 * kSampleRate) + kSmootherSamples,
+              describe(onRamp) + "; last difference at sample " + juce::String(onRamp.lastDifferingSample));
+    }
+
+    // ---- processor: a route added mid-note, against full evaluation -----------
+    // Every enabled envelope running from note-on, nothing routed; at block 40
+    // routes appear from ENV 1 (to a per-voice destination) and ENV 3 (to a
+    // global one), both on their sustain. The audio must be bit-identical to
+    // the processor that evaluates every envelope sample by sample.
+    {
+        auto renderWith = [](bool full, std::vector<EnvelopePosition>* progress)
+        {
+            PX3SynthAudioProcessor processor;
+            makePlainPatch(processor);
+            setChoice(processor, "voice.osc1.mode", 1);   // SAW, so the cutoff is heard
+            setParam(processor, "voice.filter1.enabled", 1.0f);
+            setParam(processor, "voice.filter1.cutoff", 900.0f);
+            const float attacks[] = { 0.04f, 0.06f, 0.02f, 0.3f };
+            for (int env = 0; env < PX3SynthAudioProcessor::kEnvelopeSourceCount; ++env)
+            {
+                const auto prefix = "mod.env" + juce::String(env + 1) + ".";
+                setParam(processor, prefix + "enabled", 1.0f);
+                setParam(processor, prefix + "attack", attacks[env]);
+                setParam(processor, prefix + "decay", 0.1f);
+                setParam(processor, prefix + "sustain", 0.55f);
+                setParam(processor, prefix + "release", 0.25f);
+                setParam(processor, prefix + "loop", env == 1 ? 1.0f : 0.0f);
+                setParam(processor, prefix + "keytrack", env == 2 ? 0.6f : 0.0f);
+            }
+            processor.debugSetFullModEnvelopeEvaluation(full);
+            constexpr auto env1 = PX3SynthAudioProcessor::kLfoSourceCount;
+            return render(processor, 140 * kBlockSize,
+                          { { 0, true, 48, 0.9f }, { 3000, true, 55, 0.8f }, { 70 * kBlockSize, false, 48, 0.0f },
+                            { 75 * kBlockSize, false, 55, 0.0f }, { 90 * kBlockSize + 100, true, 60, 0.9f },
+                            { 120 * kBlockSize, false, 60, 0.0f } },
+                          [&](int block)
+                          {
+                              if (block == 40)
+                              {
+                                  routeModulation(processor, 4, env1, "voice.filter1.cutoff", 0.6f);
+                                  routeModulation(processor, 5, env1 + 2, "mix.osc1.level", -0.4f);
+                              }
+                              if (progress != nullptr && block > 0)
+                              {
+                                  for (int slot = 1; slot <= PX3SynthAudioProcessor::kEnvelopeSourceCount; ++slot)
+                                  {
+                                      progress->push_back(processor.getEnvelopeProgress(slot));
+                                  }
+                              }
+                          });
+        };
+        std::vector<EnvelopePosition> lazyProgress, fullProgress;
+        const auto lazy = renderWith(false, &lazyProgress);
+        const auto full = renderWith(true, &fullProgress);
+        const auto identical = lazy.left.size() == full.left.size()
+                               && std::memcmp(lazy.left.data(), full.left.data(), lazy.left.size() * sizeof(float)) == 0
+                               && std::memcmp(lazy.right.data(), full.right.data(), lazy.right.size() * sizeof(float)) == 0;
+        auto worst = 0.0;
+        for (std::size_t i = 0; i < juce::jmin(lazy.left.size(), full.left.size()); ++i)
+        {
+            worst = juce::jmax(worst, static_cast<double>(std::abs(lazy.left[i] - full.left[i])));
+        }
+        check("LazyEnv_ProcessorRouteAddedOnSustainIsBitIdentical", identical && lazy.rms() > 0.01,
+              "max sample difference " + juce::String(worst, 9) + ", rms " + fmt(lazy.rms(), 5));
+
+        auto progressMatches = lazyProgress.size() == fullProgress.size();
+        for (std::size_t i = 0; progressMatches && i < lazyProgress.size(); ++i)
+        {
+            progressMatches = samePosition(lazyProgress[i], fullProgress[i]);
+        }
+        check("LazyEnv_EnvCardsShowTheSameTimelineAsFullEvaluation", progressMatches,
+              juce::String(static_cast<int>(lazyProgress.size())) + " block readings of ENV 1-4");
+    }
+
+    // ---- the ENV cards still move when nothing is routed -----------------------
+    {
+        PX3SynthAudioProcessor processor;
+        makePlainPatch(processor);
+        setParam(processor, "voice.amp.release", 1.5f);   // the voice outlives ENV 4's release
+        setParam(processor, "mod.env4.enabled", 1.0f);
+        setParam(processor, "mod.env4.attack", 0.2f);
+        setParam(processor, "mod.env4.decay", 0.3f);
+        setParam(processor, "mod.env4.release", 0.4f);
+        std::vector<EnvelopePosition> seen;
+        render(processor, 120 * kBlockSize, { { 0, true, 60, 0.9f }, { 60 * kBlockSize, false, 60, 0.0f } },
+               [&](int block) { if (block > 0) { seen.push_back(processor.getEnvelopeProgress(4)); } });
+        const auto& midAttack = seen[9];     // after block 9: 0.1 s
+        const auto& held = seen[50];         // 0.53 s, past the 0.5 s sustain point
+        const auto& releasing = seen[75];    // 0.16 s into the release
+        check("LazyEnv_UnroutedEnvCardStillMoves",
+              midAttack.active && midAttack.heldSeconds > 0.09 && midAttack.heldSeconds < 0.12
+                  && held.active && nearly(held.heldSeconds, 0.5, 1.0e-6) && ! held.inRelease
+                  && releasing.inRelease && releasing.releasedSeconds > 0.14 && releasing.releasedSeconds < 0.18,
+              "attack at " + fmt(midAttack.heldSeconds, 4) + " s, held at " + fmt(held.heldSeconds, 4)
+                  + " s, release at " + fmt(releasing.releasedSeconds, 4) + " s");
+    }
+
+    // ---- a voice starting a note gets the current envelopes -------------------
+    // The settings are pushed to every voice only when they change, so a change
+    // made while no voice is sounding must still reach the next note.
+    {
+        PX3SynthAudioProcessor processor;
+        makePlainPatch(processor);
+        setParam(processor, "mod.env1.enabled", 1.0f);
+        setParam(processor, "mod.env1.attack", 0.5f);
+        setParam(processor, "mod.env1.decay", 0.5f);
+        EnvelopePosition firstNote, secondNote, afterEdit, oneShotHeld, adsrHeld;
+        render(processor, 400 * kBlockSize,
+               { { 20 * kBlockSize, true, 60, 0.9f }, { 25 * kBlockSize, false, 60, 0.0f },
+                 { 80 * kBlockSize, true, 62, 0.9f }, { 120 * kBlockSize, false, 62, 0.0f },
+                 { 160 * kBlockSize, true, 64, 0.9f }, { 300 * kBlockSize, false, 64, 0.0f },
+                 { 330 * kBlockSize, true, 65, 0.9f }, { 399 * kBlockSize, false, 65, 0.0f } },
+               [&](int block)
+               {
+                   if (block == 22) { firstNote = processor.getEnvelopeProgress(1); }
+                   if (block == 60) { setParam(processor, "mod.env1.attack", 0.02f); setParam(processor, "mod.env1.decay", 0.03f); }
+                   if (block == 82) { secondNote = processor.getEnvelopeProgress(1); }
+                   if (block == 90) { setParam(processor, "mod.env1.decay", 0.08f); }
+                   if (block == 92) { afterEdit = processor.getEnvelopeProgress(1); }
+                   // Breakpoint (a one-shot, about a second) while idle; a note
+                   // held three seconds outlives it.
+                   if (block == 140) { processor.setEnvelopeMode(1, px3::BreakpointEnvelope::Mode::breakpoint); }
+                   if (block == 299) { oneShotHeld = processor.getEnvelopeProgress(1); }
+                   if (block == 320) { processor.setEnvelopeMode(1, px3::BreakpointEnvelope::Mode::adsr); }
+                   if (block == 398) { adsrHeld = processor.getEnvelopeProgress(1); }
+               });
+        check("LazyEnv_IdleVoicesStartOnTheCurrentSettings",
+              nearly(firstNote.sustainSeconds, 1.0, 1.0e-6) && nearly(secondNote.sustainSeconds, 0.05, 1.0e-6)
+                  && nearly(afterEdit.sustainSeconds, 0.10, 1.0e-6),
+              "sustain point " + fmt(firstNote.sustainSeconds, 4) + " s, then " + fmt(secondNote.sustainSeconds, 4)
+                  + " s after an idle edit, then " + fmt(afterEdit.sustainSeconds, 4) + " s after a mid-note edit");
+        check("LazyEnv_IdleVoicesStartOnTheCurrentShape",
+              ! oneShotHeld.active && adsrHeld.active,
+              juce::String("one-shot ") + (oneShotHeld.active ? "still active" : "finished") + " under a held key; ADSR "
+                  + (adsrHeld.active ? "held" : "not held"));
+    }
+}
+
 void testModEnvelopes()
 {
     suite("ENV1 / ENV2 / ENV3");
@@ -544,6 +877,8 @@ void testModEnvelopes()
               renderEnv3(false) < renderEnv3(true) * 0.95,
               "disabled " + fmt(renderEnv3(false), 5) + ", enabled " + fmt(renderEnv3(true), 5));
     }
+
+    testModEnvelopeLazyEvaluation();
 }
 
 //==============================================================================

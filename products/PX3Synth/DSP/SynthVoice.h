@@ -80,10 +80,27 @@ public:
     // that is still plain ADSR is driven by its parameters, so most of the time
     // these are never called.
     void setAmpEnvelopeShape(const px3::BreakpointEnvelope& envelope);
-    void setModEnvelopeShapes(const std::array<px3::BreakpointEnvelope, kModEnvelopeCount>& envelopes);
 
-    void setModEnvelopeSettings(const std::array<EnvelopeSettings, kModEnvelopeCount>& settings,
-                                const std::array<bool, kModEnvelopeCount>& enabled);
+    // ENV 1-4: settings, enable switches and, when any envelope is more than
+    // ADSR, the full shapes (nullptr otherwise). `generation` names this exact
+    // configuration: the processor bumps it whenever any part changes, and a
+    // voice that already holds that generation has nothing to rebuild. Pushed
+    // to every voice every block, sounding or not, so a note always starts on
+    // the current envelopes.
+    void setModEnvelopes(std::uint32_t generation,
+                         const std::array<EnvelopeSettings, kModEnvelopeCount>& settings,
+                         const std::array<bool, kModEnvelopeCount>& enabled,
+                         const std::array<px3::BreakpointEnvelope, kModEnvelopeCount>* shapes);
+    // Which envelopes something reads this block: a route from the source, to
+    // any destination. An enabled envelope nothing reads advances its state
+    // without computing its level (EnvelopeGenerator::beginBlock).
+    void setModEnvelopeObserved(const std::array<bool, kModEnvelopeCount>& observed) noexcept
+    {
+        modEnvelopeObserved = observed;
+    }
+    // Test reference: every enabled envelope evaluated sample by sample, with
+    // no steady or unobserved shortcut. Set before the voice renders.
+    void setModEnvelopeFullEvaluation(bool full) noexcept { modEnvelopeFullEvaluation = full; }
     float getModEnvelopeValue(int envIndex) const;
     void setFilterSettings(const std::array<FilterSettings, kFilterInstanceCount>& settings);
     // COMB lines come from the processor's pool rather than from each filter
@@ -181,6 +198,11 @@ private:
     std::array<EnvelopeGenerator, kModEnvelopeCount> modEnvelopeGenerators;
     std::array<EnvelopeSettings, kModEnvelopeCount> modEnvelopeSettings;
     std::array<bool, kModEnvelopeCount> modEnvelopeEnabled { { true, true, true, true } };
+    // Until told otherwise every envelope is read, i.e. evaluated per sample.
+    std::array<bool, kModEnvelopeCount> modEnvelopeObserved { { true, true, true, true } };
+    // The setModEnvelopes generation the generators were last built from.
+    std::uint32_t appliedModEnvelopeGeneration { 0u };
+    bool modEnvelopeFullEvaluation { false };
     // The envelopes' live values, sample by sample: what in-voice modulation reads.
     std::array<float, kModEnvelopeCount> modEnvelopeValues {};
     // Each envelope's peak over the last block: what the processor's global

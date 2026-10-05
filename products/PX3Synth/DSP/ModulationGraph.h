@@ -200,6 +200,15 @@ public:
         return { sourceOrder.data(), static_cast<std::size_t>(sourceCount) };
     }
     int getRouteCount() const noexcept { return routeCount; }
+    // Whether any route reads this source, whatever its destination or depth.
+    bool hasRouteFrom(int source) const noexcept
+    {
+        for (int index = 0; index < routeCount; ++index)
+        {
+            if (routes[static_cast<std::size_t>(index)].source == source) { return true; }
+        }
+        return false;
+    }
     ModulationRoute routeAtSlot(int slot) const noexcept
     {
         for (int index = 0; index < routeCount; ++index)
