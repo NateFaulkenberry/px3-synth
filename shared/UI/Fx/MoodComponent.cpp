@@ -352,7 +352,7 @@ void MoodComponent::resized()
     // MIX LAST, and alone. It is the only control that decides how much of any
     // of this is heard at all, and every other PX3 FX card puts its macro at
     // the bottom of the card - so this one does too.
-    layoutKnobRow(4, 78.0f, { { &mixKnob, &mixLabel } });
+    layoutKnobRow(4, 120.0f, { { &mixKnob, &mixLabel } });
 }
 
 void MoodComponent::mouseUp(const juce::MouseEvent& event)
