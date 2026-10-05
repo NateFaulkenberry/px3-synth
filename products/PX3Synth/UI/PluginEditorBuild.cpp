@@ -534,7 +534,6 @@ void PX3SynthAudioProcessorEditor::buildSelectors()
         tuning->fineLabel.setFont(juce::FontOptions(11.0f));
     }
 
-    configureEffectKnob(vibeAmountKnob, vibeAmountLabel, "AMOUNT", audioProcessor.getVibeAmountParam());
     configureEffectKnob(isaacTextureKnob, isaacTextureLabel, "AMOUNT", audioProcessor.getDelayAmountParam());
     configureEffectKnob(delayTimeKnob, delayTimeLabel, "TIME", audioProcessor.getDelayTimeParam());
     configureEffectKnob(delayFeedbackKnob, delayFeedbackLabel, "FEEDBACK", audioProcessor.getDelayFeedbackParam());
@@ -586,21 +585,6 @@ void PX3SynthAudioProcessorEditor::buildEffectControls()
     delayFeedbackLabel.getProperties().set("compactLabel", true);
     delayFeedbackLabel.setTooltip("FEEDBACK");
     delayFeedbackKnob.setTooltip("FEEDBACK");
-
-    auto& vibeTypeParam = audioProcessor.getVibeTypeParam();
-    for (int i = 0; i < vibeTypeParam.choices.size(); ++i)
-    {
-        vibeTypeBox.addItem(vibeTypeParam.choices[i], i + 1);
-    }
-    vibeTypeBox.setSelectedItemIndex(vibeTypeParam.getIndex(), juce::dontSendNotification);
-    vibeTypeBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour::fromRGBA(34, 34, 34, 210));
-    vibeTypeBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
-    vibeTypeBox.setColour(juce::ComboBox::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 105));
-    vibeTypeLabel.setText("TYPE", juce::dontSendNotification);
-    vibeTypeLabel.setJustificationType(juce::Justification::centred);
-    vibeTypeLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
-    vibeTypeLabel.setFont(juce::FontOptions(11.5f));
-    enableLabelHoverOverlay(vibeTypeLabel, "Type");
 
     const auto configureFilterSelector = [this](int filterIndex, juce::ComboBox& filterBox)
     {
@@ -781,7 +765,6 @@ void PX3SynthAudioProcessorEditor::buildEffectControls()
     namePower(filter2EnabledButton, "Filter 2");
     namePower(lfoBypassButton, "LFO 1");
     namePower(envBypassButton, "ENV 1");
-    namePower(robBypassButton, "Vibe");
     namePower(delayBypassButton, "Delay");
     namePower(moodBypassButton, "Mood");
 
@@ -922,12 +905,7 @@ void PX3SynthAudioProcessorEditor::buildPanels()
         { audioProcessor.findRangedParameterById("voice.filter1.keytrack.key"),
           audioProcessor.findRangedParameterById("voice.filter2.keytrack.key") },
         &knobLookAndFeel);
-    fxPanel = std::make_unique<FxPanel>(robBypassButton,
-                                        vibeAmountKnob,
-                                        vibeAmountLabel,
-                                        vibeTypeBox,
-                                        vibeTypeLabel,
-                                        delayBypassButton,
+    fxPanel = std::make_unique<FxPanel>(delayBypassButton,
                                         isaacTextureKnob,
                                         isaacTextureLabel,
                                         delayAlgoBox,
@@ -1023,6 +1001,7 @@ void PX3SynthAudioProcessorEditor::buildSettingsAndOverlays()
     buildStereoSpreadCard();
     buildDriveCard();
     buildVibeCard();
+    buildAnalogCard();
 
     fxPanel->setDelayAlgorithmControls({ &delayQualityKnob, &delayQualityLabel, &delayWobbleKnob, &delayWobbleLabel,
                                          &delaySlipKnob, &delaySlipLabel, &delayModDepthKnob, &delayModDepthLabel });
@@ -1060,7 +1039,6 @@ void PX3SynthAudioProcessorEditor::buildSettingsAndOverlays()
         }
     }
 
-    attachSlider(audioProcessor.getVibeAmountParam(), vibeAmountKnob);
     attachSlider(audioProcessor.getDelayAmountParam(), isaacTextureKnob);
     attachSlider(audioProcessor.getDelayTimeParam(), delayTimeKnob);
     attachSlider(audioProcessor.getDelayFeedbackParam(), delayFeedbackKnob);
@@ -1089,9 +1067,7 @@ void PX3SynthAudioProcessorEditor::buildSettingsAndOverlays()
     attachComboBox(audioProcessor.getMoodRoutingParam(), moodRoutingBox);
     attachComboBox(audioProcessor.getMoodWetModeParam(), moodWetModeBox);
     attachComboBox(audioProcessor.getMoodLoopModeParam(), moodLoopModeBox);
-    attachComboBox(audioProcessor.getVibeTypeParam(), vibeTypeBox);
 
-    attachButton(audioProcessor.getVibeEnabledParam(), robBypassButton);
     attachButton(audioProcessor.getDelayEnabledParam(), delayBypassButton);
     attachButton(audioProcessor.getMoodEnabledParam(), moodBypassButton);
     attachButton(audioProcessor.getMoodFreezeParam(), moodFreezeButton);

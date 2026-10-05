@@ -292,8 +292,8 @@ struct PatchOptions
     float decay { 0.138f };
     float sustain { 1.0f };
     float release { 1.246f };
-    bool vibeEnabled { true };
-    float vibeAmount { 0.0f };
+    bool analogEnabled { true };
+    float analogAmount { 0.0f };
     bool fxEnabled { true };
     bool modEnvelopes { false };
     bool lfoModulation { false };
@@ -321,8 +321,8 @@ void applyPatch(PX3SynthAudioProcessor& processor, const PatchOptions& patch)
     setParameter(processor, "voice.amp.sustain", patch.sustain);
     setParameter(processor, "voice.amp.release", patch.release);
     setParameter(processor, "voice.amp.enabled", 1.0f);
-    setParameter(processor, "fx.vibe.enabled", patch.vibeEnabled ? 1.0f : 0.0f);
-    setParameter(processor, "fx.vibe.amount", patch.vibeAmount);
+    setParameter(processor, "fx.analog.enabled", patch.analogEnabled ? 1.0f : 0.0f);
+    setParameter(processor, "fx.analog.amount", patch.analogAmount);
     setParameter(processor, "fx.delay.enabled", patch.fxEnabled ? 1.0f : 0.0f);
     setParameter(processor, "fx.reverb.enabled", patch.fxEnabled ? 1.0f : 0.0f);
     setParameter(processor, "fx.mood.enabled", patch.fxEnabled ? 1.0f : 0.0f);
@@ -416,7 +416,7 @@ struct ModeOptions
     bool disableReleasePruning { false };
     bool disableOnsetGuard { false };
     bool disableReleaseTailFilter { false };
-    bool freezeVibeReleaseSwitch { false };
+    bool freezeAnalogReleaseSwitch { false };
 };
 
 void runMode(const ModeOptions& mode, const PatchOptions& patch)
@@ -437,7 +437,7 @@ void runMode(const ModeOptions& mode, const PatchOptions& patch)
     diag.disableReleasePruning = mode.disableReleasePruning;
     diag.disableOnsetGuard = mode.disableOnsetGuard;
     diag.disableReleaseTailFilter = mode.disableReleaseTailFilter;
-    diag.freezeVibeReleaseSwitch = mode.freezeVibeReleaseSwitch;
+    diag.freezeAnalogReleaseSwitch = mode.freezeAnalogReleaseSwitch;
     diag.capturing = true;
 
     int totalSamples = 0;
@@ -465,13 +465,13 @@ void runMode(const ModeOptions& mode, const PatchOptions& patch)
 
     std::printf("\n================================================================\n");
     std::printf("MODE %s  —  %s\n", mode.name, mode.description);
-    std::printf("  ampEnvGain=%s  polyGain=%s  pruning=%s  onsetGuard=%s  tailFilter=%s  vibeRelSwitch=%s\n",
+    std::printf("  ampEnvGain=%s  polyGain=%s  pruning=%s  onsetGuard=%s  tailFilter=%s  analogRelSwitch=%s\n",
                 mode.bypassAmpEnvGain ? "BYPASSED" : "normal",
                 mode.fixedPolyGain ? "FIXED 1.0" : "dynamic",
                 mode.disableReleasePruning ? "DISABLED" : "normal",
                 mode.disableOnsetGuard ? "DISABLED" : "normal",
                 mode.disableReleaseTailFilter ? "DISABLED" : "normal",
-                mode.freezeVibeReleaseSwitch ? "FROZEN" : "normal");
+                mode.freezeAnalogReleaseSwitch ? "FROZEN" : "normal");
     std::printf("================================================================\n");
 
     std::printf("  %-28s %12s %14s %16s\n", "stage", "peak", "max|dx|", "max|dx| no-lifecycle");
@@ -669,7 +669,7 @@ double measureVoiceFilterPeak(const FilterSynthConfig& config)
     setParameter(processor, "voice.amp.sustain", 1.0f);
     setParameter(processor, "voice.amp.release", 0.100f);
     setParameter(processor, "voice.amp.enabled", 1.0f);
-    setParameter(processor, "fx.vibe.amount", 0.0f);
+    setParameter(processor, "fx.analog.amount", 0.0f);
     setParameter(processor, "fx.delay.enabled", 0.0f);
     setParameter(processor, "fx.reverb.enabled", 0.0f);
     setParameter(processor, "fx.mood.enabled", 0.0f);
@@ -775,7 +775,7 @@ std::vector<float> renderFilterNoteTrace(int midiNote, bool precedeWithOtherNote
     setParameter(processor, "fx.reverb.enabled", 0.0f);
     setParameter(processor, "fx.mood.enabled", 0.0f);
     setParameter(processor, "voice.sub.enabled", 0.0f);
-    setParameter(processor, "fx.vibe.amount", 0.0f);
+    setParameter(processor, "fx.analog.amount", 0.0f);
     for (int i = 0; i < 3; ++i)
     {
         const auto slot = juce::String(i + 1);
@@ -877,7 +877,7 @@ MixerMeasurement measureMixer(const MixerConfig& config)
     setParameter(processor, "voice.amp.sustain", 1.0f);
     setParameter(processor, "voice.amp.release", 0.200f);
     setParameter(processor, "voice.amp.enabled", 1.0f);
-    setParameter(processor, "fx.vibe.amount", 0.0f);
+    setParameter(processor, "fx.analog.amount", 0.0f);
     setParameter(processor, "mix.master.level", 0.6f);
 
     for (int i = 0; i < 3; ++i)
@@ -988,7 +988,7 @@ MixerDynamicResult measureMixerDynamics(const juce::String& paramId,
     setParameter(processor, "voice.amp.sustain", 1.0f);
     setParameter(processor, "voice.amp.release", 0.150f);
     setParameter(processor, "voice.amp.enabled", 1.0f);
-    setParameter(processor, "fx.vibe.amount", 0.0f);
+    setParameter(processor, "fx.analog.amount", 0.0f);
     setParameter(processor, "mix.master.level", 0.6f);
     setParameter(processor, "fx.delay.enabled", 0.0f);
     setParameter(processor, "fx.mood.enabled", 0.0f);
@@ -1695,13 +1695,13 @@ int runRegressionSuite(bool legacyPruning)
         check("13 master output, FX bypassed", p);
     }
     {
-        auto p = base; p.vibeAmount = 0.8f; p.pattern = Pattern::legatoRuns; p.release = 2.0f;
-        check("14 vibe engaged (analog drift path)", p);
+        auto p = base; p.analogAmount = 0.8f; p.pattern = Pattern::legatoRuns; p.release = 2.0f;
+        check("14 ANALOG engaged (per-voice drift path)", p);
     }
     {
         auto p = base;
         p.modEnvelopes = true; p.lfoModulation = true; p.pitchModulation = true;
-        p.vibeAmount = 0.6f; p.pattern = Pattern::denseChords; p.release = 3.0f;
+        p.analogAmount = 0.6f; p.pattern = Pattern::denseChords; p.release = 3.0f;
         check("15 everything at once", p);
     }
 
@@ -1727,9 +1727,9 @@ int runRegressionSuite(bool legacyPruning)
     }
     {
         auto p = base; p.sustain = 0.3f; p.decay = 0.2f; p.release = 3.0f;
-        p.pattern = Pattern::denseChords; p.vibeAmount = 0.7f;
+        p.pattern = Pattern::denseChords; p.analogAmount = 0.7f;
         p.modEnvelopes = true; p.lfoModulation = true;
-        check("18 low sustain + vibe + mod, dense", p);
+        check("18 low sustain + ANALOG + mod, dense", p);
     }
 
     for (const auto release : { 1.246f, 3.0f })
@@ -1748,8 +1748,8 @@ int runRegressionSuite(bool legacyPruning)
     }
     {
         auto p = base; p.pattern = Pattern::stutter; p.release = 4.0f;
-        p.fullPatch = true; p.masterGain = 1.0f; p.vibeAmount = 0.6f;
-        check("R4 stutter, full patch + vibe", p);
+        p.fullPatch = true; p.masterGain = 1.0f; p.analogAmount = 0.6f;
+        check("R4 stutter, full patch + ANALOG", p);
     }
     {
         auto p = base; p.pattern = Pattern::retrigger; p.release = 3.0f;
@@ -1796,8 +1796,8 @@ int runRegressionSuite(bool legacyPruning)
         auto p = base;
         p.attack = 0.005f; p.decay = 0.1f; p.sustain = 0.8f; p.release = 0.5f;
         p.pattern = Pattern::isolatedNotes; p.oscillatorMode = 0;
-        p.vibeAmount = 0.8f; p.gateNoteOffTransient = true;
-        check("N sine key-release, vibe engaged", p);
+        p.analogAmount = 0.8f; p.gateNoteOffTransient = true;
+        check("N sine key-release, ANALOG engaged", p);
     }
     {
         auto p = base;
@@ -1827,7 +1827,7 @@ int runRegressionSuite(bool legacyPruning)
         // the ceiling holds rather than merely being close.
         auto p = base; p.fullPatch = true; p.fadersAtUnity = true; p.masterGain = 1.0f;
         p.release = 4.0f; p.pattern = Pattern::stutter; p.sustain = 1.0f;
-        p.vibeAmount = 1.0f; p.modEnvelopes = true; p.lfoModulation = true; p.pitchModulation = true;
+        p.analogAmount = 1.0f; p.modEnvelopes = true; p.lfoModulation = true; p.pitchModulation = true;
         check("24 overdrive: unity faders + stutter", p);
     }
 
@@ -1894,7 +1894,7 @@ int runRegressionSuite(bool legacyPruning)
     {
         auto p = base; p.fullPatch = true; p.masterGain = 1.0f;
         p.release = 3.0f; p.pattern = Pattern::denseChords;
-        p.vibeAmount = 0.7f; p.modEnvelopes = true; p.lfoModulation = true;
+        p.analogAmount = 0.7f; p.modEnvelopes = true; p.lfoModulation = true;
         check("22 full patch, everything on", p);
     }
     {
@@ -1902,7 +1902,7 @@ int runRegressionSuite(bool legacyPruning)
         // fixed output boost. Reported so the ceiling is visible, not hidden.
         auto p = base; p.fullPatch = true; p.fadersAtUnity = true; p.masterGain = 1.0f;
         p.release = 3.0f; p.pattern = Pattern::denseChords;
-        p.vibeAmount = 0.7f; p.modEnvelopes = true; p.lfoModulation = true;
+        p.analogAmount = 0.7f; p.modEnvelopes = true; p.lfoModulation = true;
         check("23 all faders 0dB + master max", p);
     }
 
@@ -1991,8 +1991,8 @@ MatrixResult runMatrixCell(const MatrixScenario& scenario, double sampleRate, in
     }
     if (scenario.fx)
     {
-        setParameter(processor, "fx.vibe.enabled", 1.0f);
-        setParameter(processor, "fx.vibe.amount", 0.85f);
+        setParameter(processor, "fx.analog.enabled", 1.0f);
+        setParameter(processor, "fx.analog.amount", 0.85f);
         setParameter(processor, "fx.delay.amount", 0.5f);
         setParameter(processor, "fx.reverb.amount", 0.5f);
         setParameter(processor, "fx.mood.mix", 0.4f);
@@ -2250,6 +2250,9 @@ int runOscillatorQualityReport(const juce::String& outputDirectory);
 int runOscillatorBench(const juce::String& filter);
 int runOscillatorDump(const juce::String& path);
 
+// tools/VibeRenders.cpp
+int runVibeRenders(const juce::String& outDir);
+
 int main(int argc, char* argv[])
 {
     juce::ScopedJuceInitialiser_GUI juceInit;
@@ -2259,7 +2262,7 @@ int main(int argc, char* argv[])
     PatchOptions patch;
     if (argc > 2 && juce::String(argv[2]) == "dry")
     {
-        patch.vibeEnabled = false;
+        patch.analogEnabled = false;
         patch.fxEnabled = false;
     }
 
@@ -2270,7 +2273,7 @@ int main(int argc, char* argv[])
                 static_cast<double>(patch.decay),
                 static_cast<double>(patch.sustain),
                 static_cast<double>(patch.release));
-    std::printf("  vibe=%s fx=%s\n", patch.vibeEnabled ? "on" : "off", patch.fxEnabled ? "on" : "off");
+    std::printf("  analog=%s fx=%s\n", patch.analogEnabled ? "on" : "off", patch.fxEnabled ? "on" : "off");
 
     if (arg == "rtmatrix")
     {
@@ -2305,11 +2308,11 @@ int main(int argc, char* argv[])
     else if (arg == "reintroduce")
     {
         // Start from the simplest path and add exactly one mechanism at a time.
-        runMode({ "D0", "control: env bypassed, poly fixed, no pruning, no guard, no tail filter, vibe frozen",
+        runMode({ "D0", "control: env bypassed, poly fixed, no pruning, no guard, no tail filter, ANALOG frozen",
                   true, true, true, true, true, true }, patch);
         runMode({ "D1", "D0 + release tail filter",
                   true, true, true, true, false, true }, patch);
-        runMode({ "D2", "D1 + vibe release switch",
+        runMode({ "D2", "D1 + ANALOG release switch",
                   true, true, true, true, false, false }, patch);
         runMode({ "D3", "D2 + onset guard",
                   true, true, true, false, false, false }, patch);
@@ -2331,9 +2334,9 @@ int main(int argc, char* argv[])
         runMode({ "T0", "production path", false, false, false, false, false, false }, patch);
         runMode({ "T1", "production path with release tail filter DISABLED",
                   false, false, false, false, true, false }, patch);
-        runMode({ "T2", "production path with vibe release switch FROZEN",
+        runMode({ "T2", "production path with ANALOG release switch FROZEN",
                   false, false, false, false, false, true }, patch);
-        runMode({ "T3", "production path, tail filter disabled + vibe switch frozen",
+        runMode({ "T3", "production path, tail filter disabled + ANALOG switch frozen",
                   false, false, false, false, true, true }, patch);
     }
     else if (arg == "release")
@@ -2363,7 +2366,7 @@ int main(int argc, char* argv[])
     else if (arg == "hunt")
     {
         struct Probe { const char* name; bool noTailFilter; bool fixedPoly; bool noPrune;
-                       bool legacyPoly; bool legacyRel; bool freezeVibe; bool noOnsetGuard;
+                       bool legacyPoly; bool legacyRel; bool freezeAnalog; bool noOnsetGuard;
                        bool dumpWorst; bool legacyTailShape; };
         const Probe probes[] = {
             { "round-1 code (known good)",   false,false,false, true, true,false,false,false, true },
@@ -2400,7 +2403,7 @@ int main(int argc, char* argv[])
             diag.disableReleasePruning = probe.noPrune;
             diag.legacyPolyphonyLoad = probe.legacyPoly;
             diag.legacyLinearRelease = probe.legacyRel;
-            diag.freezeVibeReleaseSwitch = probe.freezeVibe;
+            diag.freezeAnalogReleaseSwitch = probe.freezeAnalog;
             diag.disableOnsetGuard = probe.noOnsetGuard;
             diag.legacyTailShapeFromEnv = probe.legacyTailShape;
             diag.capturing = true;
@@ -2508,7 +2511,7 @@ int main(int argc, char* argv[])
                 p.pattern = Pattern::isolatedNotes;
                 p.oscillatorMode = mode;
                 p.fxEnabled = false;
-                p.vibeEnabled = false;
+                p.analogEnabled = false;
 
                 PX3SynthAudioProcessor processor;
                 applyPatch(processor, p);
@@ -2569,7 +2572,7 @@ int main(int argc, char* argv[])
             p.pattern = Pattern::isolatedNotes;
             p.oscillatorMode = 0; // SINE
             p.fxEnabled = false;
-            p.vibeEnabled = false;
+            p.analogEnabled = false;
 
             PX3SynthAudioProcessor processor;
             applyPatch(processor, p);
@@ -2660,6 +2663,12 @@ int main(int argc, char* argv[])
             setParameter(processor, "fx.delay.enabled", fxOn ? 1.0f : 0.0f);
             setParameter(processor, "fx.reverb.enabled", fxOn ? 1.0f : 0.0f);
             setParameter(processor, "fx.mood.enabled", fxOn ? 1.0f : 0.0f);
+            // VIBE (the Uni-Vibe) in the chain and ANALOG (the per-voice drift)
+            // in the voices, so both are covered by the allocation count.
+            setParameter(processor, "fx.vibe.enabled", fxOn ? 1.0f : 0.0f);
+            setParameter(processor, "fx.vibe.intensity", 0.8f);
+            setParameter(processor, "fx.analog.enabled", fxOn ? 1.0f : 0.0f);
+            setParameter(processor, "fx.analog.amount", fxOn ? 0.7f : 0.0f);
             for (const auto* id : { "fx.doom.enabled", "fx.lucy.enabled", "fx.chorus.enabled", "fx.spread.enabled" })
             {
                 setParameter(processor, id, fxOn ? 1.0f : 0.0f);
@@ -2807,7 +2816,7 @@ int main(int argc, char* argv[])
         if (measure("16 voices RELEASING", true, false, 16, true) != 0) ++failures;
         if (measure("48 voices RELEASING (past prune budget)", true, false, 48, true) != 0) ++failures;
         if (measure("48 voices RELEASING + full FX chain", true, false, 48, true, true) != 0) ++failures;
-        if (measure("48 voices + all 8 FX + analog console", true, true, 48, true, true) != 0) ++failures;
+        if (measure("48 voices + all FX, VIBE, ANALOG, console", true, true, 48, true, true) != 0) ++failures;
         if (measure("16 voices TPT24 + cutoff sweep", true, true, 16, false, false,
                 static_cast<int>(px3::FilterMode::stateVariable24)) != 0) ++failures;
         if (measure("16 voices Ladder24 + cutoff sweep", true, true, 16, false, false,
@@ -4252,7 +4261,7 @@ int main(int argc, char* argv[])
             p.pattern = pattern; p.oscillatorMode = 0;
             p.fullPatch = unityFaders; p.fadersAtUnity = unityFaders;
             p.masterGain = unityFaders ? 1.0f : 0.6f;
-            p.vibeAmount = vibe;
+            p.analogAmount = vibe;
 
             px3::diag::resetNoteStartSequence();
             PX3SynthAudioProcessor processor;
@@ -4632,7 +4641,7 @@ int main(int argc, char* argv[])
             p.pattern = Pattern::isolatedNotes;
             p.oscillatorMode = 0; // SINE
             p.fxEnabled = false;
-            p.vibeEnabled = false;
+            p.analogEnabled = false;
 
             px3::diag::resetNoteStartSequence();
             PX3SynthAudioProcessor processor;
@@ -4721,6 +4730,10 @@ int main(int argc, char* argv[])
         gLegacyReleaseChain = true;
         runRegressionSuite(false);
         return 0;
+    }
+    else if (arg == "vibe-renders")
+    {
+        return runVibeRenders(argc > 2 ? juce::String(argv[2]) : juce::String("/tmp/px3-vibe-renders"));
     }
     else if (arg == "eqspectrum")
     {
@@ -4971,7 +4984,7 @@ int main(int argc, char* argv[])
     }
     else
     {
-        std::printf("usage: PX3Diag [primary|reintroduce|pruning|tail|release|regress|regress-legacy|eqspectrum|updatecheck] [dry] [wavDir]\n");
+        std::printf("usage: PX3Diag [primary|reintroduce|pruning|tail|release|regress|regress-legacy|eqspectrum|vibe-renders|updatecheck] [dry] [wavDir]\n");
         return 1;
     }
 

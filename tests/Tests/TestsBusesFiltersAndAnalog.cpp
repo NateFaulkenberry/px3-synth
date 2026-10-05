@@ -3333,7 +3333,7 @@ void testOscillatorModeRichness()
 
 void testAnalogEngine()
 {
-    suite("ANALOG ENGINE");
+    suite("CONSOLE ENGINE (AnalogEngine)");
 
     using namespace analogtest;
 
@@ -4222,7 +4222,7 @@ void testAnalogEngine()
         check("Analog_EveryProfileRendersTheInstrumentCleanly", allValid, detail);
     }
 
-    // ---- it is not just VibeEngine again --------------------------------------
+    // ---- it is not just AnalogDriftEngine again --------------------------------------
     {
         // The brief's sharpest question: is AnalogEngine contributing something
         // of its own, or only making Vibe more distorted?
@@ -4234,7 +4234,7 @@ void testAnalogEngine()
                 if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(parameter))
                 {
                     const auto id = ranged->getParameterID();
-                    if (id == "fx.vibe.amount")    { ranged->setValueNotifyingHost(vibeOn ? 0.6f : 0.0f); }
+                    if (id == "fx.analog.amount")    { ranged->setValueNotifyingHost(vibeOn ? 0.6f : 0.0f); }
                     if (id == "global.character.enabled") { ranged->setValueNotifyingHost(analogOn ? 1.0f : 0.0f); }
                     if (id == "global.character.profile") { ranged->setValueNotifyingHost(0.25f); }
                 }
@@ -4411,7 +4411,7 @@ void testMultiOutput()
         // The first version of this test closed the sends only and read the
         // remainder as a routing fault. It was the console, at -53 dBFS.
         processor.getAnalogEnabledParam().setValueNotifyingHost(0.0f);
-        processor.getVibeEnabledParam().setValueNotifyingHost(0.0f);
+        processor.getAnalogDriftEnabledParam().setValueNotifyingHost(0.0f);
         processor.getDelayEnabledParam().setValueNotifyingHost(0.0f);
         processor.getReverbEnabledParam().setValueNotifyingHost(0.0f);
         processor.getMoodEnabledParam().setValueNotifyingHost(0.0f);

@@ -139,8 +139,8 @@ void testFactoryPresets()
             return false;
         };
 
-        static const std::array<const char*, 8> kFx {
-            { "vibe", "delay", "reverb", "mood", "doom", "lucy", "chorus", "spread" } };
+        static const std::array<const char*, 9> kFx {
+            { "analog", "vibe", "delay", "reverb", "mood", "doom", "lucy", "chorus", "spread" } };
 
         std::vector<juce::String> signatures;
         juce::StringArray tooMany;
@@ -315,8 +315,9 @@ void testFactoryPresets()
         // The library exists partly to show what the instrument can do, so every
         // effect has to appear somewhere with a non-zero amount.
         struct Coverage { const char* label; const char* id; };
-        const std::array<Coverage, 8> effects { {
-            { "VIBE", "fx.vibe.amount" },
+        const std::array<Coverage, 9> effects { {
+            { "VIBE", "fx.vibe.intensity" },
+            { "ANALOG", "fx.analog.amount" },
             { "CHORUS", "fx.chorus.amount" },
             { "DOOM", "fx.doom.mix" },
             { "LUCY", "fx.lucy.global" },
@@ -729,7 +730,8 @@ void testEditorLifecycle()
     }
 
     {
-        // VIBE, DELAY and REVERB all had an amount knob with no caption. DELAY
+        // DELAY and REVERB (and ANALOG, once part of VIBE) had an amount knob
+        // with no caption. DELAY
         // and REVERB were passing "" as the caption to configureEffectKnob, so
         // the label was laid out and painted with nothing in it - a reserved
         // gap under the knob; VIBE had no label component at all and passed
@@ -759,7 +761,7 @@ void testEditorLifecycle()
         };
         walk(*editor);
 
-        check("FxCards_VibeDelayAndReverbAmountKnobsAreLabelled",
+        check("FxCards_AnalogDelayAndReverbAmountKnobsAreLabelled",
               amountLabels >= 3 && laidOut == amountLabels,
               juce::String(amountLabels) + " AMOUNT captions, " + juce::String(laidOut)
                   + " laid out and visible: " + detail);

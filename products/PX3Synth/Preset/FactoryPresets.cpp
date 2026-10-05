@@ -15,7 +15,8 @@ enum OscMode
 enum FilterType { lp12 = 0, lp24, hp12, hp24, bandPass, notch, allPass, comb };
 enum DelayAlgo  { granular = 0, tape, analogBbd, pingPong, stereoDelay, modulated, diffusion };
 enum ReverbAlgo { room = 0, plate, hall, cloud };
-enum VibeType   { warm = 0, hot, cool, vintage, clean, loFi };
+enum AnalogType { warm = 0, hot, cool, vintage, clean, loFi };
+enum VibeMode   { vibeChorus = 0, vibeVibrato };
 
 // DIM 1 is the softest and has the LONGEST delay; DIM 4 is the strongest.
 enum ChorusMode { dim1 = 0, dim2, dim3, dim4, dim1plus4, dim2plus4, dim3plus4, ensemble, ce1, juno60I, juno60II, juno60Both };
@@ -51,7 +52,7 @@ std::vector<FactoryPreset> factoryPresets()
       "Two saws pulled apart until they beat against each other, anchored by a square sub. "
       "CHORUS widens the harmonics while its low cut keeps the fundamental where you left it.",
       { { "voice.osc1.mode", saw }, { "voice.osc1.macro.a", 0.30f },
-        { "fx.vibe.enabled", 1 }, { "fx.delay.enabled", 0 }, { "fx.reverb.enabled", 0 }, { "fx.mood.enabled", 0 },
+        { "fx.analog.enabled", 1 }, { "fx.delay.enabled", 0 }, { "fx.reverb.enabled", 0 }, { "fx.mood.enabled", 0 },
         { "fx.doom.enabled", 0 }, { "fx.lucy.enabled", 0 }, { "fx.chorus.enabled", 1 }, { "fx.spread.enabled", 1 },
         { "voice.filter2.enabled", 0 }, { "global.character.enabled", 1 }, { "global.character.profile", 1 },
         { "voice.osc2.enabled", 1 }, { "voice.osc2.mode", saw }, { "voice.osc2.tuning.cents", -13.0f }, { "voice.osc2.tuning.octave", 0.0f },
@@ -69,7 +70,7 @@ std::vector<FactoryPreset> factoryPresets()
       "A hard FM bass with LUCY set low and slow behind it. The loss is barely a texture at "
       "this depth - just enough to make it sound like it arrived over a wire.",
       { { "voice.osc1.mode", fm }, { "voice.osc1.macro.a", 0.34f }, { "voice.osc1.macro.b", 0.58f }, { "voice.osc1.macro.c", 0.24f },
-        { "fx.vibe.enabled", 0 }, { "fx.delay.enabled", 0 }, { "fx.reverb.enabled", 0 }, { "fx.mood.enabled", 0 },
+        { "fx.analog.enabled", 0 }, { "fx.delay.enabled", 0 }, { "fx.reverb.enabled", 0 }, { "fx.mood.enabled", 0 },
         { "fx.doom.enabled", 0 }, { "fx.lucy.enabled", 1 }, { "fx.chorus.enabled", 0 }, { "fx.spread.enabled", 0 },
         { "voice.filter2.enabled", 0 },
         { "voice.sub.enabled", 1 }, { "voice.sub.tuning.octave", -1.0f }, { "voice.sub.waveform", subSine },
@@ -79,14 +80,13 @@ std::vector<FactoryPreset> factoryPresets()
         { "fx.lucy.global", 0.26f }, { "fx.lucy.mode", standard }, { "fx.lucy.loss", 0.44f }, { "fx.lucy.speed", 0.62f },
         { "fx.lucy.filter", 0.22f }, { "fx.lucy.freq", 0.62f }, { "fx.lucy.slope", slope24 },
         { "fx.lucy.weighting", weightDark }, { "fx.lucy.loss.gain", 3.0f },
-        { "fx.vibe.amount", 0.22f }, { "fx.vibe.type", loFi },
         { "mix.master.level", 0.60f } } },
 
     { "Tar Kiln", "BASS", "P(X3)",
       "Square and sub run into DOOM's RELAY at its shortest time, then straight into GLUE. "
       "The repeats do not decay, so the note thickens instead of echoing.",
       { { "voice.osc1.mode", square }, { "voice.osc1.macro.a", 0.42f },
-        { "fx.vibe.enabled", 0 }, { "fx.delay.enabled", 0 }, { "fx.reverb.enabled", 0 }, { "fx.mood.enabled", 0 },
+        { "fx.analog.enabled", 0 }, { "fx.delay.enabled", 0 }, { "fx.reverb.enabled", 0 }, { "fx.mood.enabled", 0 },
         { "fx.doom.enabled", 1 }, { "fx.lucy.enabled", 0 }, { "fx.chorus.enabled", 0 }, { "fx.spread.enabled", 0 },
         { "voice.filter2.enabled", 0 }, { "global.character.enabled", 1 }, { "global.character.profile", 3 },
         { "voice.sub.enabled", 1 }, { "voice.sub.tuning.octave", -1.0f }, { "voice.sub.waveform", subSquare },
@@ -97,14 +97,13 @@ std::vector<FactoryPreset> factoryPresets()
         { "fx.doom.balance", 1.0f }, { "fx.doom.routing", inputOnly },
         // GLUE past halfway starts folding rather than only saturating.
         { "fx.doom.glue", 0.62f }, { "fx.doom.eq", -0.30f }, { "fx.doom.clock", 0.80f }, { "fx.doom.spread", 0.20f },
-        { "fx.vibe.amount", 0.30f }, { "fx.vibe.type", hot },
         { "mix.master.level", 0.304f } } },
 
     { "Sunken Bell", "BASS", "P(X3)",
       "The comb filter tuned to a low pitch and given a long decay, so every note rings the "
       "filter rather than passing through it. Play short - the tail is the instrument.",
       { { "voice.osc1.mode", triangle }, { "voice.osc1.macro.a", 0.50f },
-        { "fx.vibe.enabled", 0 }, { "fx.delay.enabled", 0 }, { "fx.reverb.enabled", 1 }, { "fx.mood.enabled", 0 },
+        { "fx.analog.enabled", 0 }, { "fx.delay.enabled", 0 }, { "fx.reverb.enabled", 1 }, { "fx.mood.enabled", 0 },
         { "fx.doom.enabled", 0 }, { "fx.lucy.enabled", 0 }, { "fx.chorus.enabled", 0 }, { "fx.spread.enabled", 0 },
         { "voice.filter2.enabled", 0 },
         { "voice.sub.enabled", 1 }, { "voice.sub.tuning.octave", -1.0f }, { "voice.sub.waveform", subSine },
@@ -125,7 +124,7 @@ std::vector<FactoryPreset> factoryPresets()
       "The PX3 oscillator pushed bright, through an ENSEMBLE chorus and a ping-pong delay. "
       "SPREAD sizes the whole thing last, so the delays are widened rather than re-imaged.",
       { { "voice.osc1.mode", px3 }, { "voice.osc1.macro.a", 0.64f }, { "voice.osc1.macro.b", 0.52f }, { "voice.osc1.macro.c", 0.60f },
-        { "fx.vibe.enabled", 0 }, { "fx.delay.enabled", 1 }, { "fx.reverb.enabled", 0 }, { "fx.mood.enabled", 0 },
+        { "fx.analog.enabled", 0 }, { "fx.delay.enabled", 1 }, { "fx.reverb.enabled", 0 }, { "fx.mood.enabled", 0 },
         { "fx.doom.enabled", 0 }, { "fx.lucy.enabled", 0 }, { "fx.chorus.enabled", 1 }, { "fx.spread.enabled", 1 },
         { "voice.filter2.enabled", 1 },
         { "voice.filter1.enabled", 1 }, { "voice.filter1.type", lp24 }, { "voice.filter1.cutoff", 6200.0f }, { "voice.filter1.resonance", 0.72f },
@@ -140,14 +139,14 @@ std::vector<FactoryPreset> factoryPresets()
       "Hard sync with the sync pitch pushed up until the tone tears. Modulated delay keeps it "
       "moving; the reverb is short so the edge survives.",
       { { "voice.osc1.mode", hardSync }, { "voice.osc1.macro.a", 0.72f }, { "voice.osc1.macro.b", 0.46f }, { "voice.osc1.macro.c", 0.55f },
-        { "fx.vibe.enabled", 1 }, { "fx.delay.enabled", 1 }, { "fx.reverb.enabled", 1 }, { "fx.mood.enabled", 0 },
+        { "fx.analog.enabled", 1 }, { "fx.delay.enabled", 1 }, { "fx.reverb.enabled", 1 }, { "fx.mood.enabled", 0 },
         { "fx.doom.enabled", 0 }, { "fx.lucy.enabled", 0 }, { "fx.chorus.enabled", 0 }, { "fx.spread.enabled", 0 },
         { "voice.filter2.enabled", 0 },
         { "voice.filter1.enabled", 1 }, { "voice.filter1.type", lp12 }, { "voice.filter1.cutoff", 4800.0f }, { "voice.filter1.resonance", 1.15f },
         { "voice.amp.attack", 0.012f }, { "voice.amp.decay", 0.24f }, { "voice.amp.sustain", 0.78f }, { "voice.amp.release", 0.26f },
         { "fx.delay.amount", 0.28f }, { "fx.delay.algorithm", modulated }, { "fx.delay.time", 0.30f }, { "fx.delay.feedback", 0.36f },
         { "fx.reverb.amount", 0.16f }, { "fx.reverb.algorithm", room }, { "fx.reverb.size", 0.40f }, { "fx.reverb.decay", 0.28f },
-        { "fx.vibe.amount", 0.26f }, { "fx.vibe.type", hot },
+        { "fx.analog.amount", 0.26f }, { "fx.analog.type", hot },
         { "fx.chorus.amount", 0.20f }, { "fx.chorus.mode", dim2 },
         { "mix.master.level", 0.52f } } },
 
@@ -155,7 +154,7 @@ std::vector<FactoryPreset> factoryPresets()
       "An FM bell stretched into a lead, with LUCY in INVERSE - which plays back only what "
       "STANDARD would have thrown away. Thin, bright, and constantly moving.",
       { { "voice.osc1.mode", fm }, { "voice.osc1.macro.a", 0.68f }, { "voice.osc1.macro.b", 0.30f }, { "voice.osc1.macro.c", 0.72f },
-        { "fx.vibe.enabled", 0 }, { "fx.delay.enabled", 0 }, { "fx.reverb.enabled", 1 }, { "fx.mood.enabled", 0 },
+        { "fx.analog.enabled", 0 }, { "fx.delay.enabled", 0 }, { "fx.reverb.enabled", 1 }, { "fx.mood.enabled", 0 },
         { "fx.doom.enabled", 0 }, { "fx.lucy.enabled", 1 }, { "fx.chorus.enabled", 0 }, { "fx.spread.enabled", 0 },
         { "voice.filter2.enabled", 0 },
         { "voice.filter1.enabled", 1 }, { "voice.filter1.type", lp24 }, { "voice.filter1.cutoff", 9000.0f }, { "voice.filter1.resonance", 0.45f },
@@ -171,7 +170,7 @@ std::vector<FactoryPreset> factoryPresets()
       "A formant lead parked on a vowel, run through the CE-1 chorus on its mono output (WIDTH 0: "
       "direct and chorus on both sides) for warmth rather than width. It talks.",
       { { "voice.osc1.mode", formant }, { "voice.osc1.vowel", 2 }, { "voice.osc1.macro.a", 0.55f }, { "voice.osc1.macro.b", 0.62f },
-        { "fx.vibe.enabled", 0 }, { "fx.delay.enabled", 1 }, { "fx.reverb.enabled", 0 }, { "fx.mood.enabled", 0 },
+        { "fx.analog.enabled", 0 }, { "fx.delay.enabled", 1 }, { "fx.reverb.enabled", 0 }, { "fx.mood.enabled", 0 },
         { "fx.doom.enabled", 0 }, { "fx.lucy.enabled", 0 }, { "fx.chorus.enabled", 1 }, { "fx.spread.enabled", 0 },
         { "voice.filter2.enabled", 0 },
         { "voice.osc2.enabled", 1 }, { "voice.osc2.mode", saw }, { "voice.osc2.tuning.octave", -1.0f }, { "mix.osc2.level", 0.38f },
@@ -191,7 +190,7 @@ std::vector<FactoryPreset> factoryPresets()
       "A supersaw pad under the Dimension's 2+4 combination - both buttons' switch states on "
       "one anti-phase pair, faster and deeper than either alone. CLOUD reverb behind it.",
       { { "voice.osc1.mode", superSaw }, { "voice.osc1.macro.a", 0.46f }, { "voice.osc1.macro.b", 0.70f }, { "voice.osc1.macro.c", 0.40f },
-        { "fx.vibe.enabled", 0 }, { "fx.delay.enabled", 0 }, { "fx.reverb.enabled", 1 }, { "fx.mood.enabled", 0 },
+        { "fx.analog.enabled", 0 }, { "fx.delay.enabled", 0 }, { "fx.reverb.enabled", 1 }, { "fx.mood.enabled", 0 },
         { "fx.doom.enabled", 0 }, { "fx.lucy.enabled", 0 }, { "fx.chorus.enabled", 1 }, { "fx.spread.enabled", 1 },
         { "voice.filter2.enabled", 1 }, { "global.character.enabled", 1 }, { "global.character.profile", 4 },
         { "voice.filter1.enabled", 1 }, { "voice.filter1.type", lp24 }, { "voice.filter1.cutoff", 3400.0f }, { "voice.filter1.resonance", 0.42f },
@@ -206,7 +205,7 @@ std::vector<FactoryPreset> factoryPresets()
       "LUCY's spectral freeze in its SLUSHY state - it keeps updating from whatever you play, "
       "so the pad is a shifting copy of your own chords rather than a held snapshot.",
       { { "voice.osc1.mode", wavetable }, { "voice.osc1.macro.a", 0.38f }, { "voice.osc1.macro.b", 0.55f }, { "voice.osc1.macro.c", 0.48f },
-        { "fx.vibe.enabled", 0 }, { "fx.delay.enabled", 0 }, { "fx.reverb.enabled", 1 }, { "fx.mood.enabled", 0 },
+        { "fx.analog.enabled", 0 }, { "fx.delay.enabled", 0 }, { "fx.reverb.enabled", 1 }, { "fx.mood.enabled", 0 },
         { "fx.doom.enabled", 0 }, { "fx.lucy.enabled", 1 }, { "fx.chorus.enabled", 0 }, { "fx.spread.enabled", 0 },
         { "voice.filter2.enabled", 0 },
         { "voice.filter1.enabled", 1 }, { "voice.filter1.type", lp24 }, { "voice.filter1.cutoff", 5200.0f }, { "voice.filter1.resonance", 0.38f },
@@ -222,7 +221,7 @@ std::vector<FactoryPreset> factoryPresets()
       "An additive stack fed into DOOM's SOUP - a spectral reverb that resynthesises what "
       "passes through it. MODIFY is up, so it remembers your instrument rather than reflecting it.",
       { { "voice.osc1.mode", additive }, { "voice.osc1.harmonics.1", 1.0f }, { "voice.osc1.harmonics.2", 0.55f }, { "voice.osc1.harmonics.3", 0.62f },
-        { "fx.vibe.enabled", 0 }, { "fx.delay.enabled", 0 }, { "fx.reverb.enabled", 0 }, { "fx.mood.enabled", 0 },
+        { "fx.analog.enabled", 0 }, { "fx.delay.enabled", 0 }, { "fx.reverb.enabled", 0 }, { "fx.mood.enabled", 0 },
         { "fx.doom.enabled", 1 }, { "fx.lucy.enabled", 0 }, { "fx.chorus.enabled", 0 }, { "fx.spread.enabled", 1 },
         { "voice.filter2.enabled", 0 },
         { "voice.osc1.harmonics.4", 0.28f }, { "voice.osc1.harmonics.5", 0.34f }, { "voice.osc1.harmonics.6", 0.16f }, { "voice.osc1.harmonics.7", 0.20f }, { "voice.osc1.harmonics.8", 0.10f },
@@ -239,7 +238,7 @@ std::vector<FactoryPreset> factoryPresets()
       "Drawbar organ tone through the string-machine ensemble chorus, with MOOD holding a "
       "slow reverb underneath. Sits still and moves at the same time.",
       { { "voice.osc1.mode", organ }, { "voice.osc1.macro.a", 0.60f }, { "voice.osc1.macro.b", 0.45f }, { "voice.osc1.macro.c", 0.52f },
-        { "fx.vibe.enabled", 1 }, { "fx.delay.enabled", 0 }, { "fx.reverb.enabled", 0 }, { "fx.mood.enabled", 1 },
+        { "fx.analog.enabled", 1 }, { "fx.delay.enabled", 0 }, { "fx.reverb.enabled", 0 }, { "fx.mood.enabled", 1 },
         { "fx.doom.enabled", 0 }, { "fx.lucy.enabled", 0 }, { "fx.chorus.enabled", 1 }, { "fx.spread.enabled", 0 },
         { "voice.filter2.enabled", 0 },
         { "voice.osc2.enabled", 1 }, { "voice.osc2.mode", sine }, { "voice.osc2.tuning.octave", 1.0f }, { "mix.osc2.level", 0.34f },
@@ -258,7 +257,7 @@ std::vector<FactoryPreset> factoryPresets()
       "An FM strike into the comb filter - a bell-like pluck ringing through a tuned resonator. "
       "The diffusion delay smears the tails without repeating them.",
       { { "voice.osc1.mode", fm }, { "voice.osc1.macro.a", 0.55f }, { "voice.osc1.macro.b", 0.68f }, { "voice.osc1.macro.c", 0.40f },
-        { "fx.vibe.enabled", 0 }, { "fx.delay.enabled", 1 }, { "fx.reverb.enabled", 1 }, { "fx.mood.enabled", 0 },
+        { "fx.analog.enabled", 0 }, { "fx.delay.enabled", 1 }, { "fx.reverb.enabled", 1 }, { "fx.mood.enabled", 0 },
         { "fx.doom.enabled", 0 }, { "fx.lucy.enabled", 0 }, { "fx.chorus.enabled", 0 }, { "fx.spread.enabled", 0 },
         { "voice.filter2.enabled", 0 },
         { "voice.filter1.enabled", 1 }, { "voice.filter1.type", comb },
@@ -274,7 +273,7 @@ std::vector<FactoryPreset> factoryPresets()
       "A short digital pluck with LUCY set to PACKET REPEAT. Dropped frames are filled with "
       "the last good one, phase advanced - so the glitches smear instead of stuttering.",
       { { "voice.osc1.mode", digital }, { "voice.osc1.macro.a", 0.62f }, { "voice.osc1.macro.b", 0.40f }, { "voice.osc1.macro.c", 0.58f },
-        { "fx.vibe.enabled", 0 }, { "fx.delay.enabled", 0 }, { "fx.reverb.enabled", 0 }, { "fx.mood.enabled", 0 },
+        { "fx.analog.enabled", 0 }, { "fx.delay.enabled", 0 }, { "fx.reverb.enabled", 0 }, { "fx.mood.enabled", 0 },
         { "fx.doom.enabled", 0 }, { "fx.lucy.enabled", 1 }, { "fx.chorus.enabled", 0 }, { "fx.spread.enabled", 1 },
         { "voice.filter2.enabled", 0 },
         { "voice.filter1.enabled", 1 }, { "voice.filter1.type", lp24 }, { "voice.filter1.cutoff", 7200.0f }, { "voice.filter1.resonance", 0.68f },
@@ -290,7 +289,7 @@ std::vector<FactoryPreset> factoryPresets()
       "A clean FM bell with a tape delay behind it. Nothing exotic - it is here because a "
       "preset library needs something you can just play.",
       { { "voice.osc1.mode", fm }, { "voice.osc1.macro.a", 0.52f }, { "voice.osc1.macro.b", 0.22f }, { "voice.osc1.macro.c", 0.66f },
-        { "fx.vibe.enabled", 0 }, { "fx.delay.enabled", 1 }, { "fx.reverb.enabled", 1 }, { "fx.mood.enabled", 0 },
+        { "fx.analog.enabled", 0 }, { "fx.delay.enabled", 1 }, { "fx.reverb.enabled", 1 }, { "fx.mood.enabled", 0 },
         { "fx.doom.enabled", 0 }, { "fx.lucy.enabled", 0 }, { "fx.chorus.enabled", 0 }, { "fx.spread.enabled", 0 },
         { "voice.filter2.enabled", 0 }, { "global.character.enabled", 1 }, { "global.character.profile", 0 },
         { "voice.filter1.enabled", 1 }, { "voice.filter1.type", lp12 }, { "voice.filter1.cutoff", 8000.0f }, { "voice.filter1.resonance", 0.30f },
@@ -300,6 +299,21 @@ std::vector<FactoryPreset> factoryPresets()
         { "fx.chorus.amount", 0.24f }, { "fx.chorus.mode", dim1 }, { "fx.chorus.rate", 0.20f },
         { "mix.master.level", 0.72f } } },
 
+    { "Lamp Swirl", "PLUCKS", "P(X3)",
+      "A bright saw pluck through VIBE in CHORUS: the lamp snaps bright and drifts dark, so the "
+      "swirl lunges and settles rather than sweeping evenly. ANALOG adds a little per-voice wander.",
+      { { "voice.osc1.mode", saw }, { "voice.osc1.macro.a", 0.35f },
+        { "fx.analog.enabled", 1 }, { "fx.vibe.enabled", 1 }, { "fx.delay.enabled", 0 }, { "fx.reverb.enabled", 1 },
+        { "fx.mood.enabled", 0 }, { "fx.doom.enabled", 0 }, { "fx.lucy.enabled", 0 }, { "fx.chorus.enabled", 0 },
+        { "fx.spread.enabled", 0 },
+        { "voice.filter2.enabled", 0 },
+        { "voice.filter1.enabled", 1 }, { "voice.filter1.type", lp24 }, { "voice.filter1.cutoff", 3200.0f }, { "voice.filter1.resonance", 0.45f },
+        { "voice.amp.attack", 0.002f }, { "voice.amp.decay", 0.55f }, { "voice.amp.sustain", 0.40f }, { "voice.amp.release", 0.45f },
+        { "fx.vibe.mode", vibeChorus }, { "fx.vibe.intensity", 0.72f }, { "fx.vibe.speed", 0.42f },
+        { "fx.analog.amount", 0.18f }, { "fx.analog.type", vintage },
+        { "fx.reverb.amount", 0.18f }, { "fx.reverb.algorithm", room },
+        { "mix.master.level", 0.62f } } },
+
     // =======================================================================
     // EXPERIMENTAL
     // =======================================================================
@@ -308,7 +322,7 @@ std::vector<FactoryPreset> factoryPresets()
       "LUCY with PACKET LOSS, JITTER and the gate open. Losses arrive in bursts rather than "
       "evenly, which is why it sounds like a failing connection and not like tremolo.",
       { { "voice.osc1.mode", superSaw }, { "voice.osc1.macro.a", 0.55f }, { "voice.osc1.macro.b", 0.60f },
-        { "fx.vibe.enabled", 0 }, { "fx.delay.enabled", 0 }, { "fx.reverb.enabled", 0 }, { "fx.mood.enabled", 0 },
+        { "fx.analog.enabled", 0 }, { "fx.delay.enabled", 0 }, { "fx.reverb.enabled", 0 }, { "fx.mood.enabled", 0 },
         { "fx.doom.enabled", 0 }, { "fx.lucy.enabled", 1 }, { "fx.chorus.enabled", 0 }, { "fx.spread.enabled", 0 },
         { "voice.filter2.enabled", 0 },
         { "voice.filter1.enabled", 1 }, { "voice.filter1.type", lp24 }, { "voice.filter1.cutoff", 5000.0f }, { "voice.filter1.resonance", 0.55f },
@@ -325,7 +339,7 @@ std::vector<FactoryPreset> factoryPresets()
       "DOOM's FLIP mode - fourths, fifths and octaves stacked on what you play and spread "
       "across time, so the chord arrives one note at a time.",
       { { "voice.osc1.mode", physical }, { "voice.osc1.macro.a", 0.48f }, { "voice.osc1.macro.b", 0.62f }, { "voice.osc1.macro.c", 0.40f },
-        { "fx.vibe.enabled", 0 }, { "fx.delay.enabled", 0 }, { "fx.reverb.enabled", 1 }, { "fx.mood.enabled", 0 },
+        { "fx.analog.enabled", 0 }, { "fx.delay.enabled", 0 }, { "fx.reverb.enabled", 1 }, { "fx.mood.enabled", 0 },
         { "fx.doom.enabled", 1 }, { "fx.lucy.enabled", 0 }, { "fx.chorus.enabled", 0 }, { "fx.spread.enabled", 0 },
         { "voice.filter2.enabled", 0 }, { "global.character.enabled", 1 }, { "global.character.profile", 2 },
         { "voice.filter1.enabled", 1 }, { "voice.filter1.type", lp24 }, { "voice.filter1.cutoff", 5600.0f }, { "voice.filter1.resonance", 0.48f },
@@ -340,7 +354,7 @@ std::vector<FactoryPreset> factoryPresets()
       "DOOM primed for its micro-looper: play a phrase, then engage LOOPER to catch what you "
       "already played. RADIO scans five loopers with interference between the stations.",
       { { "voice.osc1.mode", isaac }, { "voice.osc1.macro.a", 0.58f }, { "voice.osc1.macro.b", 0.66f }, { "voice.osc1.macro.c", 0.44f },
-        { "fx.vibe.enabled", 0 }, { "fx.delay.enabled", 1 }, { "fx.reverb.enabled", 0 }, { "fx.mood.enabled", 0 },
+        { "fx.analog.enabled", 0 }, { "fx.delay.enabled", 1 }, { "fx.reverb.enabled", 0 }, { "fx.mood.enabled", 0 },
         { "fx.doom.enabled", 1 }, { "fx.lucy.enabled", 0 }, { "fx.chorus.enabled", 0 }, { "fx.spread.enabled", 0 },
         { "voice.filter2.enabled", 0 },
         { "voice.filter1.enabled", 1 }, { "voice.filter1.type", lp12 }, { "voice.filter1.cutoff", 4400.0f }, { "voice.filter1.resonance", 0.62f },
@@ -360,7 +374,7 @@ std::vector<FactoryPreset> factoryPresets()
       "The comb filter driven near self-oscillation and fed with ROB, then DOOM's CROSS "
       "modulating pitch and loudness from the signal itself. Unstable on purpose.",
       { { "voice.osc1.mode", rob }, { "voice.osc1.macro.a", 0.76f }, { "voice.osc1.macro.b", 0.68f }, { "voice.osc1.macro.c", 0.82f },
-        { "fx.vibe.enabled", 1 }, { "fx.delay.enabled", 0 }, { "fx.reverb.enabled", 0 }, { "fx.mood.enabled", 1 },
+        { "fx.analog.enabled", 1 }, { "fx.delay.enabled", 0 }, { "fx.reverb.enabled", 0 }, { "fx.mood.enabled", 1 },
         { "fx.doom.enabled", 1 }, { "fx.lucy.enabled", 0 }, { "fx.chorus.enabled", 0 }, { "fx.spread.enabled", 0 },
         { "voice.filter2.enabled", 1 },
         { "voice.filter1.enabled", 1 }, { "voice.filter1.type", comb },
@@ -377,7 +391,7 @@ std::vector<FactoryPreset> factoryPresets()
       "A demonstration of the two spatial effects with nothing else in the way: the stacked "
       "Dimension chorus into SPREAD on WIDE. Mono-compatible at every setting - check it.",
       { { "voice.osc1.mode", wavetable }, { "voice.osc1.macro.a", 0.50f }, { "voice.osc1.macro.b", 0.62f }, { "voice.osc1.macro.c", 0.38f },
-        { "fx.vibe.enabled", 0 }, { "fx.delay.enabled", 0 }, { "fx.reverb.enabled", 0 }, { "fx.mood.enabled", 0 },
+        { "fx.analog.enabled", 0 }, { "fx.delay.enabled", 0 }, { "fx.reverb.enabled", 0 }, { "fx.mood.enabled", 0 },
         { "fx.doom.enabled", 0 }, { "fx.lucy.enabled", 0 }, { "fx.chorus.enabled", 1 }, { "fx.spread.enabled", 1 },
         { "voice.filter2.enabled", 0 },
         { "voice.osc2.enabled", 1 }, { "voice.osc2.mode", triangle }, { "voice.osc2.tuning.octave", 1.0f }, { "voice.osc2.tuning.cents", 6.0f },

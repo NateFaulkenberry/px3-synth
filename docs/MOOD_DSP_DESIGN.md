@@ -341,7 +341,7 @@ engine never read.
 `applyDegradation`'s noise floor and in STRETCH's grain panning. Both are on the
 audio path. Two consequences:
 
-- **MOOD has no `setSeed`.** CHORUS, DOOM, LUCY and VIBE all have one
+- **MOOD has no `setSeed`.** CHORUS, DOOM, LUCY and ANALOG all have one
   specifically so their stochastic behaviour is reproducible in tests — MOOD is
   the only stochastic engine in the project without one. A test can therefore
   assert bounds but never an exact result, which is why the existing suite

@@ -2741,20 +2741,26 @@ int main(int argc, char* argv[])
         return 0;
     }
 
-    if (filter == "vibemetrics")
+    if (filter == "vibecal")
     {
-        // Objective characterisation of the vibe engine, so "more analog" is
+        printVibeCalibration();
+        return 0;
+    }
+
+    if (filter == "analogmetrics")
+    {
+        // Objective characterisation of the ANALOG drift engine, so "more analog" is
         // measured rather than asserted.
-        std::printf("\nVIBE ENGINE METRICS\n");
+        std::printf("\nANALOG DRIFT ENGINE METRICS\n");
 
         // 1. Are the per-voice drift signals independent? Measured on the
         // engine directly: routing this through audio does not work, because
         // juce::Synthesiser retargets the existing voice when the same pitch is
         // played twice, so only one voice would ever sound.
         {
-            VibeEngine engine;
+            AnalogDriftEngine engine;
             engine.prepare(kSampleRate, 64, 0x13579BDFu);
-            VibeEngine::Tuning tuning;
+            AnalogDriftEngine::Tuning tuning;
             engine.setTuning(tuning);
             engine.setGlobalAmount(1.0f);
 
@@ -2797,8 +2803,8 @@ int main(int argc, char* argv[])
                 PX3SynthAudioProcessor processor;
                 makePlainPatch(processor);
                 setChoice(processor, "voice.osc1.mode", 0);
-                setParam(processor, "fx.vibe.enabled", 1.0f);
-                setParam(processor, "fx.vibe.amount", amount);
+                setParam(processor, "fx.analog.enabled", 1.0f);
+                setParam(processor, "fx.analog.amount", amount);
                 const auto c = render(processor, 96000, { { 2000, true, 57, 0.9f } });
                 std::printf("  DC offset at vibe %.1f: %+.6f  (peak %.4f)\n",
                             amount, c.dcOffset(), c.peak());
@@ -2812,8 +2818,8 @@ int main(int argc, char* argv[])
             makePlainPatch(processor);
             for (int i = 1; i <= 3; ++i) setParam(processor, "voice.osc" + juce::String(i) + ".enabled", 0.0f);
             setParam(processor, "voice.sub.enabled", 0.0f);
-            setParam(processor, "fx.vibe.enabled", 1.0f);
-            setParam(processor, "fx.vibe.amount", 1.0f);
+            setParam(processor, "fx.analog.enabled", 1.0f);
+            setParam(processor, "fx.analog.amount", 1.0f);
             const auto c = render(processor, 96000, { { 2000, true, 57, 0.9f } });
             std::printf("  vibe noise floor with all sources off: rms %.8f\n", c.rms());
         }
@@ -2830,8 +2836,8 @@ int main(int argc, char* argv[])
                 PX3SynthAudioProcessor processor;
                 makePlainPatch(processor);
                 setChoice(processor, "voice.osc1.mode", 0);
-                setParam(processor, "fx.vibe.enabled", 1.0f);
-                setParam(processor, "fx.vibe.amount", amount);
+                setParam(processor, "fx.analog.enabled", 1.0f);
+                setParam(processor, "fx.analog.amount", amount);
                 const auto c = render(processor, 96000, { { 2000, true, 57, 0.9f } });
                 const auto r = c.rmsOver(20000, 94000);
                 std::printf("  %-8.2f %10.6f %10.6f %10.4f %+10.6f\n",
@@ -2846,8 +2852,8 @@ int main(int argc, char* argv[])
             {
                 PX3SynthAudioProcessor processor;
                 makePlainPatch(processor);
-                setParam(processor, "fx.vibe.enabled", 1.0f);
-                setParam(processor, "fx.vibe.amount", 1.0f);
+                setParam(processor, "fx.analog.enabled", 1.0f);
+                setParam(processor, "fx.analog.amount", 1.0f);
                 processor.setPlayConfigDetails(0, 2, kSampleRate, blockSize);
                 processor.prepareToPlay(kSampleRate, blockSize);
                 juce::AudioBuffer<float> buffer(2, blockSize);
@@ -2953,8 +2959,8 @@ int main(int argc, char* argv[])
             setChoice(processor, "voice.osc1.mode", 1);
             setParam(processor, "voice.filter1.enabled", 1.0f);
             setParam(processor, "voice.filter1.cutoff", 2500.0f);
-            setParam(processor, "fx.vibe.enabled", 1.0f);
-            setParam(processor, "fx.vibe.amount", amount);
+            setParam(processor, "fx.analog.enabled", 1.0f);
+            setParam(processor, "fx.analog.amount", amount);
             const auto capture = render(processor, 48000, { { 2000, true, 45, 0.9f } });
             std::printf("  %-10.3f %12.6f %12.6f\n", amount, capture.rms(), capture.peak());
         }
@@ -2986,6 +2992,8 @@ int main(int argc, char* argv[])
     if (wants("tuning")) testOscillatorTuning();
     if (wants("oscquality")) testOscillatorQuality();
     if (wants("vibe")) testVibe();
+    if (wants("analogdrift")) testAnalogDrift();
+    if (wants("analoggolden")) testAnalogGolden();
     if (wants("reverb")) testReverb();
     if (wants("comb")) testComb();
     if (wants("cardstyle")) testCardStyle();

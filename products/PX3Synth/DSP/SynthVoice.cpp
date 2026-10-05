@@ -12,37 +12,6 @@ namespace
 {
 std::atomic<uint32_t> gNoteStartSequence { 1u };
 
-// Sine saturation, after the approach used in Airwindows' Console family
-// (Chris Johnson, MIT licence - see THIRD_PARTY_NOTICES.md). Below the quarter
-// cycle sin(x) is very nearly x, so it is transparent at low level and folds
-// smoothly as it approaches the peak; past that point it is held rather than
-// allowed to fold back, which would sound like ring modulation.
-inline float sineSaturate(float x)
-{
-    constexpr float quarterCycle = 1.57079633f;
-    if (x > quarterCycle) return 1.0f;
-    if (x < -quarterCycle) return -1.0f;
-    return std::sin(x);
-}
-
-// Output gain that makes a sine saturator unity at a nominal operating level,
-// so driving it harder trades peaks for density instead of simply turning the
-// signal down. Normalising at zero level instead makes the stage quieter the
-// harder it is driven; normalising by an unrelated constant - which is what
-// this code used to do - makes it a level-dependent gain, loud on quiet signals
-// and quiet on loud ones.
-//
-// gain = nominal / sin(nominal * drive), evaluated through the series expansion
-// of 1/sinc so the hot path does not need a second sine per sample.
-inline float saturationMakeupGain(float drive)
-{
-    constexpr float nominal = 0.30f;
-    const auto y = nominal * drive;
-    const auto y2 = y * y;
-    const auto inverseSinc = 1.0f + y2 * (1.0f / 6.0f) + y2 * y2 * (7.0f / 360.0f);
-    return inverseSinc / drive;
-}
-
 // Long enough to be inaudible, short enough that a pruned release tail stops
 // consuming CPU within a single typical host block.
 constexpr float kFastReleaseSeconds = 0.005f;
@@ -182,9 +151,7 @@ void SynthVoice::startNote(int midiNoteNumber, float velocity, juce::Synthesiser
             filter.setCurrentSettingsImmediate(start);
         }
     }
-    // ~12 Hz coupling capacitor: blocks DC without touching the bass.
-    vibeCouplingCoeff = std::exp(-2.0f * juce::MathConstants<float>::pi * 12.0f
-                                 / static_cast<float>(juce::jmax(1.0, sampleRate)));
+    analogStage.prepareCoupling(sampleRate);
     subOscillator.prepare(sampleRate);
     subOscillator.setSettings(subOscillatorSettings);
     // Every source starts at the same phase. The oscillators used to start 120
@@ -194,11 +161,11 @@ void SynthVoice::startNote(int midiNoteNumber, float velocity, juce::Synthesiser
     if (std::abs(sampleRate - masterGainPreparedSampleRate) > 0.5)
     {
         masterGainSmoother.prepare(sampleRate, 0.015);
-        vibeGainSmoother.prepare(sampleRate, 0.010);
+        analogStage.gainSmoother.prepare(sampleRate, 0.010);
         sourceNormalisationSmoother.prepare(sampleRate, 0.015);
         masterGainPreparedSampleRate = sampleRate;
     }
-    vibeGainPrimed = false;
+    analogStage.gainPrimed = false;
     sourceNormalisationPrimed = false;
     // Start at the current value: a new note must not fade in from wherever the
     // previous note left the smoother.
@@ -265,7 +232,7 @@ void SynthVoice::startNote(int midiNoteNumber, float velocity, juce::Synthesiser
             phaseSeed,
             px3::dsp::streamSeed(static_cast<std::uint32_t>(voiceIndex), noteCount, static_cast<std::uint32_t>(oscIndex)));
     }
-    vibeNoise.seed(px3::dsp::streamSeed(static_cast<std::uint32_t>(voiceIndex), noteCount, 7u));
+    analogNoise.seed(px3::dsp::streamSeed(static_cast<std::uint32_t>(voiceIndex), noteCount, 7u));
     for (auto& clip : sourceClips)
     {
         clip.reset();
@@ -460,13 +427,12 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
     const auto sampleRate = juce::jmax(1.0, getSampleRate());
     const auto vibratoPhaseInc = juce::MathConstants<double>::twoPi * static_cast<double>(vibratoRateHz) / sampleRate;
 
-    const auto vibeBase = vibeBypass ? 0.0f : std::pow(juce::jlimit(0.0f, 1.0f, vibeGlobalAmount), 1.35f);
-    // Global amount is a macro depth control. Keep low values subtle, but let
-    // the top of the range drive aggressively audible analog character.
-    const auto vibeDepth = juce::jlimit(0.0f, 3.50f, vibeBase * (0.30f + 3.10f * vibeBase));
-    const auto vibeActive = vibeDepth > 0.0001f;
+    // ANALOG's global amount is a macro depth control: low values subtle, the
+    // top of the range aggressively audible.
+    const auto analogDepth = px3::analogdrift::depthForAmount(analogControl.globalAmount, analogControl.bypass);
+    const auto analogActive = analogDepth > 0.0001f;
 
-    pushFilterTargets(vibeActive, vibeDepth);
+    pushFilterTargets(analogActive, analogDepth);
 
     std::array<float, kModEnvelopeCount> modEnvelopePeakValues {};
     auto blockPeak = 0.0f;
@@ -564,7 +530,7 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
         // whose step was the buffer size (21 ms at 1024 samples).
         if (activePlan != nullptr && sample > 0 && sample % kEnvelopeControlSamples == 0)
         {
-            refreshEnvelopeTargets(vibeActive, vibeDepth, juce::jmin(kEnvelopeControlSamples, numSamples - sample));
+            refreshEnvelopeTargets(analogActive, analogDepth, juce::jmin(kEnvelopeControlSamples, numSamples - sample));
         }
 
         // Pull AMP ENV once per sample and use it consistently across all
@@ -697,15 +663,15 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
 
         auto ecoReleaseVoice = !isKeyDown();
 #if PX3_DIAGNOSTICS
-        if (diag.freezeVibeReleaseSwitch)
+        if (diag.freezeAnalogReleaseSwitch)
         {
             ecoReleaseVoice = false;
         }
 #endif
 
-        const auto applyVibeSourceStage = [&](float inSample, float noiseScale, int sourceSlot)
+        const auto applyAnalogSourceStage = [&](float inSample, float noiseScale, int sourceSlot)
         {
-            if (!vibeActive)
+            if (!analogActive)
             {
                 return inSample;
             }
@@ -725,57 +691,8 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
                 return inSample;
             }
 
-            const auto asym = (vibeTuning.waveformAsymmetry * (0.35f + 0.65f * vibeVariation.asymmetryBias)) * vibeDepth;
-            const auto sat = (vibeTuning.saturation * (0.45f + 0.55f * vibeVariation.saturationBias))
-                             * vibeDepth
-                             * (0.30f + 0.70f * releaseTailShape);
-            const auto chaos = vibeShared.chaos * vibeTuning.correlatedChaos * 0.18f * vibeDepth * releaseTailShape;
-
-            const auto asymShaped = inSample
-                                    + asym * inSample * inSample * (inSample >= 0.0f ? 0.9f : -0.7f)
-                                    + chaos;
-
-            // Sine saturation rather than tanh, and normalised by its own drive
-            // so the small-signal gain is unity. The previous form divided by a
-            // separate constant, which made the stage a level-dependent gain:
-            // up to +6.6 dB on a quiet signal and -1.5 dB on a loud one.
-            const auto drive = 1.0f + sat * 3.4f;
-            auto stageSample = sineSaturate(asymShaped * drive) * saturationMakeupGain(drive);
-
-            // Pink-weighted hiss. Real analog noise falls with frequency; flat
-            // white noise reads as digital.
-            //
-            // The gain is strictly PROPORTIONAL to the amount. It used to be
-            // "0.0035 + 0.0165 * amount", and that fixed floor did not scale
-            // with the amount knob or with the NOISE tuning: hiss went from
-            // -161 dBFS with vibe off to -75 dBFS the instant the stage
-            // engaged, an 86 dB step that landed within 14 dB of the hiss at
-            // FULL amount. At the lowest usable setting the floor was 99% of
-            // the noise gain, so neither the knob nor the profile could be
-            // heard - Clean (noise 0.03) and LoFi (noise 0.84) measured the
-            // same. The coefficient is set so full amount is unchanged.
-            const auto white = vibeNoise.white();
-            vibePinkState[0] = vibePinkPole[0] * vibePinkState[0] + white * vibePinkGain[0];
-            vibePinkState[1] = vibePinkPole[1] * vibePinkState[1] + white * vibePinkGain[1];
-            vibePinkState[2] = vibePinkPole[2] * vibePinkState[2] + white * vibePinkGain[2];
-            const auto pink = (vibePinkState[0] + vibePinkState[1] + vibePinkState[2] + white * 0.1848f) * 0.22f;
-
-            const auto noiseAmount = vibeTuning.noise * vibeDepth * (0.55f + 0.45f * std::abs(vibeShared.psu));
-            const auto noiseTailScale = 0.18f + 0.82f * releaseTailShape;
-            stageSample += pink
-                           * (0.0218f * noiseAmount)
-                           * noiseTailScale
-                           * juce::jlimit(0.0f, 1.0f, noiseScale);
-
-            // Coupling capacitor. The asymmetry term is a squared quantity and
-            // therefore carries DC; a real circuit blocks it here rather than
-            // letting it consume headroom all the way to the output.
-            const auto slot = static_cast<std::size_t>(juce::jlimit(0, kVoiceMixerSourceCount - 1, sourceSlot));
-            const auto coupled = stageSample - vibeCouplingX1[slot] + vibeCouplingCoeff * vibeCouplingY1[slot];
-            vibeCouplingX1[slot] = stageSample;
-            vibeCouplingY1[slot] = coupled;
-
-            return inSample + (coupled - inSample) * juce::jlimit(0.0f, 1.0f, detailMix);
+            return analogStage.processSource(analogControl, analogDepth, releaseTailShape, detailMix,
+                                             inSample, noiseScale, sourceSlot, analogNoise);
         };
 
         currentPitchBendNorm += (targetPitchBendNorm - currentPitchBendNorm) * bendSmoothing;
@@ -796,17 +713,12 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
             vibratoSemitones = static_cast<double>(vibratoDepthSemitones) * lfo;
         }
 
-        if (vibeActive)
+        if (analogActive)
         {
-            const auto driftCents = (vibeShared.oscillatorDrift * vibeTuning.oscillatorDrift * 32.0f
-                                     + vibeShared.psu * vibeTuning.psuMovement * 13.0f
-                                     + vibeShared.temperature * vibeTuning.temperatureDrift * 18.0f
-                                     + vibeShared.chaos * vibeTuning.correlatedChaos * 12.0f
-                                     + vibeVariation.pitchCents * vibeTuning.voiceVariation) * vibeDepth;
-            bendSemitones += static_cast<double>(juce::jlimit(-60.0f, 60.0f, driftCents) * 0.01f);
+            bendSemitones += static_cast<double>(px3::analogdrift::pitchDriftCents(analogControl, analogDepth) * 0.01f);
         }
 
-        // Bend, vibrato depth and vibe drift are all settled for most of a
+        // Bend, vibrato depth and ANALOG drift are all settled for most of a
         // block, which makes this exponent identical from sample to sample.
         // Keyed on the exponent, so any change still recomputes: this returns
         // the same value the unconditional call would have, never a stale one.
@@ -876,7 +788,7 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
             // curve they are in series, anti-aliased (docs/OSCILLATOR_DSP_DESIGN.md).
             auto sourceStageSample = static_cast<float>(sourceClips[static_cast<std::size_t>(oscIndex + 1)].process(
                 px3::dsp::kSourceClipAdaa, static_cast<double>(sanitizeAudioSample(sourceSample))));
-            sourceStageSample = applyVibeSourceStage(sourceStageSample, 1.0f, oscIndex + 1);
+            sourceStageSample = applyAnalogSourceStage(sourceStageSample, 1.0f, oscIndex + 1);
             // Source level is a trim on the oscillator's OUTPUT, applied after
             // its own soft clipper. Applied before the clipper it would also
             // change how hard the oscillator saturates, so moving the headroom
@@ -915,7 +827,7 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
         {
             subStageSample = static_cast<float>(sourceClips[kSubSourceIndex].process(
                 px3::dsp::kSourceClipAdaa, static_cast<double>(sanitizeAudioSample(subSample))));
-            subStageSample = applyVibeSourceStage(subStageSample, 0.6f, kSubSourceIndex);
+            subStageSample = applyAnalogSourceStage(subStageSample, 0.6f, kSubSourceIndex);
             // Trim after the clipper, for the same reason as the oscillators.
             subStageSample = sanitizeAudioSample(subStageSample) * subGain;
         }
@@ -988,19 +900,16 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
             }
         }
 
-        if (vibeActive)
+        if (analogActive)
         {
-            const auto gainVariation = (vibeVariation.gainOffset * vibeTuning.voiceVariation
-                                        + vibeShared.psu * vibeTuning.psuMovement * 0.12f
-                                        + vibeShared.temperature * vibeTuning.temperatureDrift * 0.10f) * vibeDepth;
-            const auto vibeGainTarget = 1.0f + gainVariation;
-            if (!vibeGainPrimed)
+            const auto analogGainTarget = px3::analogdrift::gainTarget(analogControl, analogDepth);
+            if (!analogStage.gainPrimed)
             {
                 // Start at the current value so a note does not swell in.
-                vibeGainSmoother.setCurrent(vibeGainTarget);
-                vibeGainPrimed = true;
+                analogStage.gainSmoother.setCurrent(analogGainTarget);
+                analogStage.gainPrimed = true;
             }
-            voiceGain *= vibeGainSmoother.next(vibeGainTarget);
+            voiceGain *= analogStage.gainSmoother.next(analogGainTarget);
             voiceGain = juce::jlimit(0.0f, 2.0f, voiceGain);
         }
 
@@ -1096,19 +1005,12 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
             diagPostEnvStageSum += voicedSample;
 #endif
             const auto vcaDetailMix = juce::jlimit(0.0f, 1.0f, 1.0f - releaseFilterBlend);
-            if (vibeActive && vcaDetailMix > 0.0f)
+            if (analogActive && vcaDetailMix > 0.0f)
             {
-                const auto vcaAmount = (vibeTuning.vcaNonlinearity * vibeDepth
-                                        + vibeShared.chaos * vibeTuning.correlatedChaos * 0.16f * vibeDepth)
-                                       * (0.28f + 0.72f * releaseTailShape);
-                // Normalised by its own drive so a quiet voice passes at unity.
-                // Dividing by an unrelated constant made this a level-dependent
-                // gain stage, which is why vibe grew louder as sources got
-                // quieter instead of simply adding character.
-                const auto vcaDrive = 1.0f + vcaAmount * 3.2f;
-                const auto shapedSample = sineSaturate(voicedSample * vcaDrive)
-                                          * saturationMakeupGain(vcaDrive);
-                voicedSample += (shapedSample - voicedSample) * vcaDetailMix;
+                // ANALOG's VCA nonlinearity, normalised by its own drive so a
+                // quiet voice passes at unity.
+                voicedSample = px3::analogdrift::applyVca(analogControl, analogDepth, releaseTailShape,
+                                                          vcaDetailMix, voicedSample);
             }
 
 #if PX3_DIAGNOSTICS
@@ -1373,7 +1275,7 @@ void SynthVoice::setOscillatorLayerSettings(const std::array<OscillatorLayerSett
     }
 }
 
-void SynthVoice::pushFilterTargets(bool vibeActive, float vibeDepth)
+void SynthVoice::pushFilterTargets(bool analogActive, float analogDepth)
 {
     for (int sourceIndex = 0; sourceIndex < kVoiceMixerSourceCount; ++sourceIndex)
     {
@@ -1390,16 +1292,10 @@ void SynthVoice::pushFilterTargets(bool vibeActive, float vibeDepth)
                                             / 12.0f * runtimeFilter.keyTrack);
             }
 
-            if (vibeActive)
+            if (analogActive)
             {
-                const auto temperatureCutoff = vibeShared.temperature * vibeTuning.temperatureDrift * 0.34f;
-                const auto psuCutoff = vibeShared.psu * vibeTuning.psuMovement * 0.22f;
-                const auto voiceCutoff = vibeVariation.cutoffOffset * vibeTuning.voiceVariation;
-                const auto chaosCutoff = vibeShared.chaos * vibeTuning.correlatedChaos * 0.28f;
-                const auto cutoffMul = 1.0f + (temperatureCutoff + psuCutoff + voiceCutoff + chaosCutoff) * vibeDepth;
-
-                const auto resoDelta = (vibeVariation.resonanceOffset * vibeTuning.voiceVariation
-                            + vibeShared.chaos * vibeTuning.filterVariation * 0.16f) * vibeDepth;
+                const auto cutoffMul = px3::analogdrift::cutoffMultiplier(analogControl, analogDepth);
+                const auto resoDelta = px3::analogdrift::resonanceDelta(analogControl, analogDepth);
 
                 targetCutoffHz *= cutoffMul;
                 targetResonanceQ *= (1.0f + resoDelta);
@@ -1426,7 +1322,7 @@ float SynthVoice::envelopePlanValue(const px3::synth::VoiceModDestination& d) co
     return px3::synth::rangeFrom0to1(d, px3::synth::foldUnit(d.unfolded + delta));
 }
 
-void SynthVoice::refreshEnvelopeTargets(bool vibeActive, float vibeDepth, int rampSamples)
+void SynthVoice::refreshEnvelopeTargets(bool analogActive, float analogDepth, int rampSamples)
 {
     using T = px3::synth::VoiceModTarget;
     const auto& plan = *activePlan;
@@ -1444,7 +1340,7 @@ void SynthVoice::refreshEnvelopeTargets(bool vibeActive, float vibeDepth, int ra
         (cutoff ? settings.cutoffHz : settings.resonanceQ) = envelopePlanValue(d);
         filtersMoved = true;
     }
-    if (filtersMoved) { pushFilterTargets(vibeActive, vibeDepth); }
+    if (filtersMoved) { pushFilterTargets(analogActive, analogDepth); }
 
     auto pitchMoved = false;
     for (int osc = 0; osc < kOscillatorSourceCount; ++osc)
@@ -1583,17 +1479,17 @@ int SynthVoice::getNoteAgeSamples() const
     return noteAgeSamples;
 }
 
-void SynthVoice::setVibeState(float globalAmount,
-                              bool bypass,
-                              const VibeSharedState& sharedState,
-                              const VibeVoiceVariation& variation,
-                              const VibeTuning& tuningState)
+void SynthVoice::setAnalogDriftState(float globalAmount,
+                                     bool bypass,
+                                     const AnalogDriftSharedState& sharedState,
+                                     const AnalogDriftVoiceVariation& variation,
+                                     const AnalogDriftTuning& tuningState)
 {
-    vibeGlobalAmount = juce::jlimit(0.0f, 1.0f, globalAmount);
-    vibeBypass = bypass;
-    vibeShared = sharedState;
-    vibeVariation = variation;
-    vibeTuning = tuningState;
+    analogControl.globalAmount = juce::jlimit(0.0f, 1.0f, globalAmount);
+    analogControl.bypass = bypass;
+    analogControl.shared = sharedState;
+    analogControl.variation = variation;
+    analogControl.tuning = tuningState;
 }
 
 void SynthVoice::updateRateDependentCoefficients(double sampleRate)
@@ -1610,16 +1506,7 @@ void SynthVoice::updateRateDependentCoefficients(double sampleRate)
     tailSmoothingLow = static_cast<float>(onePoleCoefficient(0.02, sampleRate));
     tailSmoothingHigh = static_cast<float>(onePoleCoefficient(0.20, sampleRate));
 
-    // VIBE's pinking poles, kept at the frequencies they have at 48 kHz, each
-    // branch keeping its DC gain.
-    static constexpr std::array<double, 3> kPoles { { 0.99765, 0.96300, 0.57000 } };
-    static constexpr std::array<double, 3> kGains { { 0.0990460, 0.2965164, 1.0526913 } };
-    for (std::size_t i = 0; i < kPoles.size(); ++i)
-    {
-        const auto pole = std::pow(kPoles[i], px3::dsp::kReferenceSampleRate / sampleRate);
-        vibePinkPole[i] = static_cast<float>(pole);
-        vibePinkGain[i] = static_cast<float>(kGains[i] * (1.0 - pole) / (1.0 - kPoles[i]));
-    }
+    analogStage.preparePink(sampleRate, px3::dsp::kReferenceSampleRate);
 }
 
 void SynthVoice::updateAngleDelta()

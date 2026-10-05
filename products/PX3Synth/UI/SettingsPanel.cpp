@@ -83,7 +83,7 @@ SettingsPanel::SettingsPanel(PX3SynthAudioProcessor& processorIn, juce::Colour p
     addRow("Enable animations",
            "Display performance animations (global)",
            animationsToggle);
-    addRow("Analog Engine",
+    addRow("Console Engine",
            "Console color applied to the whole output",
            analogProfileBox);
 

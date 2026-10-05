@@ -15,7 +15,7 @@
 #include "OscillatorUnit.h"
 #include "SubOscillator.h"
 #include "SubOscTypes.h"
-#include "VibeTypes.h"
+#include "AnalogDriftVoiceStage.h"
 #include "VoiceFilter.h"
 
 #include <array>
@@ -113,11 +113,12 @@ public:
     bool isFastReleasing() const;
 
     void setVoiceIndex(int index);
-    void setVibeState(float globalAmount,
-                      bool bypass,
-                      const VibeSharedState& sharedState,
-                      const VibeVoiceVariation& variation,
-                      const VibeTuning& tuningState);
+    // ANALOG's per-block control state (see AnalogDriftVoiceStage.h).
+    void setAnalogDriftState(float globalAmount,
+                             bool bypass,
+                             const AnalogDriftSharedState& sharedState,
+                             const AnalogDriftVoiceVariation& variation,
+                             const AnalogDriftTuning& tuningState);
     float getCurrentAmpEnvelopeValue() const;
     float getLastBlockPeak() const;
     float getLastBlockSourcePeak(int sourceIndex) const;
@@ -218,26 +219,24 @@ private:
     // In-voice envelope modulation, refreshed inside the block (see render).
     static constexpr int kEnvelopeControlSamples = 32;
     const px3::synth::VoiceModulationPlan* activePlan { nullptr };
-    void pushFilterTargets(bool vibeActive, float vibeDepth);
+    void pushFilterTargets(bool analogActive, float analogDepth);
     float envelopePlanValue(const px3::synth::VoiceModDestination& d) const noexcept;
-    void refreshEnvelopeTargets(bool vibeActive, float vibeDepth, int rampSamples);
+    void refreshEnvelopeTargets(bool analogActive, float analogDepth, int rampSamples);
     std::array<float, 3> slopTarget { { 0.0f, 0.0f, 0.0f } };
     std::array<int, 3> slopHoldBlocks { { 0, 0, 0 } };
     std::uint32_t slopRandom { 0x9e3779b9u };
     // The oscillator's soft clip and the voice's, as the one curve they are in
     // series, anti-aliased - one stage per source.
     std::array<px3::dsp::Adaa, kVoiceMixerSourceCount> sourceClips;
-    // VIBE's hiss, from this voice's own stream rather than oscillator 1's.
-    px3::dsp::NoiseStream vibeNoise;
+    // ANALOG's hiss, from this voice's own stream rather than oscillator 1's.
+    px3::dsp::NoiseStream analogNoise;
     float bendSmoothing { 0.06f };
     float wheelSmoothing { 0.045f };
     float tailSmoothingLow { 0.02f };
     float tailSmoothingHigh { 0.20f };
-    std::array<float, 3> vibePinkPole { { 0.99765f, 0.96300f, 0.57000f } };
-    std::array<float, 3> vibePinkGain { { 0.0990460f, 0.2965164f, 1.0526913f } };
     double coefficientsSampleRate { 0.0 };
     // Memo for the per-sample pitch-bend/vibrato ratio. The exponent is
-    // constant for the whole block whenever bend, mod wheel and vibe drift are
+    // constant for the whole block whenever bend, mod wheel and ANALOG drift are
     // settled, which is most of the time, so this turns an exp2 per sample per
     // voice into a compare. Keyed on the exponent itself, so a changing
     // exponent still recomputes and the result is always the same value the
@@ -250,15 +249,9 @@ private:
     // that resumes when it is switched back on.
     bool subAudibleForCurrentNote { true };
     std::array<float, kVoiceMixerSourceCount> releaseSmoothingState { { 0.0f, 0.0f, 0.0f, 0.0f } };
-    // Coupling capacitor per source. Asymmetric distortion produces DC by
-    // definition - a squared term has a non-zero mean - and real circuits block
-    // it with a series capacitor rather than letting it eat headroom.
-    std::array<float, kVoiceMixerSourceCount> vibeCouplingX1 { { 0.0f, 0.0f, 0.0f, 0.0f } };
-    std::array<float, kVoiceMixerSourceCount> vibeCouplingY1 { { 0.0f, 0.0f, 0.0f, 0.0f } };
-    float vibeCouplingCoeff { 0.999f };
-    // Pink-weighted noise state. Analog hiss falls at roughly 3 dB/octave;
-    // flat white noise is the giveaway of a digital source.
-    std::array<float, 3> vibePinkState { { 0.0f, 0.0f, 0.0f } };
+    // ANALOG's per-voice stage state: pink hiss filter, one coupling capacitor
+    // per source, and the smoother for its block-rate gain variation.
+    px3::analogdrift::VoiceState<kVoiceMixerSourceCount> analogStage;
     SubOscillator subOscillator;
 
     float currentAmpEnvelopeValue { 0.0f };
@@ -273,11 +266,6 @@ private:
     // Master gain is a user-facing fader applied per sample inside the voice,
     // so it needs the same per-sample smoothing the mixer gains get.
     SmoothedGain masterGainSmoother;
-    // Vibe's shared drift state is refreshed once per block, so the gain
-    // variation it produces has to be smoothed per sample like any other
-    // block-rate control that multiplies the audio.
-    SmoothedGain vibeGainSmoother;
-    bool vibeGainPrimed { false };
     // Enabling or disabling a source changes the per-source normalisation, which
     // multiplies every source. Unsmoothed that is a -3 dB step mid-note.
     SmoothedGain sourceNormalisationSmoother;
@@ -308,9 +296,5 @@ private:
     bool hasShapedModEnvelopes { false };
     bool ampEnvelopeEnabled { true };
 
-    float vibeGlobalAmount { 0.0f };
-    bool vibeBypass { false };
-    VibeSharedState vibeShared;
-    VibeVoiceVariation vibeVariation;
-    VibeTuning vibeTuning;
+    px3::analogdrift::VoiceControl analogControl;
 };

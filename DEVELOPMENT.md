@@ -80,8 +80,9 @@ updater/      the helper the standalone carries
 
 - `shared/DSP/<Effect>/`: one directory per effect, each a self-contained class
   with the same `prepare` / `reset` / `updateForBlock` / `processSampleFrame`
-  interface: `Vibe/` (`Vibe.*` + `VibeEngine.*`), `Delay/`, `Reverb/`, `Mood/`,
-  `Doom/`, `Lucy/`, `Chorus/`, `StereoSpread/`.
+  interface: `Vibe/` (`UniVibe.*`), `Delay/`, `Reverb/`, `Mood/`,
+  `Doom/`, `Lucy/`, `Chorus/`, `StereoSpread/`. `AnalogDrift/` (ANALOG) is the
+  exception: it runs inside the voices and has no `processSampleFrame`.
 
   **That directory boundary is why each of these could become a product.** The
   Synth and the standalone effect drive the same object through the same
@@ -196,10 +197,13 @@ Want to change AnalogEngine?
   `docs/ANALOG_ENGINE_TUNING.md`.
 
 Want to change an FX algorithm?
-- VIBE: `shared/DSP/Vibe/VibeEngine.cpp` for the shared per-block state,
-  `products/PX3Synth/DSP/SynthVoice.cpp` (`applyVibeSourceStage`) for the per-sample stage.
-  Vibe is a per-voice effect, not a bus effect - it runs per source before the
-  four sources are summed.
+- VIBE: `shared/DSP/Vibe/UniVibe.cpp` (docs/VIBE_DSP_DESIGN.md). Character tests:
+  `PX3Tests vibe`; renders: `PX3Diag vibe-renders <dir>`.
+- ANALOG: `shared/DSP/AnalogDrift/AnalogDriftEngine.cpp` for the shared per-block
+  state, `AnalogDriftVoiceStage.h` for the per-sample stage the voice calls
+  (`applyAnalogSourceStage` in `SynthVoice.cpp`). ANALOG is a per-voice effect,
+  not a bus effect - it runs per source before the four sources are summed. Any
+  change must keep `PX3Tests analoggolden` bit-exact unless it is meant to.
 - DELAY: `shared/DSP/Delay/Delay.cpp`
 - REVERB: `shared/DSP/Reverb/Reverb.cpp`
 - MOOD: `shared/DSP/Mood/Mood.cpp`

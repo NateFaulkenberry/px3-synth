@@ -30,7 +30,7 @@
 #include "SynthVoice.h"
 #include "WavetableSlot.h"
 #include "BreakpointEnvelope.h"
-#include "Vibe.h"
+#include "AnalogDrift.h"
 
 #include <array>
 #include <atomic>
@@ -425,9 +425,10 @@ public:
     juce::AudioParameterBool& getEnvelopeEnabledParam(int envIndex) const;
     juce::AudioParameterFloat& getMasterGainParam() const;
 
-    juce::AudioParameterFloat& getVibeAmountParam() const;
+    juce::AudioParameterFloat& getAnalogDriftAmountParam() const;
+    juce::AudioParameterBool& getAnalogDriftEnabledParam() const;
+    juce::AudioParameterChoice& getAnalogDriftTypeParam() const;
     juce::AudioParameterBool& getVibeEnabledParam() const;
-    juce::AudioParameterChoice& getVibeTypeParam() const;
     juce::AudioParameterFloat& getDelayAmountParam() const;
     juce::AudioParameterChoice& getGranularSyncDivisionParam() const;
     juce::AudioParameterChoice& getGranularModeParam() const;
@@ -741,19 +742,19 @@ public:
     float debugGetInstanceCpuLoadPercent() const;
     int debugGetActiveInstanceCount() const;
     juce::String debugGetLfoAssignmentName() const;
-    float debugGetVibeGlobalAmount() const;
-    float debugGetVibeEffectiveAmount() const;
-    bool debugGetVibeBypass() const;
-    uint32_t debugGetVibeSeed() const;
-    VibeTuning debugGetVibeTuning() const;
-    void debugSetVibeBypass(bool shouldBypass);
-    void debugSetVibeSeed(uint32_t seed);
-    void debugSetVibeTuningValue(const juce::String& key, float value);
+    float debugGetAnalogDriftGlobalAmount() const;
+    float debugGetAnalogDriftEffectiveAmount() const;
+    bool debugGetAnalogDriftBypass() const;
+    uint32_t debugGetAnalogDriftSeed() const;
+    AnalogDriftTuning debugGetAnalogDriftTuning() const;
+    void debugSetAnalogDriftBypass(bool shouldBypass);
+    void debugSetAnalogDriftSeed(uint32_t seed);
+    void debugSetAnalogDriftTuningValue(const juce::String& key, float value);
     void debugSetAnalogTuningValue(const juce::String& key, float value);
     float debugGetAnalogTuningValue(const juce::String& key) const;
     void debugResetAnalogTuning();
     juce::String debugDescribeAnalogEngine() const;
-    float debugGetVibeTuningValue(const juce::String& key) const;
+    float debugGetAnalogDriftTuningValue(const juce::String& key) const;
 
     float copyPitchBendNormalized() const;
     float copyModWheelNormalized() const;
@@ -836,7 +837,8 @@ private:
     // What modulation adds through a Pitch Mod destination, in semitones.
     // The parameter's own value is ignored - see OscillatorTuning.h.
     float modulationOnlyPitchSemitones(juce::AudioParameterFloat& parameter) const;
-    VibeSettings currentVibeSettings() const;
+    AnalogDriftSettings currentAnalogDriftSettings() const;
+    px3::UniVibeSettings currentVibeSettings() const;
     DelaySettings currentDelaySettings() const;
     ReverbSettings currentReverbSettings() const;
     px3::MoodUserParameters currentMoodUserParameters() const;
@@ -950,9 +952,10 @@ private:
     juce::AudioParameterFloat* releaseParam { nullptr };
     juce::AudioParameterBool* ampEnvEnabledParam { nullptr };
     juce::AudioParameterFloat* masterGainParam { nullptr };
-    juce::AudioParameterFloat* vibeAmountParam { nullptr };
+    juce::AudioParameterFloat* analogDriftAmountParam { nullptr };
+    juce::AudioParameterBool* analogDriftEnabledParam { nullptr };
+    juce::AudioParameterChoice* analogDriftTypeParam { nullptr };
     juce::AudioParameterBool* vibeEnabledParam { nullptr };
-    juce::AudioParameterChoice* vibeTypeParam { nullptr };
     juce::AudioParameterFloat* delayAmountParam { nullptr };
     juce::AudioParameterChoice* granularSyncDivisionParam { nullptr };
     juce::AudioParameterChoice* granularModeParam { nullptr };
@@ -1416,11 +1419,12 @@ private:
     std::atomic<float> debugInstanceCpuLoadPercent { 0.0f };
 
     /*
-     * VIBE is a correlated imperfection system. It is intentionally not a
-     * single post-distortion. Shared slow processes (PSU, temperature, chaos,
-     * drift) are generated once and distributed across multiple DSP points.
+     * ANALOG is a correlated imperfection system that runs inside the voices.
+     * It is intentionally not a single post-distortion. Shared slow processes
+     * (PSU, temperature, chaos, drift) are generated once and distributed
+     * across multiple DSP points in every voice.
      */
-    Vibe vibeComponent;
+    AnalogDrift analogDriftComponent;
     Delay delayComponent;
     Mood moodComponent;
     px3::Doom doomComponent;
@@ -1432,6 +1436,8 @@ private:
     juce::AudioParameterFloat* vibeSpeedParam { nullptr };
     juce::AudioParameterFloat* vibeIntensityParam { nullptr };
     juce::AudioParameterChoice* vibeModeParam { nullptr };
+    juce::AudioParameterFloat* vibeLevelParam { nullptr };
+    juce::AudioParameterChoice* vibeStereoParam { nullptr };
     juce::AudioParameterBool* distortionEnabledParam { nullptr };
     juce::AudioParameterFloat* distortionDriveParam { nullptr };
     juce::AudioParameterChoice* distortionTypeParam { nullptr };

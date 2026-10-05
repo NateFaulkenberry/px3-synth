@@ -526,7 +526,7 @@ private:
     };
 
     void configureKnob(KnobBinding& binding, const juce::String& labelText, juce::AudioParameterFloat& parameter);
-    // Vibe's amount knob has no caption, so it configures the slider half only.
+    // A knob with no caption configures the slider half only.
     void configureEffectKnob(juce::Slider& slider, juce::AudioParameterFloat& parameter);
     void configureEffectKnob(juce::Slider& slider,
                              KnobLabel& label,
@@ -548,6 +548,7 @@ private:
     void buildStereoSpreadCard();
     void buildDriveCard();
     void buildVibeCard();
+    void buildAnalogCard();
     void attachCardControls(px3::ui::FxCardComponent& card,
                             std::initializer_list<std::pair<const char*, const char*>> knobs,
                             std::initializer_list<std::pair<const char*, const char*>> choices,
@@ -1014,16 +1015,13 @@ private:
     px3::ui::FxCardComponent* spreadCard { nullptr };
     px3::ui::FxCardComponent* driveCard { nullptr };
     px3::ui::FxCardComponent* vibeCard { nullptr };
+    px3::ui::FxCardComponent* analogCard { nullptr };
     // The Reverb card's IR loader footer, shown while MODE is IR.
     ReverbIrStrip reverbIrStrip;
     std::unique_ptr<MixPanel> mixPanel;
     std::unique_ptr<SettingsPanel> settingsPanel;
     std::unique_ptr<TopMenuBar> topMenuBar;
 
-    juce::Slider vibeAmountKnob;
-    juce::ComboBox vibeTypeBox;
-    KnobLabel vibeAmountLabel;
-    KnobLabel vibeTypeLabel;
     juce::Slider isaacTextureKnob;
     KnobLabel isaacTextureLabel;
     juce::ComboBox delayAlgoBox;
@@ -1072,7 +1070,6 @@ private:
     KnobLabel moodWetModeLabel;
     juce::ComboBox moodLoopModeBox;
     KnobLabel moodLoopModeLabel;
-    px3::ui::BypassButton robBypassButton;
     px3::ui::BypassButton delayBypassButton;
 
     PresetManager presetManager;

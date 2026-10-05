@@ -2,7 +2,7 @@
 
 #include "FxCardComponent.h"
 
-// The rows of the Chorus, Reverb, Spread and Drive cards, declared ONCE and
+// The rows of the Chorus, Reverb, Spread, Drive, Vibe and Analog cards, declared ONCE and
 // shared by the Synth's FX page and the standalone effect products - the same
 // arrangement DoomCardLayout.h and LucyCardLayout.h use. A label or a tooltip
 // changed here changes in both, so the parity tests keep holding.
@@ -115,20 +115,37 @@ inline void declareDriveRows(FxCardComponent& card, const juce::StringArray& typ
                       { "mix", "MIX", "Dry against driven: blend for parallel distortion" } });
 }
 
+// VIBE: the Uni-Vibe. Shared by the Synth's FX page and PX3 Vibe.
 inline void declareVibeRows(FxCardComponent& card,
-                            const juce::StringArray& vibeModeChoices,
-                            const juce::StringArray& driftTypeChoices)
+                            const juce::StringArray& modeChoices,
+                            const juce::StringArray& stereoChoices)
 {
-    card.setDescription("UNI-VIBE: a photocell phaser/vibrato in the FX chain. ANALOG DRIFT: per-voice pitch and "
-                        "filter wander, saturation and noise.");
-    card.addChoiceRow({ { "mode", "MODE", "CHORUS: the throb mixed with the dry signal. VIBRATO: wet only, pitch wobble",
-                          vibeModeChoices } });
-    card.addKnobRow({ { "speed", "SPEED", "Rate of the lamp sweep, 0.5 to 10 Hz" },
-                      { "intensity", "INTENSITY", "Depth of the Uni-Vibe effect (0 = off)" } });
+    card.setDescription("Uni-Vibe: four unmatched photocell phase stages swept by one lamp. The lopsided, "
+                        "throbbing sweep comes from the lamp and photocells, not from the LFO.");
+    card.addChoiceRow({ { "mode", "MODE",
+                          "CHORUS: the phase-shifted signal mixed equally with the dry one (moving notches). "
+                          "VIBRATO: the phase-shifted signal alone, heard as pitch wobble",
+                          modeChoices },
+                        { "stereo", "STEREO",
+                          "LINKED: both sides through the same circuit. INVERTED: the right side takes the "
+                          "last stage's opposite-phase output, so its notches sit where the left has peaks",
+                          stereoChoices } });
+    card.addKnobRow({ { "speed", "SPEED", "Lamp sweep rate, 0.5 to 8 Hz" },
+                      { "level", "LEVEL", "Output level, plus or minus 12 dB" } });
+    card.addFeatureKnobRow({ "intensity", "INTENSITY",
+                             "How hard the lamp is driven. At 0 the lamp idles at a dim glow: a fixed phase "
+                             "colour with no sweep, like the pedal" });
+}
 
-    card.addHeadingRow("ANALOG DRIFT", "Per-voice analog imperfection");
-    card.addChoiceRow({ { "type", "STYLE", "Which kind of instability each voice gets", driftTypeChoices } });
-    card.addKnobRow({ { "amount", "DRIFT", "How much each voice wanders: pitch, cutoff, saturation and noise" } });
+// ANALOG: per-voice analog drift and nonlinearity. Synth only - it works
+// inside the voices, so there is no insert version of it.
+inline void declareAnalogRows(FxCardComponent& card, const juce::StringArray& typeChoices)
+{
+    card.setDescription("Per-voice analog imperfection: each voice drifts in pitch and filter on its own, with "
+                        "saturation, supply sag and hiss before the sources are summed.");
+    card.addChoiceRow({ { "type", "STYLE", "Which kind of instability each voice gets", typeChoices } });
+    card.addFeatureKnobRow({ "amount", "AMOUNT",
+                             "How much each voice wanders: pitch, cutoff, saturation and noise (0 = off)" });
 }
 
 } // namespace px3::ui::fxcards

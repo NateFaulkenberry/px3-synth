@@ -394,7 +394,7 @@ near 1.0 was written against the naive square, and was corrected.
   wrap per sample at most, because the increment is clamped below 0.5.
 - **Increment:** f / fs, recomputed every sample from the current frequency.
 - **Continuity:** A pitch change changes the increment and never the phase. Pitch
-  bend, vibrato, VIBE drift, Pitch Mod and tuning all arrive as frequency.
+  bend, vibrato, ANALOG drift, Pitch Mod and tuning all arrive as frequency.
 - **Ratios:** Each partial, detuned saw, slave or modulator owns its own
   accumulator at ratio·f / fs.
 - **Reset:** Only at note start, and at a hard-sync master wrap, where it happens
@@ -426,7 +426,7 @@ oscillators. ADAA stages add a further half sample, uniformly across sources.
 |---|---|---|
 | Immediate | enable (has its own fade), wavetable table (swapped at a block, per its design), vowel choice (ramped as coefficients) | at block start |
 | Smoothed | macros A/B/C (all derived curves), harmonic trims, PWM width, FM ratio/index, sync ratio/drive, coarse/fine/Pitch Mod ratio, mode gain | linear ramp across the block, per sample |
-| Audio-rate | phase accumulators, FM modulator, pitch bend and mod wheel (one-pole, time-constant based), vibrato, VIBE drift | per sample |
+| Audio-rate | phase accumulators, FM modulator, pitch bend and mod wheel (one-pole, time-constant based), vibrato, ANALOG drift | per sample |
 | Structural | oscillator mode, sub waveform (5 ms crossfade); DIGITAL bit depth and hold (stepped by design) | a controlled transition |
 
 The wavetable scan keeps its measured 3 ms one-pole.
@@ -450,7 +450,7 @@ k(fs) = k₄₈·48000/fs, and counts scale with fs.
 | ADDITIVE shimmer, PX3 movement | `noteAge · 0.0007` | hertz |
 | Voice onset guard | 8–96 samples | the same time at 48 kHz |
 | Voice release-tail smoother | 0.02–0.20 per sample | time constants |
-| VIBE hiss pinking | Kellet economy coefficients | poles held at their 48 kHz frequencies |
+| ANALOG hiss pinking | Kellet economy coefficients | poles held at their 48 kHz frequencies |
 
 ### DC
 Removed at the cause first:
@@ -471,7 +471,7 @@ blocker on their own output:
   clipped mean is not zero.
 
 Every mode now measures under 0.35% of RMS at every macro extreme (the exact figure moves with the noise seed)
-(`OscQuality_NoModeCarriesDc`). VIBE's 12 Hz coupling capacitor is no longer
+(`OscQuality_NoModeCarriesDc`). ANALOG's 12 Hz coupling capacitor is no longer
 relied on.
 
 ### Mode switching

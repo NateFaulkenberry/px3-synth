@@ -255,11 +255,11 @@ Points where the candidates genuinely conflict, for the record:
 
 ---
 
-## 7. Relationship to VibeEngine
+## 7. Relationship to AnalogDriftEngine (ANALOG, formerly part of VIBE)
 
 They model different things at different points and must not be merged.
 
-`VibeEngine` is a **per-voice instrument-analog** model: oscillator drift, PSU
+`AnalogDriftEngine` (the ANALOG card) is a **per-voice instrument-analog** model: oscillator drift, PSU
 sag under load, per-voice component variation, waveform asymmetry. It runs
 *inside* the voice, before the mixer, and its whole purpose is that voices differ
 from each other.
@@ -267,11 +267,11 @@ from each other.
 `AnalogEngine` is a **signal-path console** model. It runs after the voices are
 summed into source channels, and its whole purpose is that channels interact.
 
-Signal order is therefore Vibe → AnalogEngine, and it is not a choice: Vibe is
-upstream by construction. They are complementary — Vibe makes the *instrument*
+Signal order is therefore ANALOG → AnalogEngine, and it is not a choice: ANALOG is
+upstream by construction. They are complementary — ANALOG makes the *instrument*
 imperfect, AnalogEngine makes the *desk* imperfect.
 
-What is reused: VibeEngine's **conventions**, not its DSP. Specifically the
+What is reused: AnalogDriftEngine's **conventions**, not its DSP. Specifically the
 string-keyed `Tuning` struct, the `setTuningValue`/`getTuningValue` accessors,
 the debug-console slider registry, and the discipline that tuning constants are
 never serialised. What is deliberately not reused: any of its DSP, its per-voice

@@ -3,7 +3,7 @@
 #include <array>
 #include <cstdint>
 
-class VibeEngine
+class AnalogDriftEngine
 {
 public:
     struct Tuning

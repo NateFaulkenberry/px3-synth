@@ -7,6 +7,7 @@
 #include "../../products/PX3Reverb/PluginProcessor.h"
 #include "../../products/PX3Doom/PluginProcessor.h"
 #include "../../products/PX3Lucy/PluginProcessor.h"
+#include "../../products/PX3Vibe/PluginProcessor.h"
 #include "../../shared/Infrastructure/Fx/FxCardEditor.h"
 #include "../../shared/UI/Style/UIConfigManager.h"
 #include "../../shared/UI/Style/KnobLookAndFeel.h"
@@ -106,7 +107,7 @@ void testFxProducts()
     // Loaded here over a patch with all eight on.
     {
         PX3SynthAudioProcessor processor;
-        const std::vector<const char*> effects { "fx.vibe.enabled", "fx.delay.enabled", "fx.reverb.enabled", "fx.mood.enabled",
+        const std::vector<const char*> effects { "fx.analog.enabled", "fx.vibe.enabled", "fx.delay.enabled", "fx.reverb.enabled", "fx.mood.enabled",
                                                  "fx.doom.enabled", "fx.lucy.enabled", "fx.chorus.enabled", "fx.spread.enabled" };
         for (const auto* id : effects) { setParam(processor, id, 1.0f); }
 
@@ -121,7 +122,7 @@ void testFxProducts()
         }
 
         check("Init_EveryEffectIsOff", loaded && stillOn.isEmpty(),
-              loaded ? (stillOn.isEmpty() ? juce::String("all eight effects off after loading INIT over a patch with every effect on")
+              loaded ? (stillOn.isEmpty() ? juce::String("all nine effects off after loading INIT over a patch with every effect on")
                                           : "still on after INIT: " + stillOn.joinIntoString(", "))
                      : "INIT failed to load: " + error);
     }
@@ -656,6 +657,7 @@ void testFxProducts()
         PX3ReverbAudioProcessor reverb;  exercise(reverb, "PX3 Reverb");
         PX3DoomAudioProcessor doom;      exercise(doom, "PX3 Doom");
         PX3LucyAudioProcessor lucy;      exercise(lucy, "PX3 Lucy");
+        PX3VibeAudioProcessor vibe;      exercise(vibe, "PX3 Vibe");
     }
 
     {
@@ -701,6 +703,35 @@ void testFxProducts()
               "mix " + fmt(reopened.mix().get(), 3) + ", glue " + fmt(reopened.glue().get(), 3)
                   + ", wet mode " + juce::String(reopened.wetMode().getIndex())
                   + ", freeze " + (reopened.freeze().get() ? "on" : "off"));
+    }
+
+    {
+        // VIBE's level is in decibels and its two choices are not booleans:
+        // all three have to come back as what they were.
+        PX3VibeAudioProcessor source;
+        prepared(source);
+        source.speed().setValueNotifyingHost(0.83f);
+        source.intensity().setValueNotifyingHost(0.21f);
+        source.level().setValueNotifyingHost(source.level().convertTo0to1(-7.5f));
+        source.mode().setValueNotifyingHost(source.mode().convertTo0to1(1.0f));
+        source.stereo().setValueNotifyingHost(source.stereo().convertTo0to1(1.0f));
+        source.enabled().setValueNotifyingHost(0.0f);
+
+        juce::MemoryBlock state;
+        source.getStateInformation(state);
+
+        PX3VibeAudioProcessor reopened;
+        prepared(reopened);
+        reopened.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
+        const auto settings = reopened.debugSettingsForBlock();
+
+        check("FxProduct_VibeStateSurvivesASaveAndReload",
+              std::abs(settings.speed - 0.83f) < 1.0e-3f && std::abs(settings.intensity - 0.21f) < 1.0e-3f
+                  && std::abs(settings.levelDb + 7.5f) < 0.05f && settings.mode == 1 && settings.stereo == 1
+                  && ! settings.enabled,
+              "speed " + fmt(settings.speed, 3) + ", intensity " + fmt(settings.intensity, 3) + ", level "
+                  + fmt(settings.levelDb, 2) + " dB, mode " + juce::String(settings.mode) + ", stereo "
+                  + juce::String(settings.stereo) + ", " + (settings.enabled ? "on" : "off"));
     }
 
     {
@@ -769,10 +800,11 @@ void testFxProducts()
         PX3ReverbAudioProcessor reverb; sweep(reverb, "Reverb");
         PX3DoomAudioProcessor doom;     sweep(doom, "Doom");
         PX3LucyAudioProcessor lucy;     sweep(lucy, "Lucy");
+        PX3VibeAudioProcessor vibe;     sweep(vibe, "Vibe");
 
         check("FxProduct_EveryProductSurvivesTheRatesAndBlockSizesAHostUses",
               survived,
-              survived ? juce::String("all seven finite at 44.1 and 96 kHz, 32 and 1024 samples")
+              survived ? juce::String("all eight finite at 44.1 and 96 kHz, 32 and 1024 samples")
                        : "NON-FINITE: " + notes.joinIntoString(", "));
     }
 
@@ -818,7 +850,7 @@ void testFxProducts()
             juce::StringArray wrong;
             juce::StringArray resolved;
 
-            for (const auto* styleKey : { "vibe", "delay", "reverb", "mood",
+            for (const auto* styleKey : { "vibe", "analog", "delay", "reverb", "mood",
                                           "doom", "lucy", "chorus", "stereoSpread" })
             {
                 if (styleConfig == nullptr) { break; }
@@ -888,6 +920,8 @@ void testFxProducts()
         checkStyled("Doom", "doom", doomStyled, "clock");
         PX3LucyAudioProcessor lucyStyled;
         checkStyled("Lucy", "lucy", lucyStyled, "loss");
+        PX3VibeAudioProcessor vibeStyled;
+        checkStyled("Vibe", "vibe", vibeStyled, "speed");
 
         check("FxProducts_AStandaloneStylesItsOwnControlsFromConfig",
               unstyled.isEmpty(),
@@ -1126,6 +1160,7 @@ void testFxProducts()
         { PX3ReverbAudioProcessor p; measure("Reverb", p, p.enabled()); }
         { PX3DoomAudioProcessor p;   measure("Doom",   p, p.enabled(), "fx.doom.mix"); }
         { PX3LucyAudioProcessor p;   measure("Lucy",   p, p.enabled(), "fx.lucy.global"); }
+        { PX3VibeAudioProcessor p;   measure("Vibe",   p, p.enabled()); }
 
         // And the card's own switch has to reach that parameter. The audio path
         // above is only half the control: a button that changes nothing looks
@@ -1162,6 +1197,8 @@ void testFxProducts()
             switchReachesTheParameter("Doom", doom.enabled(), doom.createEditor());
             PX3LucyAudioProcessor lucy;
             switchReachesTheParameter("Lucy", lucy.enabled(), lucy.createEditor());
+            PX3VibeAudioProcessor vibe;
+            switchReachesTheParameter("Vibe", vibe.enabled(), vibe.createEditor());
 
             check("FxProducts_TheCardsBypassSwitchDrivesTheParameter",
                   broken.isEmpty(),
@@ -1231,6 +1268,8 @@ void testFxProducts()
             everyKnobMovesSomething("Doom", doomKnobs, doomKnobs.createEditor());
             PX3LucyAudioProcessor lucyKnobs;
             everyKnobMovesSomething("Lucy", lucyKnobs, lucyKnobs.createEditor());
+            PX3VibeAudioProcessor vibeKnobs;
+            everyKnobMovesSomething("Vibe", vibeKnobs, vibeKnobs.createEditor());
 
             check("FxProducts_EveryKnobOnACardIsAttachedToAParameter",
                   inert.isEmpty(),
@@ -1377,6 +1416,8 @@ void testFxProducts()
             captionsFollowTheBypass("Doom", doom.createEditor());
             PX3LucyAudioProcessor lucy;
             captionsFollowTheBypass("Lucy", lucy.createEditor());
+            PX3VibeAudioProcessor vibe;
+            captionsFollowTheBypass("Vibe", vibe.createEditor());
 
             check("FxProducts_ABypassedCardGreysItsCaptionsToo",
                   coloured.isEmpty(),
@@ -1519,6 +1560,12 @@ void testFxProducts()
             // mode and an amount over nine parameters with no control at all.
             PX3ReverbAudioProcessor reverb;
             compare("Reverb", px3::fxStageReverb, reverb);
+            // VIBE starts OFF in the Synth and ON as a product (INTENSITY 0
+            // still colours), so the product is switched to match first: the
+            // comparison is of layout, not of the default.
+            PX3VibeAudioProcessor vibe;
+            vibe.enabled().setValueNotifyingHost(0.0f);
+            compare("Vibe", px3::fxStageVibe, vibe);
 
             // A missing config would make every card fall back to the same
             // defaults and the comparison would pass by having nothing to
@@ -1646,11 +1693,12 @@ void testFxProducts()
             // Vibe, Delay and Mood's with it and the whole suite stayed green.
             {
                 juce::StringArray missing;
-                const std::array<std::pair<const char*, int>, 8> stages { {
+                const std::array<std::pair<const char*, int>, 10> stages { {
                     { "Vibe", px3::fxStageVibe }, { "Delay", px3::fxStageDelay },
                     { "Reverb", px3::fxStageReverb }, { "Mood", px3::fxStageMood },
                     { "Doom", px3::fxStageDoom }, { "Lucy", px3::fxStageLucy },
-                    { "Chorus", px3::fxStageChorus }, { "Spread", px3::fxStageStereoSpread } } };
+                    { "Chorus", px3::fxStageChorus }, { "Spread", px3::fxStageStereoSpread },
+                    { "Drive", px3::fxStageDistortion }, { "Analog", px3::fxStageAnalog } } };
 
                 for (const auto& [name, stage] : stages)
                 {
@@ -1697,6 +1745,8 @@ void testFxProducts()
                 checkLooks("Reverb", px3::fxStageReverb);
                 checkLooks("Doom", px3::fxStageDoom);
                 checkLooks("Chorus", px3::fxStageChorus);
+                checkLooks("Vibe", px3::fxStageVibe);
+                checkLooks("Analog", px3::fxStageAnalog);
 
                 check("FxCards_EveryKnobUsesThePx3Look",
                       unstyled.isEmpty(),
@@ -1757,6 +1807,8 @@ void testFxProducts()
                 checkAttachments("Lucy", px3::fxStageLucy);
                 checkAttachments("Chorus", px3::fxStageChorus);
                 checkAttachments("Spread", px3::fxStageStereoSpread);
+                checkAttachments("Vibe", px3::fxStageVibe);
+                checkAttachments("Analog", px3::fxStageAnalog);
 
                 check("FxCards_EveryKnobOnTheSynthsCardsIsAttached",
                       inert.isEmpty(),
@@ -1800,7 +1852,7 @@ void testFxProducts()
             check("FxProducts_AStandaloneCardMatchesTheSynthsCardExactly",
                   differing.isEmpty(),
                   differing.isEmpty()
-                      ? "Doom, Lucy, Chorus, Spread and Reverb lay out and colour identically "
+                      ? "Doom, Lucy, Chorus, Spread, Reverb and Vibe lay out and colour identically "
                         "in both, at the same size"
                       : "differ: " + differing.joinIntoString(", ") + ". "
                             + firstDifference.joinIntoString("  /  "));

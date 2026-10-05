@@ -121,14 +121,15 @@ inline const juce::Identifier kLoadedPresetNameId("loadedPresetName");
 inline const juce::Identifier kLoadedPresetCategoryId("loadedPresetCategory");
 inline const juce::Identifier kLoadedPresetAuthorId("loadedPresetAuthor");
 inline const juce::Identifier kLoadedPresetPathId("loadedPresetPath");
-inline const juce::Identifier kVibeStateId("VIBE");
-inline const juce::Identifier kVibeBypassId("bypass");
-inline const juce::Identifier kVibeSeedId("seed");
+// ANALOG's engine seed. Not a parameter (it is not something to automate),
+// so it travels as processor state.
+inline const juce::Identifier kAnalogDriftStateId("ANALOG");
+inline const juce::Identifier kAnalogDriftSeedId("seed");
 
 inline std::atomic<uint32_t> kInstanceCounter { 0u };
 inline std::atomic<int> kActiveInstanceCount { 0 };
 
-inline const juce::StringArray kVibeTypeChoices {
+inline const juce::StringArray kAnalogDriftTypeChoices {
     "Warm",
     "Hot",
     "Cool",
@@ -141,7 +142,7 @@ using px3::kFxStageCount;
 using px3::FxOrder;
 using px3::kDefaultFxOrder;
 
-inline const std::array<juce::String, kFxStageCount> kFxModuleIds { juce::String("harmonicDrive"),
+inline const std::array<juce::String, kFxStageCount> kFxModuleIds { juce::String("vibe"),
                                                                      juce::String("delay"),
                                                                      juce::String("reverb"),
                                                                      juce::String("mood"),
@@ -149,7 +150,8 @@ inline const std::array<juce::String, kFxStageCount> kFxModuleIds { juce::String
                                                                      juce::String("lucy"),
                                                                      juce::String("chorus"),
                                                                      juce::String("stereoSpread"),
-                                                                     juce::String("distortion") };
+                                                                     juce::String("distortion"),
+                                                                     juce::String("analog") };
 
 
 inline juce::String nowTimestamp()

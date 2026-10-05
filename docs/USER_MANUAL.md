@@ -282,7 +282,7 @@ the eight factory tables in the same menu.
 
 Every oscillator, the sub included, has the same two tuning knobs side by side:
 COARSE and FINE. They are the only static tuning on the card. Anything that
-moves pitch while you play (pitch bend, vibrato, VIBE drift, an LFO or envelope
+moves pitch while you play (pitch bend, vibrato, ANALOG drift, an LFO or envelope
 on Pitch Mod) is added on top of them and never changes what they are set to.
 
 ### COARSE
@@ -725,27 +725,49 @@ can scroll freely while the strip stays in view.
 > **Note:** Bypassing an effect clears it out. Switching it back on starts clean
 > rather than releasing whatever was caught inside when you switched it off.
 
-## VIBE — Uni-Vibe and analogue drift
+## ANALOG — per-voice analogue drift
 
-**What it is:** Two things. The main effect is a **Uni-Vibe**-style phase-shift
-modulator, inspired by the photocell vibe pedal: four phase stages swept by a
-lamp-and-light-sensor model, which gives its characteristic lopsided, throbbing
-swirl. **SPEED** sets the rate, **INTENSITY** the depth (0 = off), and the
-**CHORUS / VIBRATO** switch chooses between a swirling chorus (mixed with the dry
-sound) and pure pitch wobble.
+**What it is:** The instrument's own analogue imperfection. It runs *inside each
+voice*, before the sources are summed, because saturating four signals
+separately does not sound like saturating their sum. It is not an insert, so its
+card sits ahead of the FX chain and is not in the reorder strip.
 
-Underneath it, the **analogue drift** (AMOUNT and TYPE) runs *inside each voice*,
-before the sources are summed, because saturating four signals separately does
-not sound like saturating their sum.
+**Sound:** Every voice drifts in pitch and filter at its own rate, so a held
+chord thickens rather than wobbling in unison. Supply sag follows how loud the
+instrument is playing, and the saturation adds harmonics and softens transients,
+with a little pink hiss.
 
-**Sound:** Every voice drifts at its own rate, so a held chord thickens rather
-than wobbling in unison. The saturation adds harmonics and softens transients.
-
-**Controls:** **AMOUNT**, and a **TYPE** menu — Warm, Hot, Cool, Vintage, Clean,
-LoFi.
+**Controls:** **AMOUNT** (0 = off) and a **STYLE** menu — Warm, Hot, Cool,
+Vintage, Clean, LoFi.
 
 **Use it for:** Making a digital patch sit more comfortably. A little on a pad
 takes off the sterile edge.
+
+## VIBE — Uni-Vibe
+
+**What it is:** A model of the Uni-Vibe pedal: four phase stages built around
+very different capacitors, swept together by one lamp shining on four
+photocells. The cells brighten quickly and darken slowly, so the sweep lunges
+up and drifts back - the lopsided, throbbing swirl - and the stages are not
+perfect all-passes, so the low end swells and dips with it. The transistor
+stages add a little grit when driven hard.
+
+**Controls:**
+
+* **MODE** — **CHORUS** mixes the phase-shifted signal equally with the dry one,
+  which gives the moving notches; **VIBRATO** passes the phase-shifted signal
+  alone, heard as pitch wobble. These are the pedal's own switch positions.
+* **STEREO** — **LINKED** runs both sides through the same circuit;
+  **INVERTED** takes the right side from the opposite-phase output (a well-known
+  modification), so its notches fall where the left side has peaks.
+* **SPEED** — 0.5 to 8 Hz.
+* **INTENSITY** — how hard the lamp is driven. At 0 the lamp idles at a dim
+  glow: no sweep, but a fixed colour, just like the pedal. Use the power switch
+  to take VIBE out completely.
+* **LEVEL** — output level, ±12 dB.
+
+**Use it for:** Organ, guitar-like plucks and electric piano. Slow and deep in
+CHORUS for swirl; faster in VIBRATO for a rotary-like wobble.
 
 ## DELAY
 
@@ -1398,7 +1420,7 @@ subtractive sounds.
 4. **FX** — REVERB on `HALL`, generous. CHORUS for width. SPREAD if you want it
    wider still.
 
-> **Tip:** With long attacks, add a little VIBE. The per-voice drift keeps a held
+> **Tip:** With long attacks, add a little ANALOG. The per-voice drift keeps a held
 > chord from sounding static.
 
 ## A performance Macro

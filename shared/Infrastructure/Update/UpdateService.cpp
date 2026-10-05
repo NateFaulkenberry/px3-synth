@@ -695,10 +695,11 @@ void registerDefaultProducts()
     // standalone application, and hasStandalone says so rather than a comment
     // somewhere saying so.
     //
-    // Vibe is deliberately ABSENT. It has no audio interface at all: it hands
-    // each voice a set of per-voice offsets applied at six points inside the
-    // voice, so there is no signal for an insert to process. See the
-    // feasibility assessment in docs/ECOSYSTEM_ARCHITECTURE.md.
+    // ANALOG (the per-voice drift) is deliberately ABSENT. It has no audio
+    // interface at all: it hands each voice a set of per-voice offsets applied
+    // at six points inside the voice, so there is no signal for an insert to
+    // process. See docs/ECOSYSTEM_ARCHITECTURE.md. VIBE, the Uni-Vibe, is an
+    // ordinary insert and is a product.
     struct EffectProduct
     {
         const char* productId;
@@ -707,7 +708,7 @@ void registerDefaultProducts()
         const char* installerComponentId;
     };
 
-    static constexpr std::array<EffectProduct, 7> effects { {
+    static constexpr std::array<EffectProduct, 8> effects { {
         { "px3-delay",  "PX3 Delay",  "com.px3.delay",  "px3.delay"  },
         { "px3-mood",   "PX3 Mood",   "com.px3.mood",   "px3.mood"   },
         { "px3-chorus", "PX3 Chorus", "com.px3.chorus", "px3.chorus" },
@@ -715,6 +716,7 @@ void registerDefaultProducts()
         { "px3-reverb", "PX3 Reverb", "com.px3.reverb", "px3.reverb" },
         { "px3-doom",   "PX3 Doom",   "com.px3.doom",   "px3.doom"   },
         { "px3-lucy",   "PX3 Lucy",   "com.px3.lucy",   "px3.lucy"   },
+        { "px3-vibe",   "PX3 Vibe",   "com.px3.vibe",   "px3.vibe"   },
     } };
 
     for (const auto& effect : effects)

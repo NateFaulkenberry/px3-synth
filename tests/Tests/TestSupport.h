@@ -555,7 +555,8 @@ inline void makePlainPatch(PX3SynthAudioProcessor& processor)
     setParam(processor, "voice.filter2.enabled", 0.0f);
 
     setParam(processor, "fx.vibe.enabled", 0.0f);
-    setParam(processor, "fx.vibe.amount", 0.0f);
+    setParam(processor, "fx.analog.enabled", 0.0f);
+    setParam(processor, "fx.analog.amount", 0.0f);
     setParam(processor, "fx.delay.enabled", 0.0f);
     setParam(processor, "fx.reverb.enabled", 0.0f);
     setParam(processor, "fx.mood.enabled", 0.0f);
@@ -1525,6 +1526,9 @@ void testKeyboardNotes();
 void testOscillatorTuning();
 void testOscillatorQuality();
 void testVibe();
+void printVibeCalibration();
+void testAnalogDrift();
+void testAnalogGolden();
 void testReverb();
 void testComb();
 void testCardStyle();

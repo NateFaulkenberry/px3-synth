@@ -98,13 +98,12 @@ set(PX3_SHARED_SOURCES
         shared/UI/Style/KnobOverlays.cpp
         shared/UI/Style/MacroKnobLook.cpp
         shared/UI/Style/UIConfigManager.cpp
-        shared/UI/Fx/VibeComponent.cpp
         shared/DSP/Delay/Delay.cpp
         shared/DSP/Mood/Mood.cpp
         shared/DSP/Mood/MoodControlModel.cpp
         shared/DSP/Reverb/Reverb.cpp
-        shared/DSP/Vibe/Vibe.cpp
-        shared/DSP/Vibe/VibeEngine.cpp
+        shared/DSP/AnalogDrift/AnalogDrift.cpp
+        shared/DSP/AnalogDrift/AnalogDriftEngine.cpp
         shared/DSP/Vibe/UniVibe.cpp
         shared/DSP/Filter/VoiceFilter.cpp
         shared/Infrastructure/Update/SemanticVersion.cpp
@@ -243,6 +242,15 @@ set(PX3_CHORUS_SOURCES
 
 set(PX3_CHORUS_PLUGIN_SOURCES ${PX3_CHORUS_SOURCES} products/PX3Chorus/PluginEntry.cpp)
 
+set(PX3_VIBE_SOURCES
+        shared/Infrastructure/Fx/FxPluginProcessor.cpp
+        shared/Infrastructure/Fx/FxCardEditor.cpp
+        products/PX3Vibe/PluginProcessor.cpp
+        products/PX3Vibe/PluginEditor.cpp
+)
+
+set(PX3_VIBE_PLUGIN_SOURCES ${PX3_VIBE_SOURCES} products/PX3Vibe/PluginEntry.cpp)
+
 set(PX3_MOOD_SOURCES
         shared/Infrastructure/Fx/FxPluginProcessor.cpp
         products/PX3Mood/PluginProcessor.cpp
@@ -268,6 +276,7 @@ set(PX3_INCLUDE_DIRS
         shared/DSP/StereoSpread
         shared/DSP/Distortion
         shared/DSP/Vibe
+        shared/DSP/AnalogDrift
         shared/DSP/Filter
         shared/DSP/Analog
         shared/UI
@@ -288,6 +297,7 @@ set(PX3_INCLUDE_DIRS
         products/PX3Reverb
         products/PX3Doom
         products/PX3Lucy
+        products/PX3Vibe
         shared/Infrastructure/Fx
 )
 
@@ -422,6 +432,15 @@ px3_add_product(
     ARTWORK      Lucy-artwork.png
     SOURCES      ${PX3_LUCY_PLUGIN_SOURCES})
 
+px3_add_product(
+    TARGET       PX3Vibe
+    PRODUCT_NAME "PX3 Vibe"
+    BUNDLE_ID    "com.px3.vibe"
+    PLUGIN_CODE  VbP1
+    FORMATS      AU VST3
+    ARTWORK      Vibe-artwork.png
+    SOURCES      ${PX3_VIBE_PLUGIN_SOURCES})
+
 juce_add_binary_data(PX3Assets
     SOURCES
         products/PX3Synth/Assets/px3.gif
@@ -437,7 +456,8 @@ if (PX3_BUILD_DIAGNOSTIC)
     juce_add_console_app(PX3Diag PRODUCT_NAME "PX3Diag")
     juce_generate_juce_header(PX3Diag)
 
-    target_sources(PX3Diag PRIVATE ${PX3_ALL_SOURCES} tools/DiagnosticMain.cpp tools/OscillatorQualityReport.cpp)
+    target_sources(PX3Diag PRIVATE ${PX3_ALL_SOURCES} tools/DiagnosticMain.cpp tools/OscillatorQualityReport.cpp
+        tools/VibeRenders.cpp)
     target_include_directories(PX3Diag PRIVATE ${PX3_INCLUDE_DIRS})
 
     target_compile_definitions(PX3Diag
@@ -501,6 +521,7 @@ if (PX3_BUILD_DIAGNOSTIC)
         products/PX3Spread/PluginProcessor.cpp products/PX3Spread/PluginEditor.cpp
         products/PX3Delay/PluginProcessor.cpp products/PX3Delay/PluginEditor.cpp
         products/PX3Mood/PluginProcessor.cpp products/PX3Mood/PluginEditor.cpp
+        products/PX3Vibe/PluginProcessor.cpp products/PX3Vibe/PluginEditor.cpp
         tools/CardBackgroundExport.cpp)
     target_include_directories(PX3CardBackgrounds PRIVATE ${PX3_INCLUDE_DIRS})
     target_compile_definitions(PX3CardBackgrounds
@@ -559,6 +580,7 @@ if (PX3_BUILD_DIAGNOSTIC)
         products/PX3Reverb/PluginProcessor.cpp products/PX3Reverb/PluginEditor.cpp
         products/PX3Doom/PluginProcessor.cpp products/PX3Doom/PluginEditor.cpp
         products/PX3Lucy/PluginProcessor.cpp products/PX3Lucy/PluginEditor.cpp
+        products/PX3Vibe/PluginProcessor.cpp products/PX3Vibe/PluginEditor.cpp
         ${PX3_TEST_SOURCES})
     target_include_directories(PX3Tests PRIVATE ${PX3_INCLUDE_DIRS})
     target_compile_definitions(PX3Tests

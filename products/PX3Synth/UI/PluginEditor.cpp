@@ -257,7 +257,6 @@ PX3SynthAudioProcessorEditor::~PX3SynthAudioProcessorEditor()
     }
 
     for (auto& tuning : oscTuning) { tuning.slopKnob.setLookAndFeel(nullptr); }
-    vibeAmountKnob.setLookAndFeel(nullptr);
     isaacTextureKnob.setLookAndFeel(nullptr);
     delayTimeKnob.setLookAndFeel(nullptr);
     delayFeedbackKnob.setLookAndFeel(nullptr);

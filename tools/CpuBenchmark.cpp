@@ -14,6 +14,7 @@
 #include "UpdateService.h"
 #include "MockUpdateProvider.h"
 #include "OscillatorMode.h"
+#include "UniVibe.h"
 
 #include <algorithm>
 #include <chrono>
@@ -96,7 +97,7 @@ struct Scenario
     bool filterSweep { false };  // cutoff automated every block
     bool modEnvelopes { false };
     bool lfos { false };
-    bool vibe { false };
+    bool vibe { false };            // ANALOG, the per-voice drift (was VIBE's drift)
     bool fx { false };
     bool newFx { false };            // doom + lucy + chorus + stereo spread
     bool analog { false };           // the console engine, all four contexts
@@ -179,8 +180,8 @@ void configure(PX3SynthAudioProcessor& processor, const Scenario& scenario)
     setParameter(processor, "voice.filter1.cutoff", 1200.0f);
     setParameter(processor, "voice.filter2.cutoff", 3000.0f);
 
-    setParameter(processor, "fx.vibe.enabled", scenario.vibe ? 1.0f : 0.0f);
-    setParameter(processor, "fx.vibe.amount", scenario.vibe ? 0.85f : 0.0f);
+    setParameter(processor, "fx.analog.enabled", scenario.vibe ? 1.0f : 0.0f);
+    setParameter(processor, "fx.analog.amount", scenario.vibe ? 0.85f : 0.0f);
 
     setParameter(processor, "fx.delay.enabled", scenario.fx ? 1.0f : 0.0f);
     setParameter(processor, "fx.reverb.enabled", scenario.fx ? 1.0f : 0.0f);
@@ -376,7 +377,7 @@ const Scenario kScenarios[] = {
     { "16 voices + filter sweep",      16, false , true  , true  , true  , false , false , false , false , false , false , false , false , false , -1 },
     { "16 voices + mod envelopes",     16, false , true  , false , false , true  , false , false , false , false , false , false , false , false , -1 },
     { "16 voices + LFOs",              16, false , true  , false , false , false , true  , false , false , false , false , false , false , false , -1 },
-    { "16 voices + vibe",              16, false , true  , false , false , false , false , true  , false , false , false , false , false , false , -1 },
+    { "16 voices + analog drift",      16, false , true  , false , false , false , false , true  , false , false , false , false , false , false , -1 },
     { "16 voices + FX chain",          16, false , true  , false , false , false , false , false , true  , true  , true  , false , false , false , -1 },
     { "16 voices + mixer automation",  16, false , true  , false , false , false , false , false , false , false , false , true  , false , false , -1 },
     { "16 voices, EVERYTHING on",      16, false , true  , true  , true  , true  , true  , true  , true  , true  , true  , true  , false , false , -1 },
@@ -632,7 +633,7 @@ int runFingerprints()
         { "filter cutoff sweep",    { "", 8, false, true, true, true, false, false, false, false, false, false, false, false, false, -1 } },
         { "mod envelopes",          { "", 8, false, true, false, false, true, false, false, false, false, false, false, false, false, -1 } },
         { "LFOs",                   { "", 8, false, true, false, false, false, true, false, false, false, false, false, false, false, -1 } },
-        { "vibe",                   { "", 8, false, true, false, false, false, false, true, false, false, false, false, false, false, -1 } },
+        { "analog drift",           { "", 8, false, true, false, false, false, false, true, false, false, false, false, false, false, -1 } },
         { "FX chain",               { "", 8, false, true, false, false, false, false, false, true, true, true, false, false, false, -1 } },
         { "mixer automation",       { "", 8, false, true, false, false, false, false, false, false, false, false, true, false, false, -1 } },
         { "everything on",          { "", 16, true, true, true, true, true, true, true, true, true, true, true, false, false, -1 } },
@@ -744,6 +745,64 @@ int main(int argc, char* argv[])
                 std::printf("  %-10s %2d voices: median %8.1f us, p99 %8.1f us\n",
                             choices[static_cast<int>(mode)].toRawUTF8(), voices, timing.medianMicros, timing.p99Micros);
             }
+        }
+        return 0;
+    }
+
+    if (filter == "vibefx")
+    {
+        // VIBE (the Uni-Vibe) is a stereo FX-chain stage: its cost does not
+        // scale with voices. Measured twice - the class alone on noise, so the
+        // number is the DSP and nothing else, and inside the processor with the
+        // sources sent to the FX bus.
+        const auto budget = 1.0e6 * static_cast<double>(kBlockSize) / kSampleRate;
+        std::printf("\nPX3 VIBE CPU  %.0f Hz, %d samples\n", kSampleRate, kBlockSize);
+        {
+            px3::UniVibe vibe;
+            vibe.prepare(kSampleRate);
+            px3::UniVibeSettings settings;
+            settings.speed = 0.5f;
+            settings.intensity = 0.7f;
+            settings.mode = 0;
+            juce::Random random(7);
+            std::vector<float> noise(static_cast<std::size_t>(kBlockSize) * 2u);
+            for (auto& v : noise) { v = random.nextFloat() * 0.5f - 0.25f; }
+            constexpr int kBlocks = 4000;
+            float sink = 0.0f;
+            const auto start = std::chrono::steady_clock::now();
+            for (int block = 0; block < kBlocks; ++block)
+            {
+                vibe.updateForBlock(settings);
+                for (int i = 0; i < kBlockSize; ++i)
+                {
+                    float l = 0.0f, r = 0.0f;
+                    vibe.processSampleFrame(noise[static_cast<std::size_t>(i)],
+                                            noise[static_cast<std::size_t>(i + kBlockSize)], l, r);
+                    sink += l + r;
+                }
+            }
+            const auto micros = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - start).count()
+                                / static_cast<double>(kBlocks);
+            std::printf("  class alone, stereo: %8.2f us per block (%5.3f%% of budget)  [sink %g]\n",
+                        micros, 100.0 * micros / budget, static_cast<double>(sink));
+        }
+        for (const auto on : { false, true })
+        {
+            Scenario scenario {};
+            scenario.name = "vibe fx";
+            scenario.voices = 16;
+            scenario.allSources = true;
+            const auto timing = measure(scenario, [on](PX3SynthAudioProcessor& processor)
+            {
+                setParameter(processor, "fx.vibe.enabled", on ? 1.0f : 0.0f);
+                setParameter(processor, "fx.vibe.intensity", on ? 0.7f : 0.0f);
+                for (const auto* id : { "sub", "osc1", "osc2", "osc3" })
+                {
+                    setParameter(processor, juce::String("mix.") + id + ".send.fx", 0.8f);
+                }
+            }, 200, 3);
+            std::printf("  16 voices, VIBE %-3s  median %8.1f us (%5.2f%%), p99 %8.1f us\n", on ? "on" : "off",
+                        timing.medianMicros, 100.0 * timing.medianMicros / budget, timing.p99Micros);
         }
         return 0;
     }

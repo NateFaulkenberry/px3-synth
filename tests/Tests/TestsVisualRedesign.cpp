@@ -283,7 +283,7 @@ void testVisualRedesign()
         juce::StringArray missing;
         for (const auto* id : { "fx.distortion.drive", "fx.distortion.tight", "fx.distortion.tone",
                                 "fx.distortion.level", "fx.distortion.mix", "fx.vibe.speed",
-                                "fx.vibe.intensity", "fx.vibe.amount", "fx.reverb.shimmer",
+                                "fx.vibe.intensity", "fx.vibe.level", "fx.analog.amount", "fx.reverb.shimmer",
                                 "fx.delay.wobble", "fx.delay.tape.quality", "fx.delay.tape.slip",
                                 "fx.delay.mod.depth" })
         {
@@ -300,8 +300,9 @@ void testVisualRedesign()
         const auto strip = panel != nullptr ? panel->debugStripStages() : std::vector<int> {};
         const auto has = [&strip](int id) { return std::find(strip.begin(), strip.end(), id) != strip.end(); };
         check("FxCards_SpreadIsNotInTheReorderableStrip",
-              strip.size() == static_cast<std::size_t>(px3::kFxStageCount - 1)
-                  && ! has(px3::fxStageStereoSpread) && has(px3::fxStageDistortion));
+              strip.size() == static_cast<std::size_t>(px3::kFxStageCount - 2)
+                  && ! has(px3::fxStageStereoSpread) && ! has(px3::fxStageAnalog) && has(px3::fxStageDistortion)
+                  && has(px3::fxStageVibe));
         auto* spread = panel != nullptr ? panel->cardForSection(px3::fxStageStereoSpread) : nullptr;
         check("FxCards_SpreadStillHasItsCardAfterTheChain", spread != nullptr && showingIn(*spread, *editor));
 

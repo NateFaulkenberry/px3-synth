@@ -82,7 +82,7 @@ public:
     // of the card feeds into.
     void addFeatureKnobRow(KnobSpec spec);
     // A sub-section heading: a printed caption with a rule, so one card can
-    // say it holds two things (VIBE: the Uni-Vibe stage, then ANALOG DRIFT).
+    // say it holds two things.
     void addHeadingRow(const juce::String& text, const juce::String& tooltip = {});
 
     // Marks the most recently added row as ADVANCED: it is laid out only while

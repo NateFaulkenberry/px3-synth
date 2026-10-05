@@ -2208,8 +2208,8 @@ void testEffectIndependence()
                  {
                      // Vibe is a voice-stage component; with vibeEnabled off its
                      // amount must not reach the FX bus at all.
-                     setParam(p, "fx.vibe.enabled", 0.0f);
-                     setParam(p, "fx.vibe.amount", 1.0f);
+                     setParam(p, "fx.analog.enabled", 0.0f);
+                     setParam(p, "fx.analog.amount", 1.0f);
                  });
 
     // FX send / return topology. A source panned hard left must place its DRY
@@ -2372,7 +2372,7 @@ void testEffectIndependence()
         // than on the bus, so it is audible with the sends down - it is checked
         // here anyway because it is stage 0 of the same chain order.
         const std::vector<Stage> stages {
-            { "Vibe",         { { "fx.vibe.enabled", 1.0f }, { "fx.vibe.amount", 1.0f } } },
+            { "Vibe",         { { "fx.analog.enabled", 1.0f }, { "fx.analog.amount", 1.0f } } },
             { "Delay",        { { "fx.delay.enabled", 1.0f }, { "fx.delay.amount", 1.0f },
                                 { "fx.delay.time", 0.35f }, { "fx.delay.feedback", 0.40f } } },
             { "Reverb",       { { "fx.reverb.enabled", 1.0f }, { "fx.reverb.amount", 1.0f },

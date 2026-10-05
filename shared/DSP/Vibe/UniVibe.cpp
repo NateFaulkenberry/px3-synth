@@ -1,91 +1,359 @@
 #include "UniVibe.h"
 
 #include <cmath>
+#include <complex>
 
 namespace px3
 {
 namespace
 {
-// Per-stage sweep ranges (Hz). Staggered like the pedal's unequal capacitors,
-// so the four notches move together but sit far apart.
-constexpr std::array<float, 4> kMinHz { { 70.0f, 190.0f, 520.0f, 1100.0f } };
-constexpr std::array<float, 4> kMaxHz { { 1000.0f, 2300.0f, 5200.0f, 9500.0f } };
+// ---- the phase network: Shin-ei / Univox Uni-Vibe ---------------------------
+//
+// Sources (docs/VIBE_DSP_DESIGN.md):
+//   [K]  R.G. Keen, "The Technology of the Univibe", geofex.com
+//   [D]  C. Darabundit, R. Wedelich, P. Bischoff, "Digital Grey Box Model of the
+//        Uni-Vibe Effects Pedal", DAFx-19 (Table 1 and eq. 9, 16-21)
+//   [P]  PerkinElmer, "Photoconductive Cell Application Notes"
+// Values marked UNVERIFIED are not stated by a source and were chosen here.
+
+// Phase capacitors, in circuit order. [K], [D] Table 1. Verified.
+constexpr std::array<double, 4> kPhaseCapF { { 15.0e-9, 220.0e-9, 470.0e-12, 4.7e-9 } };
+// Coupling capacitor in series with each LDR. [K] (the four 1 uF caps). Verified.
+constexpr double kCouplingCapF = 1.0e-6;
+// Fixed resistor in series with each LDR (R6 in [D]). UNVERIFIED: 4.7 k is
+// inferred from clone BOMs (three 4.7 k per stage); [D] gives no value.
+constexpr double kSeriesOhms = 4.7e3;
+// Non-inverting (emitter) and inverting (collector) gains, measured per stage.
+// [D] Table 1 (one unit; units vary).
+constexpr std::array<double, 4> kAlpha { { 1.01, 0.98, 0.97, 0.95 } };
+constexpr std::array<double, 4> kBeta { { 1.11, 1.09, 1.10, 1.09 } };
+// Each cell's measured resistance at full brightness and in the dark. [D]
+// Table 1 minimum and maximum (the dark value is the maximum seen over a sweep).
+constexpr std::array<double, 4> kCellBrightOhms { { 12.7e3, 6.86e3, 7.69e3, 6.22e3 } };
+constexpr std::array<double, 4> kCellDarkOhms { { 2.79e6, 2.59e6, 3.32e6, 4.16e6 } };
+
+// ---- the transistor stages ---------------------------------------------------
+// Input: two jacks mixed by 22 k / 47 k to ground [K]: x 47/69.
+constexpr float kInputPad = 47.0f / 69.0f;
+// Preamp: a discrete op-amp with a 3.9 k / 1.2 k feedback divider [K]: x 4.25.
+constexpr float kPreampGain = 1.0f + 3.9f / 1.2f;
+// Volts at the input for a full-scale sample. UNVERIFIED: chosen as a hot
+// pickup (0.5 V peak); it sets how hard the stages are driven at 0 dBFS.
+constexpr float kInputVolts = 0.5f;
+// Each splitter swings about 3.4 V peak before it clips on a 15 V rail [K].
+constexpr float kStageHeadroomVolts = 3.4f;
+// Bias of the asymmetric clip (the "u" of [D] 3.2.1, which gives no value).
+// UNVERIFIED: chosen for a 2nd-harmonic-led curve at a few % THD at full scale.
+constexpr float kClipBias = 0.15f;
+
+// ---- lamp and photocells -----------------------------------------------------
+// All normalised (lamp current 1 = the driver's full swing). The structure is
+// from [K] and [D]; every number here is UNVERIFIED and was calibrated so the
+// cell resistances land on [D] Table 1 at full intensity (bright ~10-13 k,
+// dark ~2.8 M, swept over ~2.4 decades at 2 Hz) and so the sweep keeps more
+// than a decade at 8 Hz - the job [K] says the LFO's speed-rising amplitude does.
+constexpr float kLampIdle = 0.55f;          // "a dim orange, about halfway" [K]
+constexpr float kLampSwing = 0.80f;         // full-INTENSITY swing
+constexpr float kSwingSlowFactor = 0.70f;   // swing at the slowest speed...
+constexpr float kSwingSpeedRise = 0.60f;    // ...rising this much by the fastest [K]
+constexpr float kDiodeLimit = 1.5f;         // LFO amplitude limited by its diodes [K]
+constexpr float kHeatSeconds = 0.008f;      // filament heats fast...
+constexpr float kCoolSeconds = 0.022f;      // ...and cools slower [K]: "thermal time constant"
+constexpr float kLightExponent = 3.0f;      // light rises steeply with filament temperature
+constexpr float kLdrGamma = 0.9f;           // CdS conductance ~ light^gamma, gamma < 1 [P]
+constexpr float kLdrBrightenSeconds = 0.004f;   // rise faster than decay [P], [D]
+constexpr float kLdrDarkenSeconds = 0.012f;     // decay, plus...
+constexpr float kLdrDarkenDimSeconds = 0.040f;  // ...slower again at low light [P]
+constexpr float kLdrSaturation = 1.5f;      // conductance flattens out when very bright
+constexpr float kLightFloor = 1.0e-7f;
+constexpr float kIntensitySmoothSeconds = 0.030f;
+
+constexpr float kSpeedMinHz = 0.5f;
+constexpr float kSpeedMaxHz = 8.0f;
+
+// ---- mixer ---------------------------------------------------------------
+// CHORUS is the pedal's 100 k / 100 k equal sum of dry and phased [K]; VIBRATO
+// the phased signal alone. The makeups only level-match the two modes against
+// the input (pink noise, measured: Vibe_ModesAreLevelMatched); they do not
+// change what is mixed.
+constexpr float kChorusMakeup = 0.50f * 1.25f;
+constexpr float kVibratoMakeup = 0.86f;
+constexpr float kDcBlockHz = 5.0f;
+constexpr double kFadeSeconds = 0.020;
+
+// A C1 tanh: x(27 + x^2) / (27 + 9x^2), which reaches +-1 at +-3 with zero
+// slope, so clamping beyond that leaves no corner.
+constexpr float softTanh(float x) noexcept
+{
+    x = x > 3.0f ? 3.0f : (x < -3.0f ? -3.0f : x);
+    const auto x2 = x * x;
+    return x * (27.0f + x2) / (27.0f + 9.0f * x2);
+}
+
+// Its slope at a point, for normalising the biased clip to unit gain at zero.
+constexpr float softTanhSlope(float t) noexcept
+{
+    const auto t2 = t * t;
+    const auto d = 27.0f + 9.0f * t2;
+    return ((27.0f + 3.0f * t2) * d - t * (27.0f + t2) * 18.0f * t) / (d * d);
+}
+
+constexpr float kClipOffset = softTanh(kClipBias);
+constexpr float kClipSlope = softTanhSlope(kClipBias);
+
+// The asymmetric clip of one transistor stage, in volts. Normalised to unit
+// slope at zero, so small signals pass at the circuit's own gain.
+inline float stageClip(float volts) noexcept
+{
+    return kStageHeadroomVolts * (softTanh(volts * (1.0f / kStageHeadroomVolts) + kClipBias) - kClipOffset)
+           * (1.0f / kClipSlope);
+}
+
+inline float onePole(double seconds, double rate) noexcept
+{
+    return static_cast<float>(1.0 - std::exp(-1.0 / (seconds * rate)));
+}
+
+inline double effectiveCap(int stage) noexcept
+{
+    const auto cp = kPhaseCapF[static_cast<std::size_t>(stage)];
+    return cp * kCouplingCapF / (cp + kCouplingCapF);
+}
 } // namespace
+
+float UniVibe::speedToHz(float speed) noexcept
+{
+    return kSpeedMinHz * std::pow(kSpeedMaxHz / kSpeedMinHz, juce::jlimit(0.0f, 1.0f, speed));
+}
+
+double UniVibe::cellResistance(int stage, double conductance) noexcept
+{
+    const auto s = static_cast<std::size_t>(juce::jlimit(0, kStageCount - 1, stage));
+    return 1.0 / (juce::jmax(0.0, conductance) / kCellBrightOhms[s] + 1.0 / kCellDarkOhms[s]);
+}
+
+double UniVibe::stageCentreHz(int stage, double ldrOhms) noexcept
+{
+    // [D] eq. 18: w0 = (C_DC + Cp) / (R' Cp C_DC), R' = LDR + R6.
+    return 1.0 / (juce::MathConstants<double>::twoPi * (ldrOhms + kSeriesOhms) * effectiveCap(stage));
+}
+
+std::complex<double> UniVibe::stageResponse(int stage, double ldrOhms, double hz, double sampleRate) noexcept
+{
+    // The discrete stage exactly as it runs (bilinear, pre-warped at w0).
+    const auto s = static_cast<std::size_t>(juce::jlimit(0, kStageCount - 1, stage));
+    const auto cp = kPhaseCapF[s];
+    const auto kc = cp / (cp + kCouplingCapF);
+    const auto ke = kCouplingCapF / (cp + kCouplingCapF);
+    const auto f0 = juce::jmin(stageCentreHz(stage, ldrOhms), 0.45 * sampleRate);
+    const auto t = std::tan(juce::MathConstants<double>::pi * f0 / sampleRate);
+    const auto b0 = kAlpha[s] * ke * t - kBeta[s] * (kc * t + 1.0);
+    const auto b1 = kAlpha[s] * ke * t - kBeta[s] * (kc * t - 1.0);
+    const auto a0 = t + 1.0;
+    const auto a1 = t - 1.0;
+    const auto z1 = std::polar(1.0, -juce::MathConstants<double>::twoPi * hz / sampleRate);
+    return (b0 + b1 * z1) / (a0 + a1 * z1);
+}
 
 void UniVibe::prepare(double sampleRate)
 {
     sampleRateHz = sampleRate > 0.0 ? sampleRate : 48000.0;
-    intensitySmoothed.reset(sampleRateHz, 0.03);
-    rateSmoothed.reset(sampleRateHz, 0.05);
-    wetMixSmoothed.reset(sampleRateHz, 0.03);
-    // The lamp heats in a few milliseconds and cools over tens of them.
-    lampAttack = static_cast<float>(1.0 - std::exp(-1.0 / (0.004 * sampleRateHz)));
-    lampRelease = static_cast<float>(1.0 - std::exp(-1.0 / (0.045 * sampleRateHz)));
+    const auto controlRate = sampleRateHz / static_cast<double>(kControlInterval);
+    controlDt = static_cast<float>(1.0 / controlRate);
+    heatCoeff = onePole(kHeatSeconds, controlRate);
+    coolCoeff = onePole(kCoolSeconds, controlRate);
+    ampCoeff = onePole(kIntensitySmoothSeconds, controlRate);
+    dcCoeff = static_cast<float>(std::exp(-juce::MathConstants<double>::twoPi * kDcBlockHz / sampleRateHz));
+
+    enabledGate.prepare(sampleRateHz, kFadeSeconds);
+    vibratoGate.prepare(sampleRateHz, kFadeSeconds);
+    invertGate.prepare(sampleRateHz, kFadeSeconds);
+    levelGain.prepare(sampleRateHz, 0.015);
+
+    enabledGate.setCurrent(current.enabled);
+    vibratoGate.setCurrent(current.mode == 1);
+    invertGate.setCurrent(current.stereo == 1);
+    levelTarget = juce::Decibels::decibelsToGain(juce::jlimit(-12.0f, 12.0f, current.levelDb));
+    levelGain.setCurrent(levelTarget);
     reset();
+}
+
+void UniVibe::settleLampAtIdle() noexcept
+{
+    driveAmplitude = driveAmplitudeTarget;
+    filament = kLampIdle * kLampIdle;
+    const auto light = std::pow(filament, kLightExponent);
+    ldrLogConductance = kLdrGamma * std::log(juce::jmax(light, kLightFloor));
 }
 
 void UniVibe::reset()
 {
     for (auto& c : channels) { c = Channel {}; }
-    channels[1].lfoPhase = 0.25f;
+    lfoPhase = 0.0f;
+    settleLampAtIdle();
+    computeStageCoefficients(coeff);
+    for (auto& s : coeffStep) { s = Coefficients {}; }
+    controlCountdown = 0;
 }
 
 void UniVibe::updateForBlock(const UniVibeSettings& settings)
 {
     current = settings;
-    intensitySmoothed.setTargetValue(juce::jlimit(0.0f, 1.0f, settings.intensity));
-    rateSmoothed.setTargetValue(0.5f * std::pow(20.0f, juce::jlimit(0.0f, 1.0f, settings.speed)));
-    // CHORUS: equal parts dry and phased. VIBRATO: phased only.
-    wetMixSmoothed.setTargetValue(settings.mode == 1 ? 1.0f : 0.5f);
+    enabledGate.setTarget(settings.enabled);
+    vibratoGate.setTarget(settings.mode == 1);
+    invertGate.setTarget(settings.stereo == 1);
+    levelTarget = juce::Decibels::decibelsToGain(juce::jlimit(-12.0f, 12.0f, settings.levelDb));
+
+    const auto speed = juce::jlimit(0.0f, 1.0f, settings.speed);
+    lfoHz = speedToHz(speed);
+    // [K]: the oscillator's amplitude rises with its speed, a first-order
+    // compensation for the lamp averaging more the faster it is driven.
+    driveAmplitudeTarget = kLampSwing * juce::jlimit(0.0f, 1.0f, settings.intensity)
+                           * (kSwingSlowFactor + kSwingSpeedRise * speed);
 }
 
-float UniVibe::processChannel(Channel& c, float input, float rateHz, float intensity) noexcept
+std::array<double, UniVibe::kStageCount> UniVibe::debugCellResistances() const noexcept
 {
-    c.lfoPhase += rateHz / static_cast<float>(sampleRateHz);
-    c.lfoPhase -= std::floor(c.lfoPhase);
-    const auto drive = 0.5f + 0.5f * std::sin(juce::MathConstants<float>::twoPi * c.lfoPhase);
-    c.lamp += (drive - c.lamp) * (drive > c.lamp ? lampAttack : lampRelease);
-    // LDR: resistance falls steeply with light, so the sweep spends most of the
-    // cycle near one end and snaps through the other.
-    const auto light = std::pow(juce::jlimit(0.0f, 1.0f, c.lamp), 1.8f);
-    const auto position = 0.5f + (light - 0.5f) * intensity * 2.0f;
+    std::array<double, kStageCount> r {};
+    auto g = static_cast<double>(std::exp(ldrLogConductance));
+    g = g / (1.0 + g / kLdrSaturation);
+    for (int s = 0; s < kStageCount; ++s) { r[static_cast<std::size_t>(s)] = cellResistance(s, g); }
+    return r;
+}
 
-    auto x = input;
-    for (std::size_t s = 0; s < 4; ++s)
+void UniVibe::computeStageCoefficients(std::array<Coefficients, kStageCount>& out) const noexcept
+{
+    auto g = static_cast<double>(std::exp(ldrLogConductance));
+    g = g / (1.0 + g / kLdrSaturation);
+    for (int stage = 0; stage < kStageCount; ++stage)
     {
-        const auto hz = kMinHz[s] * std::pow(kMaxHz[s] / kMinHz[s], juce::jlimit(0.0f, 1.0f, position));
-        const auto t = std::tan(juce::MathConstants<float>::pi
-                                * std::min(hz, static_cast<float>(sampleRateHz) * 0.45f) / static_cast<float>(sampleRateHz));
-        const auto a = (t - 1.0f) / (t + 1.0f);
-        const auto y = a * x + c.x1[s] - a * c.y1[s];
-        c.x1[s] = x;
-        c.y1[s] = y;
-        x = y;
+        const auto s = static_cast<std::size_t>(stage);
+        const auto cp = kPhaseCapF[s];
+        const auto kc = cp / (cp + kCouplingCapF);
+        const auto ke = kCouplingCapF / (cp + kCouplingCapF);
+        const auto f0 = juce::jmin(stageCentreHz(stage, cellResistance(stage, g)), 0.45 * sampleRateHz);
+        // [D] eq. 19-21, with the bilinear transform pre-warped at w0. The
+        // non-inverting leg's numerator carries tan(w0/2) as well: the paper's
+        // eq. 20 drops it, but the continuous form (eq. 15) requires it.
+        const auto t = std::tan(juce::MathConstants<double>::pi * f0 / sampleRateHz);
+        const auto a0 = t + 1.0;
+        out[s].b0 = static_cast<float>((kAlpha[s] * ke * t - kBeta[s] * (kc * t + 1.0)) / a0);
+        out[s].b1 = static_cast<float>((kAlpha[s] * ke * t - kBeta[s] * (kc * t - 1.0)) / a0);
+        out[s].a1 = static_cast<float>((t - 1.0) / a0);
     }
-    // Lamp bleed: the pedal's slight amplitude throb in step with the sweep.
-    return x * (1.0f - 0.12f * intensity * light);
 }
 
-void UniVibe::processSampleFrame(float inL, float inR, float& outL, float& outR)
+void UniVibe::controlTick() noexcept
 {
-    const auto intensity = intensitySmoothed.getNextValue();
-    const auto rate = rateSmoothed.getNextValue();
-    const auto wetMix = wetMixSmoothed.getNextValue();
-    if (intensity <= 1.0e-5f && ! intensitySmoothed.isSmoothing())
+    driveAmplitude += (driveAmplitudeTarget - driveAmplitude) * ampCoeff;
+
+    lfoPhase += lfoHz * controlDt;
+    lfoPhase -= std::floor(lfoPhase);
+    // A near-sine whose peaks the oscillator's diodes round off [K].
+    const auto lfo = std::tanh(kDiodeLimit * std::sin(juce::MathConstants<float>::twoPi * lfoPhase))
+                     / std::tanh(kDiodeLimit);
+
+    // Lamp driver: an idle current plus the LFO; it cannot drive negative.
+    const auto lampCurrent = juce::jmax(0.0f, kLampIdle + driveAmplitude * lfo);
+    const auto power = lampCurrent * lampCurrent;
+    filament += (power - filament) * (power > filament ? heatCoeff : coolCoeff);
+
+    // Light, then the photocells. Conductance moves in the log domain - in
+    // octaves, which is how the stage frequencies move - brightening faster
+    // than it darkens, and darkening slower still when the light is low.
+    const auto light = filament * filament * filament; // kLightExponent = 3
+    const auto targetLog = kLdrGamma * std::log(juce::jmax(light, kLightFloor));
+    const auto dim = 1.0f - juce::jmin(light, 1.0f);
+    const auto tau = targetLog > ldrLogConductance ? kLdrBrightenSeconds
+                                                   : kLdrDarkenSeconds + kLdrDarkenDimSeconds * dim;
+    // 1 - exp(-dt/tau) to second order: tau >= 4 ms against dt = 0.33 ms.
+    const auto x = controlDt / tau;
+    ldrLogConductance += (targetLog - ldrLogConductance) * (x - 0.5f * x * x + x * x * x / 6.0f);
+
+    std::array<Coefficients, kStageCount> next {};
+    computeStageCoefficients(next);
+    constexpr auto inv = 1.0f / static_cast<float>(kControlInterval);
+    for (std::size_t s = 0; s < coeff.size(); ++s)
     {
+        coeffStep[s].b0 = (next[s].b0 - coeff[s].b0) * inv;
+        coeffStep[s].b1 = (next[s].b1 - coeff[s].b1) * inv;
+        coeffStep[s].a1 = (next[s].a1 - coeff[s].a1) * inv;
+    }
+}
+
+float UniVibe::processChannel(Channel& c, float input, float& dryOut) noexcept
+{
+    // Input pad and preamp, in volts. The preamp's output is both the dry
+    // signal the mixer receives and the drive to the first phase network.
+    auto v = stageClip(input * (kInputVolts * kInputPad * kPreampGain));
+
+    auto dry = v - c.dryDcX1 + dcCoeff * c.dryDcY1;
+    c.dryDcX1 = v;
+    c.dryDcY1 = dry;
+    dryOut = dry;
+
+    for (std::size_t s = 0; s < static_cast<std::size_t>(kStageCount); ++s)
+    {
+        // Stages 2-4 are driven by a Darlington splitter that clips on its own.
+        if (s > 0) { v = stageClip(v); }
+        const auto y = coeff[s].b0 * v + coeff[s].b1 * c.x1[s] - coeff[s].a1 * c.y1[s];
+        c.x1[s] = v;
+        c.y1[s] = y;
+        v = y;
+    }
+
+    auto wet = v - c.wetDcX1 + dcCoeff * c.wetDcY1;
+    c.wetDcX1 = v;
+    c.wetDcY1 = wet;
+    return wet;
+}
+
+void UniVibe::processSampleFrame(float inL, float inR, float& outL, float& outR) noexcept
+{
+    const auto enabled = enabledGate.next();
+    if (enabled <= 0.0f && ! current.enabled)
+    {
+        // Fully off: the input untouched, and the state cleared so switching
+        // back on starts from a settled lamp rather than whatever was left.
         if (! idle) { reset(); idle = true; }
         outL = inL;
         outR = inR;
         return;
     }
     idle = false;
-    // Fades in with INTENSITY so engaging it from zero does not click.
-    const auto engage = juce::jmin(1.0f, intensity * 8.0f);
-    const auto mix = wetMix * engage;
-    const auto wetL = processChannel(channels[0], inL, rate, intensity);
-    const auto wetR = processChannel(channels[1], inR, rate, intensity);
-    outL = inL + (wetL - inL) * mix;
-    outR = inR + (wetR - inR) * mix;
-    if (! std::isfinite(outL) || ! std::isfinite(outR)) { reset(); outL = inL; outR = inR; }
+
+    if (--controlCountdown < 0)
+    {
+        controlTick();
+        controlCountdown = kControlInterval - 1;
+    }
+    for (std::size_t s = 0; s < coeff.size(); ++s)
+    {
+        coeff[s].b0 += coeffStep[s].b0;
+        coeff[s].b1 += coeffStep[s].b1;
+        coeff[s].a1 += coeffStep[s].a1;
+    }
+
+    float dryL = 0.0f, dryR = 0.0f;
+    const auto wetL = processChannel(channels[0], inL, dryL);
+    // INVERTED takes the right side from the last stage's collector [K]: the
+    // same phased signal, opposite polarity.
+    const auto wetR = processChannel(channels[1], inR, dryR) * (1.0f - 2.0f * invertGate.next());
+
+    const auto vibrato = vibratoGate.next();
+    constexpr auto toUnits = 1.0f / (kInputVolts * kInputPad * kPreampGain);
+    const auto level = levelGain.next(levelTarget) * toUnits;
+    const auto mixL = ((dryL + wetL) * kChorusMakeup * (1.0f - vibrato) + wetL * kVibratoMakeup * vibrato) * level;
+    const auto mixR = ((dryR + wetR) * kChorusMakeup * (1.0f - vibrato) + wetR * kVibratoMakeup * vibrato) * level;
+
+    outL = inL + (mixL - inL) * enabled;
+    outR = inR + (mixR - inR) * enabled;
+
+    if (! std::isfinite(outL) || ! std::isfinite(outR))
+    {
+        reset();
+        outL = inL;
+        outR = inR;
+    }
 }
 } // namespace px3

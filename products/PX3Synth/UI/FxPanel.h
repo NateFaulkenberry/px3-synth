@@ -12,17 +12,11 @@
 #include "DelayComponent.h"
 #include "MoodComponent.h"
 #include "UIConfig.h"
-#include "VibeComponent.h"
 
 class FxPanel final : public juce::Component
 {
 public:
-    FxPanel(juce::ToggleButton& vibeBypass,
-            juce::Slider& vibeAmountKnob,
-            juce::Label& vibeAmountLabel,
-            juce::ComboBox& vibeTypeBox,
-            juce::Label& vibeTypeLabel,
-            juce::ToggleButton& delayBypass,
+    FxPanel(juce::ToggleButton& delayBypass,
             juce::Slider& delayAmountKnob,
             juce::Label& delayAmountLabel,
             juce::ComboBox& delayAlgoBox,
@@ -87,9 +81,12 @@ public:
     void setDelayAlgorithm(int algorithmIndex);
 
     // Whether a stage is part of the reorderable FX send chain. Spread runs on
-    // the master bus after everything, so it is shown after the chain and is
-    // not in the strip.
-    static bool isReorderable(int sectionId) noexcept { return sectionId != px3::fxStageStereoSpread; }
+    // the master bus after everything, so it is shown after the chain; ANALOG
+    // runs inside the voices before anything, so it is shown before it. Neither
+    // is in the strip.
+    static bool isReorderable(int sectionId) noexcept
+    { return sectionId != px3::fxStageStereoSpread && sectionId != px3::fxStageAnalog; }
+    static bool isUpstreamOfChain(int sectionId) noexcept { return sectionId == px3::fxStageAnalog; }
     // The stage ids the signal-flow strip shows, in order.
     std::vector<int> debugStripStages() const
     {
@@ -104,8 +101,7 @@ public:
     // through setChainOrder.
     std::function<void(const px3::FxOrder&)> onChainOrderChanged;
 
-    void setActive(bool vibeEnabled,
-                   bool delayEnabled,
+    void setActive(bool delayEnabled,
                    bool granularModeSelectable,
                    bool moodEnabled,
                    bool reverbEnabled);
@@ -119,7 +115,6 @@ private:
     juce::Colour sectionAccent(int sectionId) const;
     static juce::String sectionName(int sectionId);
 
-    std::unique_ptr<VibeComponent> vibeUiComponent;
     std::unique_ptr<DelayComponent> delayPanelComponent;
     std::unique_ptr<MoodComponent> moodComponent;
 

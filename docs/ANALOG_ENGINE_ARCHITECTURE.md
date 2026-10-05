@@ -13,7 +13,7 @@ filenames.
 
 ```
 SynthVoice × 64
-  │   per voice: sources → VIBE (applyVibeSourceStage) → filters → amp env
+  │   per voice: sources → ANALOG (applyAnalogSourceStage) → filters → amp env
   ▼
 oscillatorBusBuffer          4 MONO channels: SUB, OSC1, OSC2, OSC3
   │
@@ -180,19 +180,19 @@ numbers in the tuning document.
 
 ---
 
-## 5. VibeEngine interaction
+## 5. AnalogDriftEngine (ANALOG) interaction
 
 Signal order is fixed by the existing architecture and is not a choice:
 
 ```
-per voice:   sources → VIBE → filters → amp env
+per voice:   sources → ANALOG → filters → amp env
                                           │
                                           ▼  summed into 4 mono source channels
                           AnalogEngine CHANNEL → mixer → buses → MASTER
 ```
 
-Vibe is upstream and per-voice; AnalogEngine is downstream and per-channel. They
-model different objects — Vibe the instrument's own analog imperfection,
+ANALOG is upstream and per-voice; AnalogEngine is downstream and per-channel. They
+model different objects — ANALOG the instrument's own analog imperfection,
 AnalogEngine the desk it is plugged into — and the test suite checks that each
 contributes something the other does not.
 

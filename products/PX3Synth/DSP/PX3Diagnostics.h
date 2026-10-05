@@ -78,7 +78,7 @@ struct State
     bool legacyPostPanSend { false };          // control: FX send follows the source's dry pan
     bool disableOnsetGuard { false };
     bool disableReleaseTailFilter { false };
-    bool freezeVibeReleaseSwitch { false }; // keep held-note vibe path during release
+    bool freezeAnalogReleaseSwitch { false }; // keep held-note ANALOG path during release
 
     // ---------------- capture state ---------------------------------------
     bool capturing { false };
@@ -352,7 +352,7 @@ struct State
         legacyPostPanSend = false;
         disableOnsetGuard = false;
         disableReleaseTailFilter = false;
-        freezeVibeReleaseSwitch = false;
+        freezeAnalogReleaseSwitch = false;
     }
 
     void beginBlock(int numSamples)

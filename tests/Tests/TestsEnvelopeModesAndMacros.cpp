@@ -2145,7 +2145,7 @@ void testMacroSystem()
             &processor.getReverbAmountParam(),
             &processor.getFilterCutoffParam(1),
             &processor.getDelayAmountParam(),
-            &processor.getVibeAmountParam()
+            &processor.getAnalogDriftAmountParam()
         };
 
         check("Macro_TheIsolationTestCoversEveryMacro",
@@ -2309,7 +2309,7 @@ void testMacroSystem()
                     &knobProcessor.getReverbAmountParam(),
                     &knobProcessor.getFilterCutoffParam(1),
                     &knobProcessor.getDelayAmountParam(),
-                    &knobProcessor.getVibeAmountParam()
+                    &knobProcessor.getAnalogDriftAmountParam()
                 };
                 // resize() pads with null, which segfaulted the suite the
                 // moment a sixth macro arrived; fail it instead.
@@ -2318,7 +2318,7 @@ void testMacroSystem()
                       juce::String(static_cast<int>(targets.size())) + " targets for "
                           + juce::String(PX3SynthAudioProcessor::kMacroCount) + " macros");
                 targets.resize(static_cast<std::size_t>(PX3SynthAudioProcessor::kMacroCount),
-                               &knobProcessor.getVibeAmountParam());
+                               &knobProcessor.getAnalogDriftAmountParam());
                 const auto targetCount = static_cast<int>(targets.size());
 
                 for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
@@ -2385,10 +2385,10 @@ void testMacroSystem()
                 &saver.getReverbAmountParam(),
                 &saver.getFilterCutoffParam(1),
                 &saver.getDelayAmountParam(),
-                &saver.getVibeAmountParam()
+                &saver.getAnalogDriftAmountParam()
             };
             // Padded with a real parameter, never null: a null here segfaults.
-            targets.resize(static_cast<std::size_t>(PX3SynthAudioProcessor::kMacroCount), &saver.getVibeAmountParam());
+            targets.resize(static_cast<std::size_t>(PX3SynthAudioProcessor::kMacroCount), &saver.getAnalogDriftAmountParam());
 
             for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)
             {
@@ -2662,10 +2662,10 @@ void testMacroSystem()
                 &saver.getReverbAmountParam(),
                 &saver.getFilterCutoffParam(1),
                 &saver.getDelayAmountParam(),
-                &saver.getVibeAmountParam()
+                &saver.getAnalogDriftAmountParam()
             };
             // Padded with a real parameter, never null: a null here segfaults.
-            targets.resize(static_cast<std::size_t>(PX3SynthAudioProcessor::kMacroCount), &saver.getVibeAmountParam());
+            targets.resize(static_cast<std::size_t>(PX3SynthAudioProcessor::kMacroCount), &saver.getAnalogDriftAmountParam());
 
             juce::StringArray targetIds;
             for (int macro = 0; macro < PX3SynthAudioProcessor::kMacroCount; ++macro)

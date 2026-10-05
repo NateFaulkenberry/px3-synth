@@ -262,9 +262,10 @@ juce::AudioParameterBool& PX3SynthAudioProcessor::getEnvelopeEnabledParam(int en
     return *envelopeEnabledParams[static_cast<std::size_t>(idx)];
 }
 juce::AudioParameterFloat& PX3SynthAudioProcessor::getMasterGainParam() const { return *masterGainParam; }
-juce::AudioParameterFloat& PX3SynthAudioProcessor::getVibeAmountParam() const { return *vibeAmountParam; }
+juce::AudioParameterFloat& PX3SynthAudioProcessor::getAnalogDriftAmountParam() const { return *analogDriftAmountParam; }
+juce::AudioParameterBool& PX3SynthAudioProcessor::getAnalogDriftEnabledParam() const { return *analogDriftEnabledParam; }
 juce::AudioParameterBool& PX3SynthAudioProcessor::getVibeEnabledParam() const { return *vibeEnabledParam; }
-juce::AudioParameterChoice& PX3SynthAudioProcessor::getVibeTypeParam() const { return *vibeTypeParam; }
+juce::AudioParameterChoice& PX3SynthAudioProcessor::getAnalogDriftTypeParam() const { return *analogDriftTypeParam; }
 juce::AudioParameterFloat& PX3SynthAudioProcessor::getDelayAmountParam() const { return *delayAmountParam; }
 juce::AudioParameterChoice& PX3SynthAudioProcessor::getGranularSyncDivisionParam() const { return *granularSyncDivisionParam; }
 juce::AudioParameterChoice& PX3SynthAudioProcessor::getGranularModeParam() const { return *granularModeParam; }

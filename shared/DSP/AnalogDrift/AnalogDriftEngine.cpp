@@ -1,4 +1,4 @@
-#include "VibeEngine.h"
+#include "AnalogDriftEngine.h"
 
 #include <algorithm>
 #include <cmath>
@@ -18,17 +18,17 @@ inline uint32_t hash32(uint32_t x)
 }
 }
 
-float VibeEngine::clamp01(float v)
+float AnalogDriftEngine::clamp01(float v)
 {
     return std::clamp(v, 0.0f, 1.0f);
 }
 
-float VibeEngine::clampSigned(float v, float limit)
+float AnalogDriftEngine::clampSigned(float v, float limit)
 {
     return std::clamp(v, -limit, limit);
 }
 
-void VibeEngine::prepare(double sampleRate, int voiceCount, uint32_t seed)
+void AnalogDriftEngine::prepare(double sampleRate, int voiceCount, uint32_t seed)
 {
     sampleRateHz = std::max(8000.0, sampleRate);
     preparedVoiceCount = std::clamp(voiceCount, 1, static_cast<int>(voiceVariations.size()));
@@ -37,7 +37,7 @@ void VibeEngine::prepare(double sampleRate, int voiceCount, uint32_t seed)
     rebuildVoiceVariations(preparedVoiceCount);
 }
 
-void VibeEngine::reset()
+void AnalogDriftEngine::reset()
 {
     psuPhase = 0.0f;
     tempPhase = 0.0f;
@@ -59,14 +59,14 @@ void VibeEngine::reset()
     shared = {};
 }
 
-void VibeEngine::setSeed(uint32_t seed)
+void AnalogDriftEngine::setSeed(uint32_t seed)
 {
     randomSeed = seed == 0u ? 1u : seed;
     noiseState = hash32(randomSeed ^ 0xA53C9E11u);
     rebuildVoiceVariations(preparedVoiceCount);
 }
 
-float VibeEngine::getEffectiveAmount() const
+float AnalogDriftEngine::getEffectiveAmount() const
 {
     if (bypass)
     {
@@ -78,7 +78,7 @@ float VibeEngine::getEffectiveAmount() const
     return std::pow(v, 1.35f);
 }
 
-float VibeEngine::nextSignedNoise()
+float AnalogDriftEngine::nextSignedNoise()
 {
     noiseState ^= noiseState << 13;
     noiseState ^= noiseState >> 17;
@@ -87,7 +87,7 @@ float VibeEngine::nextSignedNoise()
     return u * 2.0f - 1.0f;
 }
 
-void VibeEngine::rebuildVoiceVariations(int voiceCount)
+void AnalogDriftEngine::rebuildVoiceVariations(int voiceCount)
 {
     preparedVoiceCount = std::clamp(voiceCount, 1, static_cast<int>(voiceVariations.size()));
 
@@ -132,7 +132,7 @@ void VibeEngine::rebuildVoiceVariations(int voiceCount)
     }
 }
 
-VibeEngine::VoiceVariation VibeEngine::getVoiceVariation(int voiceIndex) const
+AnalogDriftEngine::VoiceVariation AnalogDriftEngine::getVoiceVariation(int voiceIndex) const
 {
     if (voiceIndex < 0 || voiceIndex >= preparedVoiceCount)
     {
@@ -142,7 +142,7 @@ VibeEngine::VoiceVariation VibeEngine::getVoiceVariation(int voiceIndex) const
     return voiceVariations[static_cast<std::size_t>(voiceIndex)];
 }
 
-void VibeEngine::advance(int samples, float load)
+void AnalogDriftEngine::advance(int samples, float load)
 {
     const auto dt = static_cast<float>(std::max(1, samples)) / static_cast<float>(sampleRateHz);
 

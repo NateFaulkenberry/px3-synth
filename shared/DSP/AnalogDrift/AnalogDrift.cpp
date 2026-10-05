@@ -1,8 +1,8 @@
-#include "Vibe.h"
+#include "AnalogDrift.h"
 
 #include <cmath>
 
-void Vibe::prepare(double sampleRate, int voiceCount, uint32_t seed)
+void AnalogDrift::prepare(double sampleRate, int voiceCount, uint32_t seed)
 {
     setSeed(seed);
     engine.prepare(sampleRate, voiceCount, getSeed());
@@ -10,7 +10,7 @@ void Vibe::prepare(double sampleRate, int voiceCount, uint32_t seed)
     applyTypeProfile(0);
 }
 
-void Vibe::updateForBlock(const VibeSettings& settings, int numSamples, float load)
+void AnalogDrift::updateForBlock(const AnalogDriftSettings& settings, int numSamples, float load)
 {
     applyTypeProfile(settings.typeIndex);
 
@@ -21,7 +21,7 @@ void Vibe::updateForBlock(const VibeSettings& settings, int numSamples, float lo
         lastAppliedSeed.store(seed, std::memory_order_relaxed);
     }
 
-    VibeEngine::Tuning t;
+    AnalogDriftEngine::Tuning t;
     t.oscillatorDrift = juce::jlimit(0.0f, 1.0f, tuneOscDrift.load(std::memory_order_relaxed));
     t.voiceVariation = juce::jlimit(0.0f, 1.0f, tuneVoiceVar.load(std::memory_order_relaxed));
     t.filterVariation = juce::jlimit(0.0f, 1.0f, tuneFilterVar.load(std::memory_order_relaxed));
@@ -42,34 +42,34 @@ void Vibe::updateForBlock(const VibeSettings& settings, int numSamples, float lo
     engine.advance(numSamples, load);
 }
 
-void Vibe::setSeed(uint32_t seed)
+void AnalogDrift::setSeed(uint32_t seed)
 {
     seedValue.store(seed == 0u ? 1u : seed, std::memory_order_relaxed);
 }
 
-uint32_t Vibe::getSeed() const
+uint32_t AnalogDrift::getSeed() const
 {
     return seedValue.load(std::memory_order_relaxed);
 }
 
-float Vibe::getGlobalAmount() const
+float AnalogDrift::getGlobalAmount() const
 {
     return lastGlobalAmount.load(std::memory_order_relaxed);
 }
 
-float Vibe::getEffectiveAmount() const
+float AnalogDrift::getEffectiveAmount() const
 {
     return juce::jlimit(0.0f, 1.0f, engine.getEffectiveAmount());
 }
 
-bool Vibe::isBypassed() const
+bool AnalogDrift::isBypassed() const
 {
     return engine.isBypassed();
 }
 
-VibeTuning Vibe::getTuning() const
+AnalogDriftTuning AnalogDrift::getTuning() const
 {
-    VibeTuning t;
+    AnalogDriftTuning t;
     t.oscillatorDrift = juce::jlimit(0.0f, 1.0f, tuneOscDrift.load(std::memory_order_relaxed));
     t.voiceVariation = juce::jlimit(0.0f, 1.0f, tuneVoiceVar.load(std::memory_order_relaxed));
     t.filterVariation = juce::jlimit(0.0f, 1.0f, tuneFilterVar.load(std::memory_order_relaxed));
@@ -83,7 +83,7 @@ VibeTuning Vibe::getTuning() const
     return t;
 }
 
-void Vibe::setTuningValue(const juce::String& key, float value)
+void AnalogDrift::setTuningValue(const juce::String& key, float value)
 {
     const auto v = juce::jlimit(0.0f, 1.0f, value);
     if (key.equalsIgnoreCase("oscillatorDrift")) tuneOscDrift.store(v, std::memory_order_relaxed);
@@ -98,7 +98,7 @@ void Vibe::setTuningValue(const juce::String& key, float value)
     else if (key.equalsIgnoreCase("correlatedChaos")) tuneChaos.store(v, std::memory_order_relaxed);
 }
 
-float Vibe::getTuningValue(const juce::String& key) const
+float AnalogDrift::getTuningValue(const juce::String& key) const
 {
     if (key.equalsIgnoreCase("oscillatorDrift")) return tuneOscDrift.load(std::memory_order_relaxed);
     if (key.equalsIgnoreCase("voiceVariation")) return tuneVoiceVar.load(std::memory_order_relaxed);
@@ -113,10 +113,10 @@ float Vibe::getTuningValue(const juce::String& key) const
     return 0.0f;
 }
 
-VibeSharedState Vibe::getSharedState() const
+AnalogDriftSharedState AnalogDrift::getSharedState() const
 {
     const auto shared = engine.getSharedState();
-    VibeSharedState out;
+    AnalogDriftSharedState out;
     out.oscillatorDrift = shared.oscillatorDrift;
     out.psu = shared.psu;
     out.temperature = shared.temperature;
@@ -124,10 +124,10 @@ VibeSharedState Vibe::getSharedState() const
     return out;
 }
 
-VibeVoiceVariation Vibe::getVoiceVariation(int voiceIndex) const
+AnalogDriftVoiceVariation AnalogDrift::getVoiceVariation(int voiceIndex) const
 {
     const auto variation = engine.getVoiceVariation(voiceIndex);
-    VibeVoiceVariation out;
+    AnalogDriftVoiceVariation out;
     out.pitchCents = variation.pitchCents;
     out.cutoffOffset = variation.cutoffOffset;
     out.resonanceOffset = variation.resonanceOffset;
@@ -137,12 +137,12 @@ VibeVoiceVariation Vibe::getVoiceVariation(int voiceIndex) const
     return out;
 }
 
-int Vibe::sanitizeTypeIndex(int typeIndex) const
+int AnalogDrift::sanitizeTypeIndex(int typeIndex) const
 {
     return juce::jlimit(0, static_cast<int>(kTypeChoices.size()) - 1, typeIndex);
 }
 
-void Vibe::applyTypeProfile(int typeIndex)
+void AnalogDrift::applyTypeProfile(int typeIndex)
 {
     const auto clamped = sanitizeTypeIndex(typeIndex);
     if (clamped == lastAppliedType.load(std::memory_order_relaxed))

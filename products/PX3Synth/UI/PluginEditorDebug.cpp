@@ -118,9 +118,9 @@ void PX3SynthAudioProcessorEditor::setupDebugPanel()
     setupLabel(debugInstanceLabel, "A. PLUGIN INSTANCE INFO");
     setupLabel(debugModuleOrderLabel, "B. MODULE ORDER STATE");
     setupLabel(debugValueTreeLabel, "C. VALUETREE STATE");
-    setupLabel(debugBackendControlLabel, "D. ANALOG ENGINE");
+    setupLabel(debugBackendControlLabel, "D. CONSOLE ENGINE");
     setupLabel(debugParameterLabel, "I. PARAMETER STATE");
-    setupLabel(debugSerializedLabel, "F. VIBE / ANALOG IMPERFECTIONS");
+    setupLabel(debugSerializedLabel, "F. ANALOG (PER-VOICE DRIFT)");
     setupLabel(debugLfoLabel, "G. LFO DEBUG");
     setupLabel(debugEnvelopeLabel, "H. AMP ENVELOPE DEBUG");
     setupLabel(debugPresetToolsLabel, "E. PRESET / STATE TOOLS");
@@ -405,7 +405,7 @@ void PX3SynthAudioProcessorEditor::setupDebugPanel()
     debugResetParamsButton.onClick = [this]() { debugResetParameters(); };
     debugWriteTestValuesButton.onClick = [this]() { debugWriteDeterministicTestValues(); };
 
-    struct VibeControlSpec
+    struct AnalogDriftControlSpec
     {
         const char* title;
         const char* key;
@@ -415,12 +415,12 @@ void PX3SynthAudioProcessorEditor::setupDebugPanel()
         double initial;
     };
 
-    const auto initialTuning = audioProcessor.debugGetVibeTuning();
-    const std::array<VibeControlSpec, 12> specs {
+    const auto initialTuning = audioProcessor.debugGetAnalogDriftTuning();
+    const std::array<AnalogDriftControlSpec, 12> specs {
         {
-            { "Global Amount", "globalAmount", 0.0, 1.0, 0.0001, audioProcessor.getVibeAmountParam().get() },
-            { "Bypass", "bypass", 0.0, 1.0, 1.0, audioProcessor.debugGetVibeBypass() ? 1.0 : 0.0 },
-            { "Seed", "seed", 1.0, 65535.0, 1.0, static_cast<double>(audioProcessor.debugGetVibeSeed()) },
+            { "Global Amount", "globalAmount", 0.0, 1.0, 0.0001, audioProcessor.getAnalogDriftAmountParam().get() },
+            { "Bypass", "bypass", 0.0, 1.0, 1.0, audioProcessor.debugGetAnalogDriftBypass() ? 1.0 : 0.0 },
+            { "Seed", "seed", 1.0, 65535.0, 1.0, static_cast<double>(audioProcessor.debugGetAnalogDriftSeed()) },
             { "Oscillator Drift", "oscillatorDrift", 0.0, 1.0, 0.0001, initialTuning.oscillatorDrift },
             { "Voice Variation", "voiceVariation", 0.0, 1.0, 0.0001, initialTuning.voiceVariation },
             { "Filter Variation", "filterVariation", 0.0, 1.0, 0.0001, initialTuning.filterVariation },
@@ -458,25 +458,25 @@ void PX3SynthAudioProcessorEditor::setupDebugPanel()
 
             if (ptr->key == "globalAmount")
             {
-                auto& p = audioProcessor.getVibeAmountParam();
+                auto& p = audioProcessor.getAnalogDriftAmountParam();
                 p.beginChangeGesture();
                 p.setValueNotifyingHost(juce::jlimit(0.0f, 1.0f, requested));
                 p.endChangeGesture();
             }
             else if (ptr->key == "bypass")
             {
-                auto& p = audioProcessor.getVibeEnabledParam();
+                auto& p = audioProcessor.getAnalogDriftEnabledParam();
                 p.beginChangeGesture();
                 p.setValueNotifyingHost(requested >= 0.5f ? 0.0f : 1.0f);
                 p.endChangeGesture();
             }
             else if (ptr->key == "seed")
             {
-                audioProcessor.debugSetVibeSeed(static_cast<uint32_t>(juce::jmax(1, static_cast<int>(std::lround(requested)))));
+                audioProcessor.debugSetAnalogDriftSeed(static_cast<uint32_t>(juce::jmax(1, static_cast<int>(std::lround(requested)))));
             }
             else
             {
-                audioProcessor.debugSetVibeTuningValue(ptr->key, requested);
+                audioProcessor.debugSetAnalogDriftTuningValue(ptr->key, requested);
             }
         };
 
@@ -508,7 +508,7 @@ void PX3SynthAudioProcessorEditor::setupDebugPanel()
             }
             const auto requested = static_cast<float>(ptr->slider.getValue());
             ptr->lastRequested = requested;
-            audioProcessor.debugSetVibeTuningValue(ptr->key, requested);
+            audioProcessor.debugSetAnalogDriftTuningValue(ptr->key, requested);
         };
         control->readback.setColour(juce::Label::textColourId, juce::Colour::fromRGB(184, 235, 184));
         control->readback.setFont(juce::FontOptions(10.0f));
@@ -613,7 +613,7 @@ void PX3SynthAudioProcessorEditor::buildAnalogEngineDebugControls()
     {
         auto control = std::make_unique<DebugParamControl>();
         control->key = "analog.enabled";
-        styleLabel(control->label, "ANALOG ENGINE  (0 = off, 1 = on)",
+        styleLabel(control->label, "CONSOLE ENGINE  (0 = off, 1 = on)",
                    juce::Colour::fromRGB(255, 214, 140));
         control->slider.setRange(0.0, 1.0, 1.0);
         control->slider.setSliderStyle(juce::Slider::LinearHorizontal);
@@ -1246,16 +1246,16 @@ void PX3SynthAudioProcessorEditor::refreshDebugParameterControls()
 
         if (control->key == "globalAmount")
         {
-            actualValue = audioProcessor.debugGetVibeGlobalAmount();
-            extra = " | Effective: " + juce::String(audioProcessor.debugGetVibeEffectiveAmount(), 5);
+            actualValue = audioProcessor.debugGetAnalogDriftGlobalAmount();
+            extra = " | Effective: " + juce::String(audioProcessor.debugGetAnalogDriftEffectiveAmount(), 5);
         }
         else if (control->key == "bypass")
         {
-            actualValue = audioProcessor.debugGetVibeBypass() ? 1.0f : 0.0f;
+            actualValue = audioProcessor.debugGetAnalogDriftBypass() ? 1.0f : 0.0f;
         }
         else if (control->key == "seed")
         {
-            actualValue = static_cast<float>(audioProcessor.debugGetVibeSeed());
+            actualValue = static_cast<float>(audioProcessor.debugGetAnalogDriftSeed());
         }
         else if (control->key == "mix.send.fx.level")
         {
@@ -1267,7 +1267,7 @@ void PX3SynthAudioProcessorEditor::refreshDebugParameterControls()
         }
         else
         {
-            actualValue = audioProcessor.debugGetVibeTuningValue(control->key);
+            actualValue = audioProcessor.debugGetAnalogDriftTuningValue(control->key);
         }
 
         control->suppressCallbacks = true;
@@ -1681,7 +1681,7 @@ void PX3SynthAudioProcessorEditor::debugForceSerializationTest()
 
     const auto hasDelayTime = xmlText.containsIgnoreCase("fx.delay.time");
     const auto hasReverbAmount = xmlText.containsIgnoreCase("fx.reverb.amount");
-    const auto hasVibeAmount = xmlText.containsIgnoreCase("fx.vibe.amount");
+    const auto hasVibeAmount = xmlText.containsIgnoreCase("fx.analog.amount");
     const auto pass = hasModuleOrder && hasDelayTime && hasReverbAmount && hasVibeAmount;
 
     juce::String report;

@@ -2,18 +2,23 @@
 
 #include <JuceHeader.h>
 
-#include "VibeEngine.h"
-#include "VibeTypes.h"
+#include "AnalogDriftEngine.h"
+#include "AnalogDriftTypes.h"
 
 #include <array>
 #include <atomic>
 #include <cstdint>
 
-class Vibe
+// ANALOG: per-voice analog drift and nonlinearity (the half of the old VIBE
+// that was never a Uni-Vibe). This owns the profile (STYLE), the tuning and
+// the seed, and runs AnalogDriftEngine once per block; the voices apply the
+// result through AnalogDriftVoiceStage.h. Synth only: it has no audio
+// interface, so there is no insert version of it (docs/ECOSYSTEM_ARCHITECTURE.md).
+class AnalogDrift
 {
 public:
     void prepare(double sampleRate, int voiceCount, uint32_t seed);
-    void updateForBlock(const VibeSettings& settings, int numSamples, float load);
+    void updateForBlock(const AnalogDriftSettings& settings, int numSamples, float load);
 
     void setSeed(uint32_t seed);
     uint32_t getSeed() const;
@@ -22,18 +27,18 @@ public:
     float getEffectiveAmount() const;
     bool isBypassed() const;
 
-    VibeTuning getTuning() const;
+    AnalogDriftTuning getTuning() const;
     void setTuningValue(const juce::String& key, float value);
     float getTuningValue(const juce::String& key) const;
 
-    VibeSharedState getSharedState() const;
-    VibeVoiceVariation getVoiceVariation(int voiceIndex) const;
+    AnalogDriftSharedState getSharedState() const;
+    AnalogDriftVoiceVariation getVoiceVariation(int voiceIndex) const;
 
 private:
     int sanitizeTypeIndex(int typeIndex) const;
     void applyTypeProfile(int typeIndex);
 
-    VibeEngine engine;
+    AnalogDriftEngine engine;
 
     std::atomic<uint32_t> seedValue { 1337u };
     std::atomic<uint32_t> lastAppliedSeed { 1337u };

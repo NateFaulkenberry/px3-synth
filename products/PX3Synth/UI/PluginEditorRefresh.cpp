@@ -673,7 +673,7 @@ void PX3SynthAudioProcessorEditor::timerCallback()
     {
         refreshFilterUI();
     }
-    // SETTINGS follows its parameters while it is showing: the Analog Engine
+    // SETTINGS follows its parameters while it is showing: the Console Engine
     // profile was only read when the page opened, so a preset load or host
     // automation left it showing the old one.
     if (settingsPanel != nullptr && settingsPanel->isVisible())

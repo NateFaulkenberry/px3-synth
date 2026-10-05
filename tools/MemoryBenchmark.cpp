@@ -231,7 +231,7 @@ void exerciseInstance(Instance& instance, Scenario scenario, double sampleRate, 
     {
         setParameterById(processor, id, 1.0f);
     }
-    for (const auto& id : { "fx.vibe.amount", "fx.delay.amount", "fx.reverb.amount", "fx.mood.mix",
+    for (const auto& id : { "fx.analog.amount", "fx.delay.amount", "fx.reverb.amount", "fx.mood.mix",
                             "fx.delay.feedback", "fx.mood.feedback", "fx.mood.spread", "fx.mood.degrade" })
     {
         setParameterById(processor, id, 0.75f);
@@ -246,7 +246,7 @@ void exerciseInstance(Instance& instance, Scenario scenario, double sampleRate, 
 
     // Walk the FX algorithm choices so each one's delay lines are allocated.
     for (const auto& id : { "fx.delay.algorithm", "fx.reverb.algorithm", "fx.delay.granular.mode",
-                            "fx.mood.wet.mode", "fx.mood.loop.mode", "fx.vibe.type" })
+                            "fx.mood.wet.mode", "fx.mood.loop.mode", "fx.analog.type" })
     {
         for (float v : { 0.0f, 0.34f, 0.67f, 1.0f })
         {

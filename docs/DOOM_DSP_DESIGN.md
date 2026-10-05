@@ -538,7 +538,7 @@ DC-blocked after folding because asymmetric shaping generates DC by definition.
 
 *References:* soft clipping, asymmetric waveshaping, wavefolding and harmonic
 generation — standard nonlinear-processing literature; the project's existing
-`Vibe` saturation stage.
+ANALOG (`AnalogDriftVoiceStage`) saturation stage.
 
 ### 5.6 EQ, BALANCE, BLEND, FADE, SPREAD
 

@@ -612,6 +612,14 @@ void FxCardComponent::layoutChoiceRow(int rowIndex, const Row& row)
     }
     flex.performLayout(content.toFloat());
 
+    // Horizontal breathing room between adjacent boxes, taken out of each
+    // cell's sides (so a single box is unaffected in position). Zero unless a
+    // card's config asks for it.
+    const auto choiceGap = uiConfig != nullptr
+                               ? uiConfig->getInt("cards." + styleKey + ".controls.choiceGap", 0)
+                               : 0;
+    const auto inset = row.ids.size() > 1 ? juce::jmax(0, choiceGap) / 2 : 0;
+
     for (std::size_t i = 0; i < row.ids.size(); ++i)
     {
         const auto it = std::find_if(choices.begin(), choices.end(),
@@ -620,7 +628,7 @@ void FxCardComponent::layoutChoiceRow(int rowIndex, const Row& row)
         {
             continue;
         }
-        layoutLabelledControl(flex.items.getReference(static_cast<int>(i)).currentBounds.toNearestInt(),
+        layoutLabelledControl(flex.items.getReference(static_cast<int>(i)).currentBounds.toNearestInt().reduced(inset, 0),
                               { it->label.get(), it->box.get(), nullptr,
                                 ControlShape::stretch, labelHeight, 0, controlHeight },
                               inner.rowControl(rowIndex));

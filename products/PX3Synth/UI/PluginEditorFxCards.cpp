@@ -54,13 +54,12 @@ void PX3SynthAudioProcessorEditor::refreshFxBypassUI()
     const auto moodEnabled = audioProcessor.getMoodEnabledParam().get();
     const auto reverbEnabled = audioProcessor.getReverbEnabledParam().get();
 
-    robBypassButton.setToggleState(vibeEnabled, juce::dontSendNotification);
     delayBypassButton.setToggleState(delayEnabled, juce::dontSendNotification);
     moodBypassButton.setToggleState(moodEnabled, juce::dontSendNotification);
 
     if (fxPanel != nullptr)
     {
-        fxPanel->setActive(vibeEnabled, delayEnabled, granularModeSelectable, moodEnabled, reverbEnabled);
+        fxPanel->setActive(delayEnabled, granularModeSelectable, moodEnabled, reverbEnabled);
         fxPanel->setDelayAlgorithm(audioProcessor.getDelayAlgorithmParam().getIndex());
     }
 
@@ -126,11 +125,18 @@ void PX3SynthAudioProcessorEditor::refreshFxBypassUI()
         vibeCard->bypassButton().setToggleState(vibeEnabled, juce::dontSendNotification);
         vibeCard->setActive(vibeEnabled);
     }
+    const auto analogEnabled = audioProcessor.getAnalogDriftEnabledParam().get();
+    if (analogCard != nullptr)
+    {
+        analogCard->bypassButton().setToggleState(analogEnabled, juce::dontSendNotification);
+        analogCard->setActive(analogEnabled);
+    }
 
     if (fxPanel != nullptr)
     {
         fxPanel->setSectionActive(px3::fxStageDistortion, driveEnabled);
         fxPanel->setSectionActive(px3::fxStageVibe, vibeEnabled);
+        fxPanel->setSectionActive(px3::fxStageAnalog, analogEnabled);
         fxPanel->setSectionActive(px3::fxStageDoom, doomEnabled);
         fxPanel->setSectionActive(px3::fxStageLucy, lucyEnabled);
         fxPanel->setSectionActive(px3::fxStageChorus, chorusEnabled);
@@ -417,19 +423,33 @@ void PX3SynthAudioProcessorEditor::buildDriveCard()
 
 void PX3SynthAudioProcessorEditor::buildVibeCard()
 {
-    // Two things share VIBE's place: the Uni-Vibe stage in the FX chain, and
-    // the per-voice ANALOG DRIFT that has always been called VIBE.
+    // VIBE: the Uni-Vibe, a stage in the FX send chain.
     auto card = std::make_unique<px3::ui::FxCardComponent>("vibe", "VIBE");
     auto* mode = dynamic_cast<juce::AudioParameterChoice*>(audioProcessor.findRangedParameterById("fx.vibe.mode"));
-    auto* type = dynamic_cast<juce::AudioParameterChoice*>(audioProcessor.findRangedParameterById("fx.vibe.type"));
+    auto* stereo = dynamic_cast<juce::AudioParameterChoice*>(audioProcessor.findRangedParameterById("fx.vibe.stereo"));
     px3::ui::fxcards::declareVibeRows(*card,
                                       mode != nullptr ? mode->choices : juce::StringArray { "CHORUS", "VIBRATO" },
-                                      type != nullptr ? type->choices : juce::StringArray {});
+                                      stereo != nullptr ? stereo->choices : juce::StringArray { "LINKED", "INVERTED" });
     attachCardControls(*card,
                        { { "speed", "fx.vibe.speed" }, { "intensity", "fx.vibe.intensity" },
-                         { "amount", "fx.vibe.amount" } },
-                       { { "mode", "fx.vibe.mode" }, { "type", "fx.vibe.type" } },
+                         { "level", "fx.vibe.level" } },
+                       { { "mode", "fx.vibe.mode" }, { "stereo", "fx.vibe.stereo" } },
                        "fx.vibe.enabled");
     vibeCard = card.get();
     fxPanel->addCard(px3::fxStageVibe, std::move(card));
+}
+
+void PX3SynthAudioProcessorEditor::buildAnalogCard()
+{
+    // ANALOG: per-voice analog drift and nonlinearity. It runs inside the
+    // voices, so its card sits ahead of the send chain and has no strip node.
+    auto card = std::make_unique<px3::ui::FxCardComponent>("analog", "ANALOG");
+    auto* type = dynamic_cast<juce::AudioParameterChoice*>(audioProcessor.findRangedParameterById("fx.analog.type"));
+    px3::ui::fxcards::declareAnalogRows(*card, type != nullptr ? type->choices : juce::StringArray {});
+    attachCardControls(*card,
+                       { { "amount", "fx.analog.amount" } },
+                       { { "type", "fx.analog.type" } },
+                       "fx.analog.enabled");
+    analogCard = card.get();
+    fxPanel->addCard(px3::fxStageAnalog, std::move(card));
 }

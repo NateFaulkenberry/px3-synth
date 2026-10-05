@@ -52,7 +52,9 @@ PX3 v0.8.0 rebuilds the Synth's interface into a single, dense modular window an
 
 **Effects**
 * **DRIVE**: a new distortion stage with SOFT, HARD and ASYM clippers, TIGHT, TONE and automatic level matching. It runs 8× oversampled with anti-derivative anti-aliasing (4× at 96 kHz), with aliasing below −66 dB even at full HARD drive on a 5 kHz tone, and its dry signal is phase-aligned, so MIX never combs.
-* **Uni-Vibe**: a real four-stage photocell phaser at VIBE's place in the chain.
+* **VIBE** is now a model of the Uni-Vibe pedal: its four unmatched phase stages (15 nF, 220 nF, 470 pF, 4.7 nF) with the pedal's measured non-all-pass transistor stages, one lamp driving four photocells (fast to brighten, slow to darken, so the sweep is lopsided), soft transistor clipping, the pedal's CHORUS / VIBRATO switch, LEVEL, and a STEREO choice (LINKED, or INVERTED - the classic second-output mod). INTENSITY 0 now leaves the lamp idling, a fixed colour, as on the pedal; the power switch is the bypass. VIBE starts off in the Synth.
+* **PX3 Vibe**: VIBE as its own AU and VST3 effect.
+* **ANALOG**: the per-voice analog drift that used to sit under VIBE is a card of its own (STYLE, AMOUNT), unchanged in sound - every render is bit-identical to before the split. The console engine in SETTINGS is now called **Console Engine** to keep the two apart.
 * **Chorus**: Juno-style modes I, II and I+II.
 * **Delay**: tape WOBBLE, QUALITY and SLIP, and a MOD DEPTH control.
 * **Reverb**: SHIMMER on CLOUD, and an **IR** mode that loads your own impulse responses.

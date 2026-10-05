@@ -112,9 +112,9 @@ void applyUnusualConfiguration(PX3SynthAudioProcessor& processor)
     processor.setLfoAssignmentByParameterId(1, "mix.osc2.pan", false);
     processor.setLfoAssignmentByParameterId(2, "voice.osc1.tuning.cents", false);
 
-    setParam(processor, "fx.vibe.enabled", 1.0f);
-    setParam(processor, "fx.vibe.amount", 0.67f);
-    setChoice(processor, "fx.vibe.type", 2);
+    setParam(processor, "fx.analog.enabled", 1.0f);
+    setParam(processor, "fx.analog.amount", 0.67f);
+    setChoice(processor, "fx.analog.type", 2);
 
     setParam(processor, "fx.reverb.enabled", 1.0f);
     setParam(processor, "fx.reverb.amount", 0.71f);
@@ -986,8 +986,8 @@ void testIntegration()
         // step in the summed output, and the result must not be silence either.
         PX3SynthAudioProcessor processor;
         makePlainPatch(processor);
-        setParam(processor, "fx.vibe.enabled", 1.0f);
-        setParam(processor, "fx.vibe.amount", 0.7f);
+        setParam(processor, "fx.analog.enabled", 1.0f);
+        setParam(processor, "fx.analog.amount", 0.7f);
         setParam(processor, "global.character.enabled", 1.0f);
         setParam(processor, "voice.filter1.enabled", 1.0f);
 
@@ -1094,8 +1094,8 @@ void testIntegration()
                   setParam(p, "fx.delay.enabled", 1.0f);
                   setParam(p, "fx.delay.amount", 1.0f);
                   setParam(p, "fx.delay.feedback", 1.0f);
-                  setParam(p, "fx.vibe.enabled", 1.0f);
-                  setParam(p, "fx.vibe.amount", 1.0f);
+                  setParam(p, "fx.analog.enabled", 1.0f);
+                  setParam(p, "fx.analog.amount", 1.0f);
                   setParam(p, "mix.send.fx.level", 1.0f);
                   setParam(p, "mix.fx.level", 1.0f);
                   for (const auto* id : { "sub", "osc1", "osc2", "osc3" })
@@ -1118,8 +1118,8 @@ void testIntegration()
                   {
                       setParam(p, juce::String("mix.") + id + ".level", 1.0f);
                   }
-                  setParam(p, "fx.vibe.enabled", 1.0f);
-                  setParam(p, "fx.vibe.amount", 1.0f);
+                  setParam(p, "fx.analog.enabled", 1.0f);
+                  setParam(p, "fx.analog.amount", 1.0f);
                   setParam(p, "fx.reverb.enabled", 1.0f);
                   setParam(p, "fx.reverb.amount", 1.0f);
                   setParam(p, "mix.fx.level", 1.0f);

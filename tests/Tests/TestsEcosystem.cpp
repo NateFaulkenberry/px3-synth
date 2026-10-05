@@ -73,7 +73,7 @@ void testEcosystem()
 
         for (const auto& fx : { "Mood/Mood.cpp", "Delay/Delay.cpp", "Reverb/Reverb.cpp",
                                 "Doom/Doom.cpp", "Lucy/Lucy.cpp", "Chorus/Chorus.cpp",
-                                "StereoSpread/StereoSpread.cpp", "Vibe/Vibe.cpp",
+                                "StereoSpread/StereoSpread.cpp", "Vibe/UniVibe.cpp", "AnalogDrift/AnalogDrift.cpp",
                                 "Filter/VoiceFilter.cpp", "Analog/AnalogEngine.cpp" })
         {
             if (! shared.getChildFile("DSP").getChildFile(fx).existsAsFile())
@@ -84,7 +84,7 @@ void testEcosystem()
 
         check("Ecosystem_EveryReusableEffectIsInTheSharedTree",
               missing.isEmpty(),
-              missing.isEmpty() ? juce::String("all ten reusable effects are under shared/DSP")
+              missing.isEmpty() ? juce::String("all eleven reusable effects are under shared/DSP")
                                 : "not shared: " + missing.joinIntoString(", "));
     }
 
@@ -440,15 +440,18 @@ void testEcosystem()
             if (product.hasStandalone != shouldHaveStandalone) { wrong.add(id); }
         }
 
-        // Vibe is not a product: it has no audio interface to wrap. Its
-        // absence here is the assessment's conclusion, in code.
-        const auto vibeAbsent = ! registry.isRegistered("px3-vibe");
+        // ANALOG (the per-voice drift) is not a product: it has no audio
+        // interface to wrap. Its absence is the assessment's conclusion, in
+        // code. VIBE, the Uni-Vibe, is an ordinary insert, and is one.
+        const auto analogAbsent = ! registry.isRegistered("px3-analog");
+        const auto vibePresent = registry.isRegistered("px3-vibe");
 
-        check("Ecosystem_OnlyTheSynthHasAStandaloneAndVibeIsNotAProduct",
-              wrong.isEmpty() && vibeAbsent,
+        check("Ecosystem_OnlyTheSynthHasAStandaloneVibeIsAProductAnalogIsNot",
+              wrong.isEmpty() && analogAbsent && vibePresent,
               juce::String(static_cast<int>(registry.productIds().size()))
                   + " products; only the Synth has a standalone application"
-                  + (vibeAbsent ? "; Vibe correctly absent" : "; VIBE REGISTERED")
+                  + (analogAbsent ? "; ANALOG correctly absent" : "; ANALOG REGISTERED")
+                  + (vibePresent ? "; PX3 Vibe registered" : "; PX3 VIBE MISSING")
                   + (wrong.isEmpty() ? "" : "; wrong: " + wrong.joinIntoString(", ")));
     }
 }

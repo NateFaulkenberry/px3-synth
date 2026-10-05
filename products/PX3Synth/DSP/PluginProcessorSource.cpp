@@ -474,13 +474,25 @@ LfoSettings PX3SynthAudioProcessor::currentLfoSettings(int lfoIndex) const
     return settings;
 }
 
-VibeSettings PX3SynthAudioProcessor::currentVibeSettings() const
+AnalogDriftSettings PX3SynthAudioProcessor::currentAnalogDriftSettings() const
 {
-    VibeSettings settings;
+    AnalogDriftSettings settings;
+    settings.enabled = analogDriftEnabledParam != nullptr && analogDriftEnabledParam->get();
+    settings.globalAmount = analogDriftAmountParam->convertFrom0to1(applyModulationToNormalizedValue(analogDriftAmountParam,
+                                                                                               static_cast<juce::RangedAudioParameter*>(analogDriftAmountParam)->getValue()));
+    settings.typeIndex = analogDriftTypeParam != nullptr ? analogDriftTypeParam->getIndex() : 0;
+    return settings;
+}
+
+px3::UniVibeSettings PX3SynthAudioProcessor::currentVibeSettings() const
+{
+    px3::UniVibeSettings settings;
     settings.enabled = vibeEnabledParam != nullptr && vibeEnabledParam->get();
-    settings.globalAmount = vibeAmountParam->convertFrom0to1(applyModulationToNormalizedValue(vibeAmountParam,
-                                                                                               static_cast<juce::RangedAudioParameter*>(vibeAmountParam)->getValue()));
-    settings.typeIndex = vibeTypeParam != nullptr ? vibeTypeParam->getIndex() : 0;
+    settings.speed = modulatedParameterValue(vibeSpeedParam);
+    settings.intensity = modulatedParameterValue(vibeIntensityParam);
+    settings.mode = vibeModeParam != nullptr ? vibeModeParam->getIndex() : 0;
+    settings.levelDb = modulatedParameterValue(vibeLevelParam);
+    settings.stereo = vibeStereoParam != nullptr ? vibeStereoParam->getIndex() : 0;
     return settings;
 }
 

@@ -284,14 +284,11 @@ juce::ValueTree PX3SynthAudioProcessor::createParameterStateTree() const
     subOscState.setProperty(kSubOscWaveformId, subOscWaveformParam->getIndex(), nullptr);
     state.addChild(subOscState, -1, nullptr);
 
-    juce::ValueTree vibeState(kVibeStateId);
-    // From the parameter, not the engine: the engine's flag follows the
-    // parameter only when the next block runs, so a state taken just after a
-    // load read the previous preset's VIBE switch - and a preset loaded with
-    // VIBE off showed as edited a moment later, when audio caught up.
-    vibeState.setProperty(kVibeBypassId, ! getVibeEnabledParam().get(), nullptr);
-    vibeState.setProperty(kVibeSeedId, static_cast<int64_t>(debugGetVibeSeed()), nullptr);
-    state.addChild(vibeState, -1, nullptr);
+    // ANALOG's on/off is its parameter (fx.analog.enabled); only the engine
+    // seed, which is not a parameter, is stored here.
+    juce::ValueTree analogState(kAnalogDriftStateId);
+    analogState.setProperty(kAnalogDriftSeedId, static_cast<int64_t>(debugGetAnalogDriftSeed()), nullptr);
+    state.addChild(analogState, -1, nullptr);
 
     state.setProperty(kTopMenuViewId, getTopMenuViewIndex(), nullptr);
 
@@ -545,17 +542,11 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
 
     rebuildModulationGraph();
 
-    if (const auto vibeState = state.getChildWithName(kVibeStateId); vibeState.isValid())
+    if (const auto analogState = state.getChildWithName(kAnalogDriftStateId); analogState.isValid())
     {
-        // The bypass flag is NOT applied: fx.vibe.enabled, restored with the
-        // parameters above, is the authority, and the flag only duplicated it.
-        // Applied after the parameters, a stale flag overrode them - INIT's
-        // cached state carried VIBE bypassed while its parameter said on, so
-        // loading INIT switched VIBE off and the name showed "*" a tick later.
-
-        if (vibeState.hasProperty(kVibeSeedId))
+        if (analogState.hasProperty(kAnalogDriftSeedId))
         {
-            debugSetVibeSeed(static_cast<uint32_t>(juce::jmax<int64_t>(1, static_cast<int64_t>(vibeState[kVibeSeedId]))));
+            debugSetAnalogDriftSeed(static_cast<uint32_t>(juce::jmax<int64_t>(1, static_cast<int64_t>(analogState[kAnalogDriftSeedId]))));
         }
     }
 

@@ -1258,7 +1258,18 @@
         "labelBackgroundOpacity": 0.85,
         "labelOutline": "#EDD09D",
         "labelOutlineOpacity": 0.45,
-        "labelColour": "#F7E9D0"
+        "labelColour": "#F7E9D0",
+        "knobSize": 54,
+        "featureKnobSize": 80,
+        "choiceWidth": 110,
+        "choiceGap": 2,
+        "choiceHeight": 22,
+        "labelHeight": 14,
+        "readoutHeight": 15,
+        "labelFontSize": 10.5,
+        "boxBackground": "#232323D2",
+        "boxText": "#E8E8E8",
+        "boxOutline": "#FFFFFF69"
       },
       "border": {
         "color": "#CCA25A",
@@ -1316,21 +1327,84 @@
               "readoutHeight": "auto",
               "size": "auto"
             }
-          },
-          "row1": {
-            "height": "17%"
-          },
-          "row2": {
-            "height": "28%"
-          },
-          "row3": {
-            "height": "9%"
-          },
-          "row4": {
-            "height": "17%"
-          },
-          "row5": {
-            "height": "29%"
+          }
+        }
+      }
+    },
+    "analog": {
+      "controls": {
+        "labelBackground": "#1F2A1C",
+        "labelBackgroundOpacity": 0.85,
+        "labelOutline": "#B9D6A6",
+        "labelOutlineOpacity": 0.45,
+        "labelColour": "#E3F0D9",
+        "knobSize": 54,
+        "featureKnobSize": 80,
+        "choiceWidth": 110,
+        "choiceHeight": 22,
+        "labelHeight": 14,
+        "readoutHeight": 15,
+        "labelFontSize": 10.5,
+        "boxBackground": "#232323D2",
+        "boxText": "#E8E8E8",
+        "boxOutline": "#FFFFFF69"
+      },
+      "border": {
+        "color": "#7FA868",
+        "opacity": 0.71
+      },
+      "background": {
+        "color": "#7FA868",
+        "opacity": 0.137
+      },
+      "gloss": {
+        "topFill": {
+          "color": "#B9D6A6",
+          "opacity": 0
+        },
+        "bottomFill": {
+          "color": "#000000",
+          "opacity": 0
+        }
+      },
+      "title": {
+        "color": "#E3F0D9"
+      },
+      "cardInner": {
+        "margin": 0,
+        "padding": 4,
+        "display": "flex",
+        "direction": "column",
+        "wrap": "nowrap",
+        "justifyContent": "center",
+        "alignItems": "center",
+        "alignContent": "center",
+        "gap": 2,
+        "power": {
+          "x": -4,
+          "y": -16,
+          "size": 25
+        },
+        "rows": {
+          "default": {
+            "margin": 0,
+            "padding": 0,
+            "display": "flex",
+            "direction": "row",
+            "wrap": "nowrap",
+            "justifyContent": "center",
+            "alignItems": "center",
+            "alignContent": "center",
+            "gap": 6,
+            "control": {
+              "direction": "column",
+              "justifyContent": "center",
+              "alignItems": "center",
+              "gap": 7,
+              "labelHeight": "auto",
+              "readoutHeight": "auto",
+              "size": "auto"
+            }
           }
         }
       }

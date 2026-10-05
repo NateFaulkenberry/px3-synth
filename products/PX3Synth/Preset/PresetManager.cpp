@@ -539,7 +539,7 @@ juce::ValueTree PresetManager::initPresetTree(juce::String& error) const
             parameterState.setProperty("value", ranged->getDefaultValue(), nullptr);
         }
     }
-    for (const auto* id : { "fx.vibe.enabled", "fx.delay.enabled", "fx.reverb.enabled", "fx.mood.enabled",
+    for (const auto* id : { "fx.analog.enabled", "fx.vibe.enabled", "fx.delay.enabled", "fx.reverb.enabled", "fx.mood.enabled",
                             "fx.doom.enabled", "fx.lucy.enabled", "fx.chorus.enabled", "fx.spread.enabled" })
     {
         auto parameterState = processor.getParameterCatalog().findStateEntry(parameters, id);
@@ -577,10 +577,9 @@ juce::ValueTree PresetManager::initPresetTree(juce::String& error) const
     }
     state.addChild(envelopeSources, -1, nullptr);
 
-    juce::ValueTree vibeState("VIBE");
-    vibeState.setProperty("bypass", true, nullptr);
-    vibeState.setProperty("seed", 1337, nullptr);
-    state.addChild(vibeState, -1, nullptr);
+    juce::ValueTree analogState("ANALOG");
+    analogState.setProperty("seed", 1337, nullptr);
+    state.addChild(analogState, -1, nullptr);
     return tree;
 }
 

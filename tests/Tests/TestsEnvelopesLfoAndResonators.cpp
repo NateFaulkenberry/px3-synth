@@ -1,7 +1,6 @@
 #include "TestSupport.h"
-#include "UniVibe.h"
 
-// testAmpEnvelope, testModEnvelopes, testLfo, testVibe, testReverb, testComb
+// testAmpEnvelope, testModEnvelopes, testLfo, testAnalogDrift, testReverb, testComb
 
 namespace px3tests
 {
@@ -839,112 +838,41 @@ void testLfo()
     }
 }
 //==============================================================================
-// PHASE 8 - VIBE
+// PHASE 8 - ANALOG (per-voice drift; was half of VIBE)
 //==============================================================================
-// Established behaviour, read from the implementation rather than the name:
-// VIBE is an analog-character emulation distributed INSIDE the voice, not a bus
-// effect. VibeEngine produces a per-block shared drift state (oscillator drift,
-// PSU sag, temperature, correlated chaos) plus a per-voice variation set (pitch
-// cents, cutoff/resonance offset, gain offset, asymmetry/saturation bias).
-// SynthVoice applies these to filter cutoff and resonance, oscillator pitch,
-
-// waveshaping, added noise, VCA nonlinearity and voice gain. It has three
-// controls: vibeEnabled, vibeAmount and vibeType.
-void testVibe()
+// ANALOG is an analog-character emulation distributed INSIDE the voice, not a
+// bus effect. AnalogDriftEngine produces a per-block shared drift state
+// (oscillator drift, PSU sag, temperature, correlated chaos) plus a per-voice
+// variation set (pitch cents, cutoff/resonance offset, gain offset,
+// asymmetry/saturation bias). SynthVoice applies these to filter cutoff and
+// resonance, oscillator pitch, waveshaping, added noise, VCA nonlinearity and
+// voice gain. Controls: fx.analog.enabled, fx.analog.amount, fx.analog.type.
+// The split from VIBE is held bit-exact by testAnalogGolden.
+void testAnalogDrift()
 {
-    suite("VIBE");
+    suite("ANALOG (per-voice drift)");
 
-    {
-        // UNI-VIBE: off at INTENSITY 0; VIBRATO wobbles pitch; CHORUS moves
-        // notches through the spectrum over the cycle.
-        auto render = [](float intensity, int mode, bool noiseIn, std::vector<float>& outL, bool& identical, bool& finite)
-        {
-            px3::UniVibe vibe;
-            vibe.prepare(48000.0);
-            px3::UniVibeSettings settings;
-            settings.intensity = intensity; settings.mode = mode; settings.speed = 0.35f;
-            juce::Random random(3);
-            identical = true; finite = true; outL.clear();
-            for (int n = 0; n < 48000 * 3; ++n)
-            {
-                if (n % 512 == 0) vibe.updateForBlock(settings);
-                const auto x = noiseIn ? random.nextFloat() * 0.4f - 0.2f
-                                       : 0.3f * static_cast<float>(std::sin(juce::MathConstants<double>::twoPi * 1000.0 * n / 48000.0));
-                float l = 0, r = 0;
-                vibe.processSampleFrame(x, x, l, r);
-                identical = identical && l == x && r == x;
-                finite = finite && std::isfinite(l) && std::isfinite(r);
-                if (n >= 48000) outL.push_back(l);
-            }
-        };
-        std::vector<float> out;
-        bool same = false, finite = false;
-        render(0.0f, 0, false, out, same, finite);
-        check("UniVibe_OffAtZeroIntensity", same, "INTENSITY 0 returns the input sample for sample");
-
-        // Vibrato: energy around (not at) 1 kHz, relative to 1 kHz itself.
-        auto sidebands = [](const std::vector<float>& x)
-        {
-            auto power = [&](double hz)
-            {
-                double c = 0, sn = 0;
-                for (std::size_t n = 0; n < x.size(); ++n)
-                {
-                    const auto hann = 0.5 - 0.5 * std::cos(juce::MathConstants<double>::twoPi * static_cast<double>(n) / (static_cast<double>(x.size()) - 1.0));
-                    const auto w = juce::MathConstants<double>::twoPi * hz * static_cast<double>(n) / 48000.0;
-                    c += hann * x[n] * std::cos(w); sn += hann * x[n] * std::sin(w);
-                }
-                return c * c + sn * sn;
-            };
-            double side = 0.0;
-            for (const auto off : { -6.0, -4.0, -3.0, 3.0, 4.0, 6.0 }) side += power(1000.0 + off);
-            return 10.0 * std::log10((side + 1e-30) / (power(1000.0) + 1e-30));
-        };
-        bool f2 = false, s2 = false;
-        render(1.0f, 1, false, out, s2, f2);
-        const auto vibrato = sidebands(out);
-        check("UniVibe_VibratoWobblesPitch", f2 && vibrato > -20.0, "sidebands around 1 kHz " + juce::String(vibrato, 1) + " dB");
-
-        // Chorus on noise: the 2 kHz band level swings over the LFO cycle.
-        bool f3 = false, s3 = false;
-        render(1.0f, 0, true, out, s3, f3);
-        double lowest = 1e9, highest = -1e9;
-        for (std::size_t from = 0; from + 2400 <= out.size(); from += 2400)
-        {
-            double c = 0, sn = 0;
-            for (std::size_t k = 0; k < 2400; ++k)
-            {
-                const auto w = juce::MathConstants<double>::twoPi * 2000.0 * static_cast<double>(from + k) / 48000.0;
-                c += out[from + k] * std::cos(w); sn += out[from + k] * std::sin(w);
-            }
-            const auto db = 10.0 * std::log10(c * c + sn * sn + 1e-30);
-            lowest = juce::jmin(lowest, db); highest = juce::jmax(highest, db);
-        }
-        check("UniVibe_ChorusSweepsNotches", f3 && highest - lowest > 12.0,
-              "2 kHz band swing over the cycle " + juce::String(highest - lowest, 1) + " dB");
-    }
-
-    auto renderVibe = [](bool enabled, float amount, int typeIndex = 0)
+    auto renderAnalog = [](bool enabled, float amount, int typeIndex = 0)
     {
         PX3SynthAudioProcessor processor;
         makePlainPatch(processor);
         setChoice(processor, "voice.osc1.mode", 1);
         setParam(processor, "voice.filter1.enabled", 1.0f);
         setParam(processor, "voice.filter1.cutoff", 2500.0f);
-        setParam(processor, "fx.vibe.enabled", enabled ? 1.0f : 0.0f);
-        setParam(processor, "fx.vibe.amount", amount);
-        setChoice(processor, "fx.vibe.type", typeIndex);
+        setParam(processor, "fx.analog.enabled", enabled ? 1.0f : 0.0f);
+        setParam(processor, "fx.analog.amount", amount);
+        setChoice(processor, "fx.analog.type", typeIndex);
         return render(processor, 48000, { { 2000, true, 45, 0.9f } });
     };
 
-    const auto off = renderVibe(false, 0.0f);
-    const auto zeroAmount = renderVibe(true, 0.0f);
-    const auto midAmount = renderVibe(true, 0.5f);
-    const auto fullAmount = renderVibe(true, 1.0f);
+    const auto off = renderAnalog(false, 0.0f);
+    const auto zeroAmount = renderAnalog(true, 0.0f);
+    const auto midAmount = renderAnalog(true, 0.5f);
+    const auto fullAmount = renderAnalog(true, 1.0f);
 
-    check("Vibe_DisabledProducesAudio", off.rms() > 0.01 && off.isFinite(),
+    check("AnalogDrift_DisabledProducesAudio", off.rms() > 0.01 && off.isFinite(),
           "rms " + fmt(off.rms(), 5));
-    check("Vibe_ZeroAmountMatchesDisabled",
+    check("AnalogDrift_ZeroAmountMatchesDisabled",
           nearly(zeroAmount.rms(), off.rms(), off.rms() * 0.02),
           "off " + fmt(off.rms(), 6) + ", enabled at amount 0 " + fmt(zeroAmount.rms(), 6));
 
@@ -965,10 +893,10 @@ void testVibe()
     };
 
     const auto midDeparture = departureFrom(off, midAmount);
-    check("Vibe_MidAmountAlreadyChangesTheSignal", midDeparture > 0.01,
+    check("AnalogDrift_MidAmountAlreadyChangesTheSignal", midDeparture > 0.01,
           "departure at 0.5 " + fmt(midDeparture, 5));
 
-    // Amount is graded but SATURATING: vibeDepth is a compressive curve into a
+    // Amount is graded but SATURATING: analogDepth is a compressive curve into a
     // waveshaper, so level rises steeply to about three quarters of the range
     // and then flattens. Asserting strict monotonicity to the top would be
     // asserting something the design does not do; asserting a rise through the
@@ -995,8 +923,8 @@ void testVibe()
         PX3SynthAudioProcessor processor;
         makePlainPatch(processor);
         setChoice(processor, "voice.osc1.mode", 0);      // SINE
-        setParam(processor, "fx.vibe.enabled", 1.0f);
-        setParam(processor, "fx.vibe.amount", amount);
+        setParam(processor, "fx.analog.enabled", 1.0f);
+        setParam(processor, "fx.analog.amount", amount);
         const auto capture = render(processor, 96000, { { 2000, true, 45, 0.9f } });
         return harmonicToFundamentalRatio(capture.left, 110.0, 24000);
     };
@@ -1004,7 +932,7 @@ void testVibe()
     const auto hHalf = harmonicsAt(0.5f);
     const auto hThreeQuarter = harmonicsAt(0.75f);
     const auto hFull = harmonicsAt(1.0f);
-    check("Vibe_AmountIncreasesHarmonicContentMonotonically",
+    check("AnalogDrift_AmountIncreasesHarmonicContentMonotonically",
           hHalf > hQuarter && hThreeQuarter > hHalf && hFull > hThreeQuarter,
           "harmonic/fundamental 0.25 -> " + fmt(hQuarter, 5) + ", 0.5 -> " + fmt(hHalf, 5)
               + ", 0.75 -> " + fmt(hThreeQuarter, 5) + ", 1.0 -> " + fmt(hFull, 5));
@@ -1013,7 +941,7 @@ void testVibe()
     // Hiss has to scale with the amount rather than sit on a fixed floor. It
     // used to be "0.0035 + 0.0165 * amount", and the constant term dominated
     // everything below about three quarters of the range: measured in an
-    // 8-16 kHz band on a sine source, hiss jumped from -161 dBFS with vibe off
+    // 8-16 kHz band on a sine source, hiss jumped from -161 dBFS with the drift off
     // to -75.4 dBFS at amount 0.05 - an 86 dB step into a level within 14 dB of
     // FULL amount. The floor also swamped the type profiles, so Clean (noise
     // 0.03) and LoFi (noise 0.84) measured identically.
@@ -1023,34 +951,34 @@ void testVibe()
             PX3SynthAudioProcessor processor;
             makePlainPatch(processor);
             setChoice(processor, "voice.osc1.mode", 0);          // SINE: no HF of its own
-            setParam(processor, "fx.vibe.enabled", 1.0f);
-            setParam(processor, "fx.vibe.amount", amount);
-            setChoice(processor, "fx.vibe.type", typeIndex);
+            setParam(processor, "fx.analog.enabled", 1.0f);
+            setParam(processor, "fx.analog.amount", amount);
+            setChoice(processor, "fx.analog.type", typeIndex);
             const auto capture = render(processor, 96000, { { 2000, true, 45, 0.9f } });
             return bandRmsDb(capture.left, 8000.0, 16000.0, 40000);
         };
 
         const auto quiet = hissAt(0.05f, 0);
         const auto loud = hissAt(1.0f, 0);
-        check("Vibe_HissScalesWithAmountRatherThanSittingOnAFloor",
+        check("AnalogDrift_HissScalesWithAmountRatherThanSittingOnAFloor",
               loud - quiet > 40.0,
               "amount 0.05 -> " + fmt(quiet, 1) + " dBFS, amount 1.0 -> " + fmt(loud, 1)
                   + " dBFS, range " + fmt(loud - quiet, 1) + " dB");
 
         const auto clean = hissAt(1.0f, 4);               // Clean, noise 0.03
         const auto lofi = hissAt(1.0f, 5);                // LoFi,  noise 0.84
-        check("Vibe_TypeProfilesHaveDistinctNoiseFloors",
+        check("AnalogDrift_TypeProfilesHaveDistinctNoiseFloors",
               lofi - clean > 15.0,
               "Clean " + fmt(clean, 1) + " dBFS vs LoFi " + fmt(lofi, 1) + " dBFS");
     }
 
-    // Turning vibe up must not change the mix balance. This is the property the
-    // old stage broke: its makeup gain was level-dependent, so vibe acted as up
+    // Turning ANALOG up must not change the mix balance. This is the property the
+    // old stage broke: its makeup gain was level-dependent, so the drift acted as up
     // to +6.6 dB of gain on quiet material and a cut on loud material.
     {
-        auto levelAt = [&renderVibe](float amount)
+        auto levelAt = [&renderAnalog](float amount)
         {
-            return renderVibe(true, amount).rmsOver(20000, 94000);
+            return renderAnalog(true, amount).rmsOver(20000, 94000);
         };
         const auto reference = levelAt(0.0f);
         auto worstDb = 0.0;
@@ -1059,44 +987,44 @@ void testVibe()
             const auto db = std::abs(juce::Decibels::gainToDecibels(levelAt(amount) / juce::jmax(1.0e-9, reference)));
             worstDb = juce::jmax(worstDb, static_cast<double>(db));
         }
-        check("Vibe_AmountIsLevelNeutral", worstDb < 1.5,
+        check("AnalogDrift_AmountIsLevelNeutral", worstDb < 1.5,
               "worst level change across the amount range = " + fmt(worstDb, 2) + " dB");
     }
 
     // Maximum amount must not run away or clip: this is a saturating, noise
     // adding stage, so it is exactly where runaway gain would show.
-    check("Vibe_MaximumAmountDoesNotRunAwayOrClip",
+    check("AnalogDrift_MaximumAmountDoesNotRunAwayOrClip",
           fullAmount.isFinite() && fullAmount.peak() <= 1.0001,
           "peak " + fmt(fullAmount.peak(), 5));
     // Vibe's VCA make-up gain is level dependent by construction:
     // tanh(v * (1 + a*3.2)) / (1 + a*0.95) is about +6.6 dB on a quiet signal
     // and -1.5 dB on a loud one. Sources now carry 4 dB of headroom, so the VCA
-    // sits further into its high-gain region and vibe reads relatively louder
+    // sits further into its high-gain region and ANALOG reads relatively louder
     // than it did when sources ran at full scale. The bound is therefore stated
     // against the current gain structure; what it guards is runaway, and
     // clipping is covered separately by the peak check above.
-    check("Vibe_MaximumAmountKeepsLevelComparableToClean",
+    check("AnalogDrift_MaximumAmountKeepsLevelComparableToClean",
           fullAmount.rms() > off.rms() * 0.4 && fullAmount.rms() < off.rms() * 3.2,
-          "clean " + fmt(off.rms(), 5) + ", full vibe " + fmt(fullAmount.rms(), 5)
+          "clean " + fmt(off.rms(), 5) + ", full analog " + fmt(fullAmount.rms(), 5)
               + " (x" + fmt(fullAmount.rms() / juce::jmax(1.0e-9, off.rms()), 2) + ")");
 
-    // Every vibe type must be selectable and produce a distinct character.
+    // Every ANALOG type must be selectable and produce a distinct character.
     {
         std::vector<double> departures;
         bool allFinite = true;
         for (int type = 0; type < 4; ++type)
         {
-            const auto capture = renderVibe(true, 0.9f, type);
+            const auto capture = renderAnalog(true, 0.9f, type);
             if (! capture.isFinite()) allFinite = false;
             departures.push_back(departureFrom(off, capture));
         }
-        check("Vibe_AllTypesRenderFinitely", allFinite);
+        check("AnalogDrift_AllTypesRenderFinitely", allFinite);
         bool anyDistinct = false;
         for (std::size_t i = 1; i < departures.size(); ++i)
         {
             if (std::abs(departures[i] - departures[0]) > 1.0e-4) anyDistinct = true;
         }
-        check("Vibe_TypeSelectionChangesCharacter", anyDistinct,
+        check("AnalogDrift_TypeSelectionChangesCharacter", anyDistinct,
               "departures " + fmt(departures[0], 5) + " / " + fmt(departures[1], 5)
                   + " / " + fmt(departures[2], 5) + " / " + fmt(departures[3], 5));
     }
@@ -1106,11 +1034,11 @@ void testVibe()
     {
         PX3SynthAudioProcessor processor;
         makePlainPatch(processor);
-        setParam(processor, "fx.vibe.enabled", 1.0f);
-        setParam(processor, "fx.vibe.amount", 1.0f);
+        setParam(processor, "fx.analog.enabled", 1.0f);
+        setParam(processor, "fx.analog.amount", 1.0f);
         const auto capture = render(processor, 64000,
                                     { { 2000, true, 57, 0.9f }, { 2000, true, 69, 0.9f } });
-        check("Vibe_MultipleVoicesRenderWithoutInterference",
+        check("AnalogDrift_MultipleVoicesRenderWithoutInterference",
               capture.isFinite() && capture.rms() > 0.01 && capture.peak() <= 1.0001,
               "rms " + fmt(capture.rms(), 5) + ", peak " + fmt(capture.peak(), 5));
     }
@@ -1120,13 +1048,13 @@ void testVibe()
     {
         PX3SynthAudioProcessor processor;
         makePlainPatch(processor);
-        setParam(processor, "fx.vibe.enabled", 1.0f);
-        setParam(processor, "fx.vibe.amount", 1.0f);
+        setParam(processor, "fx.analog.enabled", 1.0f);
+        setParam(processor, "fx.analog.amount", 1.0f);
         setParam(processor, "voice.amp.release", 0.100f);
         const auto capture = render(processor, 96000,
                                     { { 2000, true, 57, 0.9f }, { 20000, false, 57, 0.0f } });
         const auto afterRelease = capture.rmsOver(60000, 95000);
-        check("Vibe_ReleasedVoiceReachesSilenceWithVibeAtMaximum",
+        check("AnalogDrift_ReleasedVoiceReachesSilenceWithAnalogAtMaximum",
               afterRelease < 1.0e-4, "rms well after release " + fmt(afterRelease, 8));
     }
 }

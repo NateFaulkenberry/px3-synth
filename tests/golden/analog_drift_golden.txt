@@ -1,0 +1,27 @@
+sine Warm 0.15	92c0e4ed3dc3a39
+sine Hot 0.15	da10a4ab01016cbd
+sine Cool 0.15	dcafbaa48fae6ae1
+sine Vintage 0.15	930a6a975f94dc8d
+sine Clean 0.15	ec45d7f09143231
+sine LoFi 0.15	f5fbb2d3a1344041
+sine Warm 0.50	911ef3e21fe3b6a9
+sine Hot 0.50	2f0f9ac41bd97571
+sine Cool 0.50	c2750ea8db114271
+sine Vintage 0.50	516ce7197acddb29
+sine Clean 0.50	cf25f0d01c1cde89
+sine LoFi 0.50	1bcc479c469f7a1
+sine Warm 1.00	b7388210fe771671
+sine Hot 1.00	f59243294ea4c93d
+sine Cool 1.00	8c7d1d5ab56ce6a9
+sine Vintage 1.00	9b7e37407289e4d
+sine Clean 1.00	fd90361d694712a1
+sine LoFi 1.00	9375be371cc517cd
+saw chord Warm 0.70	c97787f2a040c1a9
+saw chord LoFi 0.70	94d451a2628e3611
+dense 24 Hot 0.85	c7aee5b318b87d5
+legato release Vintage 0.80	eede76c395ec5ee5
+saw chord Warm 0.70 block64	1745d922f9f44169
+legato release Vintage 0.80 block64	477307abe8fffbd
+saw chord Hot 0.60 44k1	42d2cc0aad029cd1
+saw chord Cool 0.60 96k	c06bc0ac1593e5e1
+sine off 0.00	c395379bc13f5db5

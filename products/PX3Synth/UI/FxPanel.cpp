@@ -4,12 +4,7 @@
 
 #include <algorithm>
 
-FxPanel::FxPanel(juce::ToggleButton& vibeBypass,
-                 juce::Slider& vibeAmountKnob,
-                 juce::Label& vibeAmountLabel,
-                 juce::ComboBox& vibeTypeBox,
-                 juce::Label& vibeTypeLabel,
-                 juce::ToggleButton& delayBypass,
+FxPanel::FxPanel(juce::ToggleButton& delayBypass,
                  juce::Slider& delayAmountKnob,
                  juce::Label& delayAmountLabel,
                  juce::ComboBox& delayAlgoBox,
@@ -86,12 +81,6 @@ FxPanel::FxPanel(juce::ToggleButton& vibeBypass,
         onChainOrderChanged(next);
     };
 
-    vibeUiComponent = std::make_unique<VibeComponent>(vibeBypass,
-                                                        vibeAmountKnob,
-                                                        vibeAmountLabel,
-                                                        vibeTypeBox,
-                                                        vibeTypeLabel,
-                                                        juce::Colour::fromRGB(236, 182, 92));
     delayPanelComponent = std::make_unique<DelayComponent>(delayBypass,
                                                                 delayAmountKnob,
                                                                 delayAmountLabel,
@@ -136,17 +125,16 @@ FxPanel::FxPanel(juce::ToggleButton& vibeBypass,
 
     // Into the grid, or they are built and never seen. Reverb used to be added
     // here beside them and now adds itself as a card, and removing its line
-    // took these three with it: the deletion ran from Reverb's construction to
-    // its addAndMakeVisible, and the other three sat in between.
-    gridContent.addAndMakeVisible(*vibeUiComponent);
+    // took the others with it: the deletion ran from Reverb's construction to
+    // its addAndMakeVisible, and the others sat in between.
     gridContent.addAndMakeVisible(*delayPanelComponent);
     gridContent.addAndMakeVisible(*moodComponent);
 
     refreshSignalFlowNodes();
 }
 
-// The four FX section cards are drawn by the components themselves - see
-// VibeComponent::paint and its siblings. They were briefly drawn here, moved out
+// The FX section cards are drawn by the components themselves - see
+// DelayComponent::paint and its siblings. They were briefly drawn here, moved out
 // of the editor; owning them in each component is a step further and is what
 // makes drag-and-drop reordering free, because a card that follows its own
 // component's bounds needs no separate bookkeeping when the order changes.
@@ -176,14 +164,6 @@ void FxPanel::addCard(int sectionId, std::unique_ptr<px3::ui::FxCardComponent> c
     if (card == nullptr)
     {
         return;
-    }
-
-    // A card replaces the stage's older hand-laid component, if it had one
-    // (VIBE): one face per stage, so no hidden duplicate controls linger.
-    if (sectionId == px3::fxStageVibe && vibeUiComponent != nullptr)
-    {
-        gridContent.removeChildComponent(vibeUiComponent.get());
-        vibeUiComponent.reset();
     }
 
     gridContent.addAndMakeVisible(*card);
@@ -263,6 +243,7 @@ juce::String FxPanel::sectionName(int sectionId)
         case px3::fxStageChorus:       return "CHORUS";
         case px3::fxStageStereoSpread: return "SPREAD";
         case px3::fxStageDistortion:   return "DRIVE";
+        case px3::fxStageAnalog:       return "ANALOG";
         default: break;
     }
     return "FX";
@@ -288,6 +269,7 @@ juce::Colour FxPanel::sectionAccent(int sectionId) const
         case px3::fxStageChorus:       return uiConfig->getColour("cards.chorus.border.color", accent);
         case px3::fxStageStereoSpread: return uiConfig->getColour("cards.stereoSpread.border.color", accent);
         case px3::fxStageDistortion:   return uiConfig->getColour("cards.drive.border.color", accent);
+        case px3::fxStageAnalog:       return uiConfig->getColour("cards.analog.border.color", accent);
         default: break;
     }
     return accent;
@@ -302,7 +284,6 @@ juce::Component* FxPanel::componentForSection(int sectionId) const
 
     switch (sectionId)
     {
-        case px3::fxStageVibe:   return vibeUiComponent.get();
         case px3::fxStageDelay:  return delayPanelComponent.get();
         case px3::fxStageMood:   return moodComponent.get();
         default: break;
@@ -342,15 +323,17 @@ void FxPanel::resized()
 
     // Only the stages that have a card take a cell. A stage without one is
     // still in the chain and still processes; it simply has nothing to show.
-    // The send chain in its order, then the master-bus stages (Spread), which
-    // always sit last because that is where they are in the signal.
+    // ANALOG first (it is inside the voices), then the send chain in its
+    // order, then the master-bus stages (Spread), which always sit last
+    // because that is where they are in the signal.
     std::vector<juce::Component*> cards;
     cards.reserve(chainOrder.size());
-    for (const auto pass : { true, false })
+    for (const auto pass : { 0, 1, 2 })
     {
         for (const auto sectionId : chainOrder)
         {
-            if (isReorderable(sectionId) != pass) { continue; }
+            const auto group = isUpstreamOfChain(sectionId) ? 0 : (isReorderable(sectionId) ? 1 : 2);
+            if (group != pass) { continue; }
             if (auto* component = componentForSection(sectionId))
             {
                 cards.push_back(component);
@@ -405,17 +388,11 @@ void FxPanel::resized()
     }
 }
 
-void FxPanel::setActive(bool vibeEnabled,
-                        bool delayEnabled,
+void FxPanel::setActive(bool delayEnabled,
                         bool granularModeSelectable,
                         bool moodEnabled,
                         bool reverbEnabled)
 {
-    if (vibeUiComponent != nullptr)
-    {
-        vibeUiComponent->setActive(vibeEnabled);
-    }
-
     if (delayPanelComponent != nullptr)
     {
         delayPanelComponent->setActive(delayEnabled, granularModeSelectable);
@@ -427,10 +404,9 @@ void FxPanel::setActive(bool vibeEnabled,
     }
 
 
-    setSectionActive(0, vibeEnabled);
-    setSectionActive(1, delayEnabled);
-    setSectionActive(2, reverbEnabled);
-    setSectionActive(3, moodEnabled);
+    setSectionActive(px3::fxStageDelay, delayEnabled);
+    setSectionActive(px3::fxStageReverb, reverbEnabled);
+    setSectionActive(px3::fxStageMood, moodEnabled);
 }
 
 void FxPanel::setUIConfig(std::shared_ptr<const UIConfig> configIn)
@@ -443,10 +419,6 @@ void FxPanel::setUIConfig(std::shared_ptr<const UIConfig> configIn)
         entry.second->setUIConfig(uiConfig);
     }
 
-    if (vibeUiComponent != nullptr)
-    {
-        vibeUiComponent->setUIConfig(uiConfig);
-    }
     if (delayPanelComponent != nullptr)
     {
         delayPanelComponent->setUIConfig(uiConfig);

@@ -1,6 +1,9 @@
 #pragma once
 
-struct VibeSharedState
+// ANALOG's control types: what AnalogDriftEngine produces once per block and
+// hands to each voice.
+
+struct AnalogDriftSharedState
 {
     float oscillatorDrift { 0.0f };
     float psu { 0.0f };
@@ -8,7 +11,7 @@ struct VibeSharedState
     float chaos { 0.0f };
 };
 
-struct VibeVoiceVariation
+struct AnalogDriftVoiceVariation
 {
     float pitchCents { 0.0f };
     float cutoffOffset { 0.0f };
@@ -18,7 +21,7 @@ struct VibeVoiceVariation
     float saturationBias { 0.0f };
 };
 
-struct VibeTuning
+struct AnalogDriftTuning
 {
     float oscillatorDrift { 0.55f };
     float voiceVariation { 0.55f };
@@ -32,7 +35,7 @@ struct VibeTuning
     float correlatedChaos { 0.50f };
 };
 
-struct VibeSettings
+struct AnalogDriftSettings
 {
     float globalAmount { 0.0f };
     bool enabled { true };

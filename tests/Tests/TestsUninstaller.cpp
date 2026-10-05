@@ -208,6 +208,20 @@ void testUninstaller()
               "Mood removed in both formats, Synth and Doom untouched");
     }
 
+    // ---- the newest product, PX3 Vibe, is a known and removable product ----
+    {
+        const auto root = buildFixture();
+        root.getChildFile("Library/Audio/Plug-Ins/Components/PX3 Vibe.component").createDirectory();
+        root.getChildFile("Library/Audio/Plug-Ins/VST3/PX3 Vibe.vst3").createDirectory();
+        const auto known = manifest.loadFileAsString().contains("PX3Vibe\tPX3 Vibe\tcom.px3.vibe");
+        uninstall("PX3 Vibe", true, root, manifest);
+
+        check("Uninstall_RemovesPX3Vibe",
+              known && ! installed(root, "PX3 Vibe") && installed(root, "PX3 Synth") && installed(root, "PX3 Mood"),
+              known ? "in the manifest; removed in both formats, the others untouched"
+                    : "PX3 Vibe is not in the generated manifest");
+    }
+
     // ---- shared data survives while any product remains --------------------
     //
     // Presets live in one directory shared by every PX3 product. Removing one

@@ -246,7 +246,8 @@ Every major component now renders through the same Card:
 | `lfo1` `lfo2` `lfo3` | LFOs | purple `#BA70FF` |
 | `env1` `env2` `env3` | Mod envelopes | green `#49DE79` |
 | `ampEnv` | Amp envelope | green `#49DE79` |
-| `vibe` | Vibe | blue `#68C2FF` |
+| `vibe` | Vibe (Uni-Vibe) | gold `#CCA25A` |
+| `analog` | Analog (per-voice drift) | green `#7FA868` |
 | `delay` | Delay | orange `#FFC66E` |
 | `mood` | Mood | amber `#EEB678` |
 | `reverb` | Reverb | cyan `#80D0FF` |
@@ -328,7 +329,7 @@ type, and every instance of that type shares it:
 | `cards.env.cardInner` | ENV 1, 2 and 3 |
 | `cards.ampEnv.cardInner` | AMP ENV |
 | `cards.filter.cardInner` | Filter 1 and 2 |
-| `cards.vibe` `cards.delay` `cards.reverb` `cards.mood` | one each |
+| `cards.vibe` `cards.analog` `cards.delay` `cards.reverb` `cards.mood` | one each |
 
 The type is the style key with any trailing instance number stripped —
 `px3::ui::cardTypeKey()`, so `"osc2"` → `"osc"`. *Colours* stay per instance

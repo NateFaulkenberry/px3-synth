@@ -10,7 +10,7 @@ rather than the whole of it.
 ```
 shared/                      code any PX3 product may use
   DSP/                       Mood Delay Reverb Doom Lucy Chorus
-                             StereoSpread Vibe Filter Analog Core
+                             StereoSpread Vibe AnalogDrift Filter Analog Core
   UI/
     Components/              Card ChipLabel BypassButton PianoKeyboard
                              VuMeter RoundedRect ModalBackdrop ...
@@ -40,8 +40,8 @@ should return nothing.
 
 ## 2. Why the DSP was already shared
 
-Every FX class - Mood, Delay, Reverb, Doom, Lucy, Chorus, StereoSpread, Vibe,
-AnalogEngine, VoiceFilter, StftEngine, OutputCeiling, BusAnalyser - includes
+Every FX class - Mood, Delay, Reverb, Doom, Lucy, Chorus, StereoSpread, UniVibe,
+AnalogDrift, AnalogEngine, VoiceFilter, StftEngine, OutputCeiling, BusAnalyser - includes
 nothing but its own headers. None has ever known about `PluginProcessor`.
 
 So the migration moved them; it did not extract them. That is why no audio
@@ -50,8 +50,7 @@ rather than a reimplementation.
 
 The same turned out to be true of more UI than expected: only 11 of 104 UI
 files include `PluginProcessor.h`, and the FX **editors** are not among them.
-`MoodComponent`, `DelayComponent`, `ReverbComponent`, `VibeComponent` and
-`FilterComponent` sit in `shared/UI/Fx` beside the DSP they drive.
+`MoodComponent`, `DelayComponent`, `ReverbComponent` and `FilterComponent` sit in `shared/UI/Fx` beside the DSP they drive.
 
 ---
 
@@ -177,32 +176,37 @@ and pin it with a test on the **range**, not the default.
 
 ---
 
-## 5b. Vibe: why it is not a product
+## 5b. VIBE is a product; ANALOG is not
 
-Vibe is in `shared/DSP/Vibe`, and it is **not** a standalone effect. This was
-assessed rather than assumed, and the evidence is one line:
+What used to be one "VIBE" was two unrelated things, and they were split into
+two components in 0.8.0:
 
-**Vibe has no audio interface at all.** No `processSampleFrame`, no
-`processBlock`, no `processSample` — where every other effect has one. It has
-no input and no output.
-
-What it does is hand each *voice* a `VibeVoiceVariation`:
+* **VIBE** (`shared/DSP/Vibe/UniVibe`) is the Uni-Vibe: an ordinary stereo
+  insert with `prepare` / `updateForBlock` / `processSampleFrame`. It is a stage
+  in the Synth's FX chain and it ships as **PX3 Vibe** (AU, VST3), exactly like
+  Chorus. See `docs/VIBE_DSP_DESIGN.md`.
+* **ANALOG** (`shared/DSP/AnalogDrift`) is the per-voice analog drift, and it is
+  **not** a product. This was assessed rather than assumed, and the evidence is
+  one line: **ANALOG has no audio interface at all.** No `processSampleFrame`,
+  no `processBlock`. What it does is hand each *voice* an
+  `AnalogDriftVoiceVariation`:
 
 ```cpp
-struct VibeVoiceVariation {
+struct AnalogDriftVoiceVariation {
     float pitchCents, cutoffOffset, resonanceOffset,
           gainOffset, asymmetryBias, saturationBias;
 };
 ```
 
 which the voice applies at **six separate points inside itself** — oscillator
-pitch, filter cutoff and resonance, waveform shaping, and voice gain.
+pitch, filter cutoff and resonance, waveform shaping, and voice gain
+(`AnalogDriftVoiceStage.h`).
 
 An insert sees a summed stereo mix: no voices to detune, no per-voice filters
-to offset, no oscillators to bias. A "standalone Vibe" would necessarily be a
+to offset, no oscillators to bias. A "standalone ANALOG" would necessarily be a
 *different effect that sounds vaguely similar*, so it does not exist. Its
-absence from the registry is asserted by a test, not left to be true by
-accident.
+absence from the registry, and PX3 Vibe's presence, are asserted by a test
+(`Ecosystem_OnlyTheSynthHasAStandaloneVibeIsAProductAnalogIsNot`).
 
 **The general rule this illustrates:** ask what an effect needs. One that reads
 only its input buffer is a candidate. One that reaches into per-voice state,

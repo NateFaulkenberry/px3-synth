@@ -12,50 +12,50 @@ using namespace px3::processor_internal;
 //==============================================================================
 // Debug And Diagnostics
 //==============================================================================
-float PX3SynthAudioProcessor::debugGetVibeGlobalAmount() const
+float PX3SynthAudioProcessor::debugGetAnalogDriftGlobalAmount() const
 {
-    return juce::jlimit(0.0f, 1.0f, vibeAmountParam->get());
+    return juce::jlimit(0.0f, 1.0f, analogDriftAmountParam->get());
 }
 
-float PX3SynthAudioProcessor::debugGetVibeEffectiveAmount() const
+float PX3SynthAudioProcessor::debugGetAnalogDriftEffectiveAmount() const
 {
-    return juce::jlimit(0.0f, 1.0f, vibeComponent.getEffectiveAmount());
+    return juce::jlimit(0.0f, 1.0f, analogDriftComponent.getEffectiveAmount());
 }
 
-bool PX3SynthAudioProcessor::debugGetVibeBypass() const
+bool PX3SynthAudioProcessor::debugGetAnalogDriftBypass() const
 {
-    return vibeComponent.isBypassed();
+    return analogDriftComponent.isBypassed();
 }
 
-uint32_t PX3SynthAudioProcessor::debugGetVibeSeed() const
+uint32_t PX3SynthAudioProcessor::debugGetAnalogDriftSeed() const
 {
-    return vibeComponent.getSeed();
+    return analogDriftComponent.getSeed();
 }
 
-VibeTuning PX3SynthAudioProcessor::debugGetVibeTuning() const
+AnalogDriftTuning PX3SynthAudioProcessor::debugGetAnalogDriftTuning() const
 {
-    return vibeComponent.getTuning();
+    return analogDriftComponent.getTuning();
 }
 
-void PX3SynthAudioProcessor::debugSetVibeBypass(bool shouldBypass)
+void PX3SynthAudioProcessor::debugSetAnalogDriftBypass(bool shouldBypass)
 {
     const auto enabledValue = shouldBypass ? 0.0f : 1.0f;
-    vibeEnabledParam->setValueNotifyingHost(enabledValue);
+    analogDriftEnabledParam->setValueNotifyingHost(enabledValue);
 }
 
-void PX3SynthAudioProcessor::debugSetVibeSeed(uint32_t seed)
+void PX3SynthAudioProcessor::debugSetAnalogDriftSeed(uint32_t seed)
 {
-    vibeComponent.setSeed(seed);
+    analogDriftComponent.setSeed(seed);
 }
 
-void PX3SynthAudioProcessor::debugSetVibeTuningValue(const juce::String& key, float value)
+void PX3SynthAudioProcessor::debugSetAnalogDriftTuningValue(const juce::String& key, float value)
 {
-    vibeComponent.setTuningValue(key, value);
+    analogDriftComponent.setTuningValue(key, value);
 }
 
-float PX3SynthAudioProcessor::debugGetVibeTuningValue(const juce::String& key) const
+float PX3SynthAudioProcessor::debugGetAnalogDriftTuningValue(const juce::String& key) const
 {
-    return vibeComponent.getTuningValue(key);
+    return analogDriftComponent.getTuningValue(key);
 }
 
 // AnalogEngine tuning is reachable ONLY from here. These values are never
@@ -83,7 +83,7 @@ juce::String PX3SynthAudioProcessor::debugDescribeAnalogEngine() const
     const auto index = juce::jlimit(0, names.size() - 1, static_cast<int>(analogEngine.getProfile()));
 
     juce::String text;
-    text << "ANALOG ENGINE\n";
+    text << "CONSOLE ENGINE (AnalogEngine)\n";
     text << "  enabled: " << ((analogEnabledParam != nullptr && analogEnabledParam->get()) ? "yes" : "no") << "\n";
     text << "  profile: " << names[index] << "\n\n";
     text << "  tuning (internal, never serialised):\n";

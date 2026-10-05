@@ -437,17 +437,27 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
 
     masterGainParam = parameterCatalog.createFloat("mix.master.level", "Master Gain", juce::NormalisableRange<float>(0.0f, 1.0f), 0.6f);
 
-    vibeAmountParam = parameterCatalog.createFloat("fx.vibe.amount", "Vibe", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
-    vibeEnabledParam = parameterCatalog.createBool("fx.vibe.enabled", "Vibe Enabled", true);
-    vibeTypeParam = parameterCatalog.createChoice("fx.vibe.type",
-                                                    "Vibe Type",
-                                                    kVibeTypeChoices,
-                                                    0);
-    // The Uni-Vibe stage at VIBE's place in the FX chain. INTENSITY 0 is off,
-    // so it changes no existing patch.
-    vibeSpeedParam = parameterCatalog.createFloat("fx.vibe.speed", "Vibe Speed", juce::NormalisableRange<float>(0.0f, 1.0f), 0.35f);
-    vibeIntensityParam = parameterCatalog.createFloat("fx.vibe.intensity", "Vibe Intensity", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
-    vibeModeParam = parameterCatalog.createChoice("fx.vibe.mode", "Vibe Mode", juce::StringArray { "CHORUS", "VIBRATO" }, 0);
+    // ANALOG: the per-voice analog drift and nonlinearity. Runs inside the
+    // voices, so it has a card on the FX page but no slot in the send chain.
+    // AMOUNT 0 is transparent, so it changes no patch until it is turned up.
+    analogDriftEnabledParam = parameterCatalog.createBool("fx.analog.enabled", "Analog Enabled", true);
+    analogDriftAmountParam = parameterCatalog.createFloat("fx.analog.amount", "Analog Amount", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
+    analogDriftTypeParam = parameterCatalog.createChoice("fx.analog.type",
+                                                         "Analog Type",
+                                                         kAnalogDriftTypeChoices,
+                                                         0);
+    // VIBE: the Uni-Vibe, a stage in the FX send chain. Off by default: like
+    // the pedal, INTENSITY 0 is not a bypass (the lamp idles and the stages
+    // still colour the signal), so only the switch makes it transparent.
+    vibeEnabledParam = parameterCatalog.createBool("fx.vibe.enabled", "Vibe Enabled", false);
+    vibeSpeedParam = parameterCatalog.createFloat("fx.vibe.speed", "Vibe Speed", juce::NormalisableRange<float>(0.0f, 1.0f),
+                                                  px3::UniVibeSettings {}.speed);
+    vibeIntensityParam = parameterCatalog.createFloat("fx.vibe.intensity", "Vibe Intensity", juce::NormalisableRange<float>(0.0f, 1.0f),
+                                                      px3::UniVibeSettings {}.intensity);
+    vibeModeParam = parameterCatalog.createChoice("fx.vibe.mode", "Vibe Mode", px3::UniVibe::modeNames(), 0);
+    vibeLevelParam = parameterCatalog.createFloat("fx.vibe.level", "Vibe Level", juce::NormalisableRange<float>(-12.0f, 12.0f), 0.0f,
+                                                  juce::AudioParameterFloatAttributes().withLabel("dB"));
+    vibeStereoParam = parameterCatalog.createChoice("fx.vibe.stereo", "Vibe Stereo", px3::UniVibe::stereoNames(), 0);
     delayAmountParam = parameterCatalog.createFloat("fx.delay.amount", "Delay Amount", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
     granularSyncDivisionParam = parameterCatalog.createChoice("fx.delay.granular.sync.division",
                                                                 "Granular Sync",
@@ -704,8 +714,9 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
                                                       juce::StringArray { "CLASSIC", "WIDE", "DEEP", "MONO SAFE" },
                                                       0);
 
-    // ---- ANALOG ENGINE ---------------------------------------------------
-    // Only these two are user-facing. See docs/ANALOG_ENGINE_ARCHITECTURE.md.
+    // ---- CONSOLE ENGINE (AnalogEngine) ----------------------------------
+    // Shown to the user as "Console" so it is not confused with ANALOG, the
+    // per-voice drift card. Only these two are user-facing. See docs/ANALOG_ENGINE_ARCHITECTURE.md.
     //
     // Off by default: this changes the sound of every existing patch, so it is
     // opt-in until it has been listened to rather than silently rewriting the
@@ -713,7 +724,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     // On by default now that the console has a control of its own in SETTINGS.
     // It was off because nothing in the UI could turn it on, which made "off"
     // the only state a user could ever hear.
-    analogEnabledParam = parameterCatalog.createBool("global.character.enabled", "Analog Enabled", true);
+    analogEnabledParam = parameterCatalog.createBool("global.character.enabled", "Console Enabled", true);
     // Off: outputs 1/2 carry the whole mix, whatever the host has done with the
     // second pair. On, with that pair enabled: dry on 1/2 and the FX return on
     // 3/4, as stems.
@@ -726,7 +737,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
                                                          "Separate FX Output",
                                                          false);
     analogProfileParam = parameterCatalog.createChoice("global.character.profile",
-                                                         "Analog Profile",
+                                                         "Console Profile",
                                                          px3::AnalogEngine::profileNames(),
                                                          0);
 
@@ -869,12 +880,15 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
         addParameter(envelopeEnabledParams[static_cast<std::size_t>(envIndex)]);
     }
     addParameter(masterGainParam);
-    addParameter(vibeAmountParam);
+    addParameter(analogDriftEnabledParam);
+    addParameter(analogDriftAmountParam);
+    addParameter(analogDriftTypeParam);
+    addParameter(vibeEnabledParam);
     addParameter(vibeSpeedParam);
     addParameter(vibeIntensityParam);
     addParameter(vibeModeParam);
-    addParameter(vibeEnabledParam);
-    addParameter(vibeTypeParam);
+    addParameter(vibeLevelParam);
+    addParameter(vibeStereoParam);
     addParameter(delayAmountParam);
     addParameter(granularSyncDivisionParam);
     addParameter(granularModeParam);
@@ -1374,7 +1388,7 @@ void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
     {
         modulationEnvelopeValues[static_cast<std::size_t>(envIndex)].store(0.0f, std::memory_order_relaxed);
     }
-    vibeComponent.prepare(sampleRate, synth.getNumVoices(), vibeComponent.getSeed());
+    analogDriftComponent.prepare(sampleRate, synth.getNumVoices(), analogDriftComponent.getSeed());
     delayComponent.prepare(sampleRate);
     moodComponent.prepare(sampleRate);
     doomComponent.prepare(sampleRate);
@@ -1382,6 +1396,9 @@ void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
     chorusComponent.prepare(sampleRate);
     stereoSpreadComponent.prepare(sampleRate);
     distortionComponent.prepare(sampleRate);
+    // Settings first: the stage starts its fades at them, so VIBE switched off
+    // is transparent from the first sample.
+    uniVibeComponent.updateForBlock(currentVibeSettings());
     uniVibeComponent.prepare(sampleRate);
     // Four mono source channels plus three stereo bus contexts.
     analogEngine.prepare(sampleRate, kMixerSourceCount);
@@ -2005,13 +2022,13 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     // The previous block's source level drives the supply sag. One block of
     // delay is what a real reservoir capacitor does anyway - it responds to
     // current already drawn, not current about to be drawn.
-    const auto vibeLoad = juce::jlimit(0.0f, 1.0f,
-                                       debugOscillatorBusRms.load(std::memory_order_relaxed) * 3.0f);
-    vibeComponent.updateForBlock(currentVibeSettings(), buffer.getNumSamples(), vibeLoad);
-    const auto vibeShared = vibeComponent.getSharedState();
-    const auto vibeTuning = vibeComponent.getTuning();
-    const auto vibeBypass = vibeComponent.isBypassed();
-    const auto vibeAmount = vibeBypass ? 0.0f : vibeComponent.getEffectiveAmount();
+    const auto analogLoad = juce::jlimit(0.0f, 1.0f,
+                                         debugOscillatorBusRms.load(std::memory_order_relaxed) * 3.0f);
+    analogDriftComponent.updateForBlock(currentAnalogDriftSettings(), buffer.getNumSamples(), analogLoad);
+    const auto analogShared = analogDriftComponent.getSharedState();
+    const auto analogTuning = analogDriftComponent.getTuning();
+    const auto analogBypass = analogDriftComponent.isBypassed();
+    const auto analogAmount = analogBypass ? 0.0f : analogDriftComponent.getEffectiveAmount();
 
     const auto shapedAmp = currentAmpEnvelope();
     std::array<px3::BreakpointEnvelope, kEnvelopeSourceCount> shapedMod;
@@ -2053,8 +2070,8 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
                                             vibratoPhaseRadians,
                                             vibratoRateHz,
                                             vibratoMaxDepthSemitones);
-            const auto voiceVariation = vibeComponent.getVoiceVariation(voiceIndex);
-            voice->setVibeState(vibeAmount, vibeBypass, vibeShared, voiceVariation, vibeTuning);
+            const auto voiceVariation = analogDriftComponent.getVoiceVariation(voiceIndex);
+            voice->setAnalogDriftState(analogAmount, analogBypass, analogShared, voiceVariation, analogTuning);
         }
     }
 
@@ -2465,12 +2482,7 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     stereoSpreadComponent.updateForBlock(currentStereoSpreadSettings());
     distortionComponent.updateForBlock(currentDistortionSettings());
     {
-        px3::UniVibeSettings uniVibe;
-        const auto vibeOn = vibeEnabledParam == nullptr || vibeEnabledParam->get();
-        uniVibe.speed = modulatedParameterValue(vibeSpeedParam);
-        uniVibe.intensity = vibeOn ? modulatedParameterValue(vibeIntensityParam) : 0.0f;
-        uniVibe.mode = vibeModeParam != nullptr ? vibeModeParam->getIndex() : 0;
-        uniVibeComponent.updateForBlock(uniVibe);
+        uniVibeComponent.updateForBlock(currentVibeSettings());
     }
 
     // The engine's amount is a tuning constant; the parameter only gates it.
@@ -2795,7 +2807,7 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         {
             switch (stage)
             {
-                case 0: // VIBE: the per-voice drift runs in the voices; the Uni-Vibe here
+                case 0: // VIBE (the Uni-Vibe)
                     uniVibeComponent.processSampleFrame(stageL, stageR, stageL, stageR);
                     break;
 
@@ -2828,6 +2840,9 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
 
                 case 8: // DRIVE
                     distortionComponent.processSampleFrame(stageL, stageR, stageL, stageR);
+                    break;
+
+                case 9: // ANALOG runs inside the voices, before the sources are summed
                     break;
 
                 default:
