@@ -84,6 +84,7 @@ void FxPluginProcessor::getStateInformation(juce::MemoryBlock& destData)
         }
     }
 
+    writeExtraState(state);
     if (auto xml = state.createXml()) { copyXmlToBinary(*xml, destData); }
 }
 
@@ -113,6 +114,7 @@ void FxPluginProcessor::setStateInformation(const void* data, int sizeInBytes)
             break;
         }
     }
+    readExtraState(state);
 }
 
 } // namespace px3::fx

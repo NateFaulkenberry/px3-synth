@@ -1,189 +1,97 @@
 #pragma once
 
-#include <JuceHeader.h>
-
+#include "ReverbMapping.h"
 #include "ReverbTypes.h"
 
 #include <array>
-#include <atomic>
+#include <cstddef>
 #include <memory>
-#include <mutex>
 #include <vector>
 
+// PX3's reverb: six algorithmic types behind one set of controls.
+//
+//   ROOM   image-source early reflections feeding a dense, rotating 16-line field
+//   PLATE  Dattorro's tank, corrected (decay in seconds, true damping, dense input)
+//   HALL   stereo-diffused 16-line FDN with three-band Jot decay
+//   CLOUD  bloom diffusers into a long 16-line FDN; SHIMMER = +12 st regeneration
+//   SPRING Valimaki/Parker/Abel stretched-allpass chirp loops, two springs
+//   GATED  feed-forward shaped burst (gate / reverse / falling)
+//
+// Signal path: input DC block -> PRE-DELAY (two-tap crossfade on change) ->
+// type -> WIDTH (mid/side; never changes the mono sum) -> per-type level ->
+// equal-power MIX. Nothing nonlinear and nothing adaptive on the way.
+//
+// Storage: one arena sized for the largest type, allocated in prepare(). A
+// type switch fades the old tail out (50 ms, smoothstep), zeroes the arena a
+// chunk per control tick on the audio thread, binds the new type and fades it
+// in. Nothing allocates after prepare(). The engine also sleeps (and clears
+// itself) when MIX is at zero or after 0.3 s of silence in and out.
 class Reverb
 {
 public:
-    // IR mode. Loading happens off the audio thread: the file is checked here
-    // (message thread) and juce::dsp::Convolution reads and swaps it on its own
-    // background thread. Returns an empty string, or why the file was refused.
-    juce::String loadImpulseResponse(const juce::File& file);
-    void clearImpulseResponse();
-    bool hasImpulseResponse() const noexcept { return irLoaded.load(); }
-    juce::String impulseResponseName() const { return irName; }
-    // Whether the IR engine (and its loader thread) has been built yet.
-    bool hasConvolutionEngine() const noexcept { return convolution.load() != nullptr; }
-    static constexpr int kIrBlock = 256;   // the IR path's block, and its extra latency
+    Reverb();
+    ~Reverb();
 
     void prepare(double sampleRate);
     void reset();
 
     void updateForBlock(const ReverbSettings& settings, int numSamples);
     void processSampleFrame(float inL, float inR, float& outL, float& outR);
-    // The reverb's level match is applied inside processSampleFrame, to the
-    // reverb stage's own output. It used to be a separate call that scaled the
-    // whole master buffer - dry and every other effect included - AFTER the
-    // output ceiling, in steps of a block: up to +3.2 dB past the ceiling's
-    // guarantee, which is what made full patches peak above full scale.
+
+    // Diagnostics and tests.
+    int boundType() const noexcept { return boundTypeIndex; }
+    bool isRunning() const noexcept { return phase == Phase::running; }
+    bool isSwitching() const noexcept { return phase == Phase::fadingOut || phase == Phase::clearing; }
+    std::size_t arenaBytes() const noexcept { return arena.size() * sizeof(float); }
+    static std::size_t arenaFloatsFor(double sampleRate);
+
+    static constexpr int kControlInterval = 32;
 
 private:
-    struct DelayLine
-    {
-        std::vector<float> buffer;
-        int writePos { 0 };
-        float lpState { 0.0f };
-        float modPhase { 0.0f };
-    };
+    struct Engines;
+    std::unique_ptr<Engines> engines;
 
-    static float clamp01(float v);
-    static float lerp(float a, float b, float t);
-    static float smoothstep(float x);
-    static float sanitizeAudioSample(float x);
+    enum class Phase { idle, running, fadingOut, clearing };
 
-    static void resizeLine(DelayLine& line, int size);
-    static void writeLine(DelayLine& line, float sample);
-    static float readLine(const DelayLine& line, float delaySamples);
-    static float processAllpass(DelayLine& line, float in, float delaySamples, float gain);
-    static float processDelay(DelayLine& line, float in, float delaySamples);
-    float processInputDiffusion(float in, float amount);
+    void controlTick();
+    void bindType(int type);
+    void processEngine(float inL, float inR, float& outL, float& outR) noexcept;
 
-    // One feedback-delay-network implementation, shared by the room, hall and
-    // cloud algorithms. They differ only in how long the delays are, how hard
-    // the input is diffused and how the decay time is derived - not in
-    // topology, so there is a single place where the network can be wrong.
-    struct FdnConfig
-    {
-        float sizeScale { 1.0f };
-        float rt60Seconds { 2.0f };
-        float dampingCoeff { 0.1f };
-        float modHz { 0.3f };
-        float modSamples { 2.0f };
-        float allpassGain { 0.55f };
-        float inputGain { 0.35f };
-    };
+    double sampleRateHz { 48000.0 };
+    std::vector<float> arena;
+    std::size_t dirtyFloats { 0 };    // how much of the arena the bound type may have written
+    std::size_t clearCursor { 0 };
+    std::vector<float> preDelayBuffer;  // interleaved L/R
+    int preDelayWrite { 0 }, preDelaySize { 0 };
+    int preDelayCurrent { 0 }, preDelayNext { 0 };
+    float preDelayFade { 1.0f }, preDelayFadeStep { 0.0f };
 
-    void allocateFdn(std::array<DelayLine, 8>& delays,
-                     std::array<DelayLine, 8>& allpasses,
-                     float maxScale);
+    ReverbSettings target;
+    // Control-rate smoothed copies of the normalised controls.
+    std::array<float, 11> smoothed {};
+    std::array<float, 11> smoothedTarget {};
+    bool controlsPrimed { false };
+    float controlCoefficient { 0.4f };
 
-    void processFdn8(std::array<DelayLine, 8>& delays,
-                     std::array<DelayLine, 8>& allpasses,
-                     std::array<float, 8>& readCache,
-                     const FdnConfig& config,
-                     float input,
-                     float& wetL,
-                     float& wetR);
+    Phase phase { Phase::idle };
+    int boundTypeIndex { -1 };
+    int tickCounter { 0 };
+    float fade { 0.0f };            // 0..1, through smoothstep
+    float fadeInStep { 0.0f }, fadeOutStep { 0.0f };
+    // After a type switch the new type's INPUT is faded in (10 ms): audio
+    // arriving mid-note into an empty network is a step, and a reverb
+    // answers a step with a click.
+    float inputFade { 1.0f }, inputFadeStep { 0.0f };
+    bool switching { false };
 
-    void processCore(float inL, float inR, float amount, int algorithmIndex, float& outL, float& outR);
+    float amountSmoothed { 0.0f }, amountCoefficient { 0.001f };
+    float mixFor { -1.0f }, mixWet { 0.0f }, mixDry { 1.0f };
+    float widthSmoothed { 1.0f }, widthCoefficient { 0.001f };
+    float wetGain { 1.0f }, wetGainTarget { 1.0f }, wetGainCoefficient { 0.002f };
 
-    std::array<DelayLine, 2> preDelayLines;
+    float dcCoefficient { 0.996f };
+    std::array<float, 2> dcX {}, dcY {};
 
-    // Room: a tapped early-reflection delay per channel feeding a compact
-    // four-line network. A small space is defined by its early pattern far more
-    // than by its tail, so the taps are the character here.
-    std::array<DelayLine, 2> roomEarlyLines;
-    std::array<DelayLine, 8> roomLines;
-    std::array<DelayLine, 8> roomAllpassLines;
-    // Dattorro plate: 4 input diffusion allpasses + 8 tank elements
-    // (2 modulated allpasses, 2 decay-diffusion allpasses, 4 delays).
-    std::array<DelayLine, 12> plateLines;
-    float plateModPhase { 0.0f };
-    // Shared input diffuser. An FDN with no diffusion in front of it answers an
-    // impulse with a burst of discrete taps, which is the classic metallic
-    // attack; four short allpasses smear that into noise before it enters the
-    // network.
-    std::array<DelayLine, 4> inputDiffusionLines;
-
-    // Hall / cloud: an FDN delay line plus an allpass inside each loop, which
-    // keeps building density on every circulation rather than only at input.
-    std::array<DelayLine, 8> hallLines;
-    std::array<DelayLine, 8> hallAllpassLines;
-    std::array<DelayLine, 8> cloudLines;
-    std::array<DelayLine, 8> cloudAllpassLines;
-
-    std::array<float, 2> plateTankState { { 0.0f, 0.0f } };
-    std::array<float, 8> roomReadCache { { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f } };
-    std::array<float, 8> hallReadCache { { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f } };
-    std::array<float, 8> cloudReadCache { { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f } };
-
-    // SHIMMER: an octave-up delay-line pitch shifter on the CLOUD tail, fed
-    // back into the network's input. Two taps half a window apart, each read
-    // at twice the write speed and Hann-crossfaded, so their weights sum to 1.
-    static constexpr int kShimmerBufferSize = 8192;   // at 48 kHz; scaled with the rate in prepare
-    // Shimmer's constants, set per sample rate in prepare: tuned at 48 kHz as
-    // per-sample values, they made the shift faster, the loop brighter and its
-    // gain higher at 96 kHz.
-    int shimmerWindow { 2048 };
-    float shimmerLowpassCoeff { 0.35f };
-    float shimmerDcPole { 0.995f };
-    std::vector<float> shimmerBuffer;
-    int shimmerWrite { 0 };
-    float shimmerPhase { 0.0f };
-    float shimmerReturn { 0.0f };
-    float shimmerLowpass { 0.0f };
-    float shimmerDcX1 { 0.0f }, shimmerDcY1 { 0.0f };
-    float processShimmer(float input) noexcept;
-
-    // The IR engine exists only once an impulse response has been loaded.
-    // A juce::dsp::Convolution owns a background loader thread and ~0.4 MB of
-    // prepared state, and most instances never use IR mode, so building it
-    // up front cost every instance a thread and ~0.8 MB for nothing.
-    //
-    // Built on the loading thread (never the audio thread), prepared there,
-    // then published through the atomic; the audio thread only reads the raw
-    // pointer. Once built it lives as long as the Reverb, so the audio thread
-    // can never see it freed. The mutex orders creation against prepare(), the
-    // only other non-audio-thread user.
-    //
-    // Why not one ConvolutionMessageQueue shared by every instance instead:
-    // JUCE's queue is single-producer (an AbstractFifo), and each Convolution
-    // pushes to it from its own audio thread whenever it installs a new IR.
-    // Hosts that process tracks in parallel would then push from several audio
-    // threads at once - a data race on the queue's storage.
-    std::unique_ptr<juce::dsp::Convolution> convolutionOwner;
-    std::atomic<juce::dsp::Convolution*> convolution { nullptr };
-    std::mutex convolutionLock;
-    juce::dsp::Convolution& ensureConvolution();   // loading thread, lock held
-    juce::AudioBuffer<float> irBlock;   // kIrBlock frames, allocated in prepare
-    int irFill { 0 };
-    std::atomic<bool> irLoaded { false };
-    // Set by clearImpulseResponse (message thread); the audio thread does the
-    // reset. Convolution::reset() is not safe against a concurrent process(),
-    // and clearing used to call it directly while the audio thread might be
-    // inside one.
-    std::atomic<bool> irResetRequested { false };
-    juce::String irName;
-
-    std::array<float, 2> inputDcX1 { { 0.0f, 0.0f } };
-    std::array<float, 2> inputDcY1 { { 0.0f, 0.0f } };
-    std::array<float, 2> wetDcX1 { { 0.0f, 0.0f } };
-    std::array<float, 2> wetDcY1 { { 0.0f, 0.0f } };
-    std::array<float, 2> wetSlewState { { 0.0f, 0.0f } };
-
-    ReverbSettings currentSettings;
-
-    double sampleRateHz { 44100.0 };
-    // The damping coefficient mapped to the current rate (see processFdn8),
-    // recomputed only when the setting moves; prepare() invalidates it.
-    float dampingCacheIn { -1.0f };
-    float dampingCacheOut { 0.0f };
-    int blockSampleCount { 0 };
-    // Latches so the clear on bypass runs once, after the fade reaches zero.
-    bool bypassCleared { false };
-    float amountSmoothed { 0.0f };
-    float amountSmoothingCoeff { 0.0f };
-    float outputCompGain { 1.0f };      // this block's target, from the last block's energies
-    float compGainCurrent { 1.0f };     // per-sample ramp toward it
-    float compGainStep { 0.0f };
-    double blockPreEnergy { 0.0 };
-    double blockPostEnergy { 0.0 };
+    float tickInputPeak { 0.0f }, tickWetPeak { 0.0f };
+    int silentTicks { 0 }, silentTicksToSleep { 450 };
 };

@@ -815,6 +815,11 @@ bool PresetManager::ensureFactoryPresetLibrary(juce::String& error)
             }
         }
 
+        // The patch's reverb preset label, or none - never the label the
+        // running instance happens to have.
+        if (! def.reverbPreset.empty()) { state.setProperty("reverbPreset", juce::String(def.reverbPreset), nullptr); }
+        else { state.removeProperty("reverbPreset", nullptr); }
+
         PresetMetadata md;
         md.name = def.name;
         md.category = def.category;

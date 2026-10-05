@@ -283,8 +283,7 @@ void testReleaseQa()
             ReverbSettings settings;
             settings.amount = 1.0f;
             settings.algorithmIndex = 3;   // CLOUD
-            settings.decay = 1.0f;
-            settings.cloudFeedback = 1.0f;
+            settings.decay = 0.7f;
             settings.shimmer = shimmerAmount;
             const auto total = static_cast<int>(sr * 4.0);
             std::vector<float> out(static_cast<std::size_t>(total));

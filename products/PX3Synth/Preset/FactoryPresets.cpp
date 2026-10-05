@@ -1,5 +1,7 @@
 #include "FactoryPresets.h"
 
+#include "ReverbPresets.h"
+
 namespace px3::presets
 {
 namespace
@@ -14,7 +16,7 @@ enum OscMode
 
 enum FilterType { lp12 = 0, lp24, hp12, hp24, bandPass, notch, allPass, comb };
 enum DelayAlgo  { granular = 0, tape, analogBbd, pingPong, stereoDelay, modulated, diffusion };
-enum ReverbAlgo { room = 0, plate, hall, cloud };
+enum ReverbAlgo { room = 0, plate, hall, cloud, spring, gated };
 enum AnalogType { warm = 0, hot, cool, vintage, clean, loFi };
 enum VibeMode   { vibeChorus = 0, vibeVibrato };
 
@@ -40,9 +42,35 @@ enum MoodWetMode  { moodReverb = 0, moodDelay, moodSlip };
 enum MoodLoopMode { moodEnv = 0, moodTape, moodStretch };
 } // namespace
 
+// A patch's reverb is one of the Reverb card's own presets (ReverbPresets.h):
+// its controls are written into the patch, and the patch names it, so the
+// card's PRESET menu shows which one.
+void useReverbPreset(std::vector<FactoryPreset>& presets, const char* patch, int type, const char* reverbPreset)
+{
+    const auto* preset = px3::reverb::findPreset(type, reverbPreset);
+    jassert(preset != nullptr);
+    if (preset == nullptr) { return; }
+    for (auto& p : presets)
+    {
+        if (juce::String(p.name) != patch) { continue; }
+        auto& params = p.params;
+        params.erase(std::remove_if(params.begin(), params.end(), [](const auto& entry)
+        {
+            const juce::String id(entry.first);
+            return id.startsWith("fx.reverb.") && id != "fx.reverb.enabled" && id != "fx.reverb.amount";
+        }), params.end());
+        params.push_back({ "fx.reverb.algorithm", static_cast<float>(type) });
+        for (const auto& spec : px3::reverb::kParameterSpecs)
+            params.push_back({ spec.id, px3::reverb::presetValue(*preset, spec.control) });
+        p.reverbPreset = std::string(px3::reverb::kTypeNames[type]) + "/" + reverbPreset;
+        return;
+    }
+    jassertfalse;
+}
+
 std::vector<FactoryPreset> factoryPresets()
 {
-    return {
+    auto presets = std::vector<FactoryPreset> {
 
     // =======================================================================
     // BASS
@@ -112,7 +140,7 @@ std::vector<FactoryPreset> factoryPresets()
         { "voice.filter1.comb.tuning", 82.0f }, { "voice.filter1.comb.decay", 4.5f }, { "voice.filter1.comb.damping", 0.42f },
         { "voice.filter1.comb.dispersion", 0.30f }, { "voice.filter1.comb.drive", 0.25f }, { "voice.filter1.comb.mix", 0.85f },
         { "voice.amp.attack", 0.002f }, { "voice.amp.decay", 0.60f }, { "voice.amp.sustain", 0.30f }, { "voice.amp.release", 0.90f },
-        { "fx.reverb.amount", 0.18f }, { "fx.reverb.algorithm", room }, { "fx.reverb.size", 0.35f }, { "fx.reverb.decay", 0.30f },
+        { "fx.reverb.amount", 0.05f }, { "fx.reverb.algorithm", room }, { "fx.reverb.size", 0.35f }, { "fx.reverb.decay", 0.30f },
         { "fx.spread.amount", 0.22f }, { "fx.spread.mode", monoSafe },
         { "mix.master.level", 0.72f } } },
 
@@ -131,7 +159,7 @@ std::vector<FactoryPreset> factoryPresets()
         { "voice.amp.attack", 0.008f }, { "voice.amp.decay", 0.35f }, { "voice.amp.sustain", 0.72f }, { "voice.amp.release", 0.30f },
         { "fx.chorus.amount", 0.52f }, { "fx.chorus.mode", ensemble }, { "fx.chorus.rate", 0.28f }, { "fx.chorus.width", 0.85f },
         { "fx.delay.amount", 0.32f }, { "fx.delay.algorithm", pingPong }, { "fx.delay.time", 0.38f }, { "fx.delay.feedback", 0.42f },
-        { "fx.reverb.amount", 0.20f }, { "fx.reverb.algorithm", plate }, { "fx.reverb.decay", 0.42f },
+        { "fx.reverb.amount", 0.07f }, { "fx.reverb.algorithm", plate }, { "fx.reverb.decay", 0.42f },
         { "fx.spread.amount", 0.45f }, { "fx.spread.mode", wide },
         { "mix.master.level", 0.58f } } },
 
@@ -145,7 +173,7 @@ std::vector<FactoryPreset> factoryPresets()
         { "voice.filter1.enabled", 1 }, { "voice.filter1.type", lp12 }, { "voice.filter1.cutoff", 4800.0f }, { "voice.filter1.resonance", 1.15f },
         { "voice.amp.attack", 0.012f }, { "voice.amp.decay", 0.24f }, { "voice.amp.sustain", 0.78f }, { "voice.amp.release", 0.26f },
         { "fx.delay.amount", 0.28f }, { "fx.delay.algorithm", modulated }, { "fx.delay.time", 0.30f }, { "fx.delay.feedback", 0.36f },
-        { "fx.reverb.amount", 0.16f }, { "fx.reverb.algorithm", room }, { "fx.reverb.size", 0.40f }, { "fx.reverb.decay", 0.28f },
+        { "fx.reverb.amount", 0.05f }, { "fx.reverb.algorithm", room }, { "fx.reverb.size", 0.40f }, { "fx.reverb.decay", 0.28f },
         { "fx.analog.amount", 0.26f }, { "fx.analog.type", hot },
         { "fx.chorus.amount", 0.20f }, { "fx.chorus.mode", dim2 },
         { "mix.master.level", 0.52f } } },
@@ -179,7 +207,7 @@ std::vector<FactoryPreset> factoryPresets()
         { "fx.chorus.amount", 0.48f }, { "fx.chorus.mode", ce1 }, { "fx.chorus.character", 0.72f }, { "fx.chorus.tone", -0.25f },
         { "fx.chorus.width", 0.0f },
         { "fx.delay.amount", 0.22f }, { "fx.delay.algorithm", analogBbd }, { "fx.delay.time", 0.42f }, { "fx.delay.feedback", 0.30f },
-        { "fx.reverb.amount", 0.22f }, { "fx.reverb.algorithm", plate },
+        { "fx.reverb.amount", 0.08f }, { "fx.reverb.algorithm", plate },
         { "mix.master.level", 0.95f } } },
 
     // =======================================================================
@@ -196,7 +224,7 @@ std::vector<FactoryPreset> factoryPresets()
         { "voice.filter1.enabled", 1 }, { "voice.filter1.type", lp24 }, { "voice.filter1.cutoff", 3400.0f }, { "voice.filter1.resonance", 0.42f },
         { "voice.amp.attack", 0.85f }, { "voice.amp.decay", 1.20f }, { "voice.amp.sustain", 0.85f }, { "voice.amp.release", 2.20f },
         { "fx.chorus.amount", 0.55f }, { "fx.chorus.mode", dim2plus4 }, { "fx.chorus.rate", 0.22f }, { "fx.chorus.width", 0.90f },
-        { "fx.reverb.amount", 0.52f }, { "fx.reverb.algorithm", cloud }, { "fx.reverb.size", 0.72f }, { "fx.reverb.decay", 0.68f },
+        { "fx.reverb.amount", 0.36f }, { "fx.reverb.algorithm", cloud }, { "fx.reverb.size", 0.72f }, { "fx.reverb.decay", 0.68f },
         { "fx.reverb.width", 0.90f },
         { "fx.spread.amount", 0.42f }, { "fx.spread.mode", deep },
         { "mix.master.level", 0.56f } } },
@@ -214,7 +242,7 @@ std::vector<FactoryPreset> factoryPresets()
         { "fx.lucy.speed", 0.30f }, { "fx.lucy.loss", 0.40f }, { "fx.lucy.mode", standard },
         { "fx.lucy.verb", 0.55f }, { "fx.lucy.decay", 0.72f }, { "fx.lucy.limiter.threshold", 0.72f },
         { "fx.lucy.spread", 0.75f }, { "fx.lucy.loss.gain", 4.0f },
-        { "fx.reverb.amount", 0.30f }, { "fx.reverb.algorithm", cloud }, { "fx.reverb.decay", 0.60f },
+        { "fx.reverb.amount", 0.14f }, { "fx.reverb.algorithm", cloud }, { "fx.reverb.decay", 0.60f },
         { "mix.master.level", 0.54f } } },
 
     { "Ghost Ensemble", "PADS", "P(X3)",
@@ -265,7 +293,7 @@ std::vector<FactoryPreset> factoryPresets()
         { "voice.filter1.comb.dispersion", 0.45f }, { "voice.filter1.comb.drive", 0.15f }, { "voice.filter1.comb.mix", 0.68f },
         { "voice.amp.attack", 0.001f }, { "voice.amp.decay", 0.42f }, { "voice.amp.sustain", 0.24f }, { "voice.amp.release", 0.55f },
         { "fx.delay.amount", 0.30f }, { "fx.delay.algorithm", diffusion }, { "fx.delay.time", 0.26f }, { "fx.delay.feedback", 0.34f },
-        { "fx.reverb.amount", 0.26f }, { "fx.reverb.algorithm", plate }, { "fx.reverb.decay", 0.40f },
+        { "fx.reverb.amount", 0.11f }, { "fx.reverb.algorithm", plate }, { "fx.reverb.decay", 0.40f },
         { "fx.chorus.amount", 0.22f }, { "fx.chorus.mode", dim1 },
         { "mix.master.level", 0.95f } } },
 
@@ -282,7 +310,7 @@ std::vector<FactoryPreset> factoryPresets()
         { "fx.lucy.loss", 0.58f }, { "fx.lucy.speed", 0.68f }, { "fx.lucy.spread", 0.85f },
         { "fx.lucy.filter", 0.26f }, { "fx.lucy.freq", 0.66f }, { "fx.lucy.limiter.threshold", 0.68f }, { "fx.lucy.loss.gain", 9.0f },
         { "fx.delay.amount", 0.26f }, { "fx.delay.algorithm", stereoDelay }, { "fx.delay.time", 0.22f }, { "fx.delay.feedback", 0.30f },
-        { "fx.reverb.amount", 0.24f }, { "fx.reverb.algorithm", room },
+        { "fx.reverb.amount", 0.09f }, { "fx.reverb.algorithm", room },
         { "mix.master.level", 0.95f } } },
 
     { "Music Box", "PLUCKS", "P(X3)",
@@ -295,7 +323,7 @@ std::vector<FactoryPreset> factoryPresets()
         { "voice.filter1.enabled", 1 }, { "voice.filter1.type", lp12 }, { "voice.filter1.cutoff", 8000.0f }, { "voice.filter1.resonance", 0.30f },
         { "voice.amp.attack", 0.001f }, { "voice.amp.decay", 0.55f }, { "voice.amp.sustain", 0.05f }, { "voice.amp.release", 0.70f },
         { "fx.delay.amount", 0.28f }, { "fx.delay.algorithm", tape }, { "fx.delay.time", 0.34f }, { "fx.delay.feedback", 0.32f },
-        { "fx.reverb.amount", 0.30f }, { "fx.reverb.algorithm", hall }, { "fx.reverb.size", 0.60f }, { "fx.reverb.decay", 0.45f },
+        { "fx.reverb.amount", 0.14f }, { "fx.reverb.algorithm", hall }, { "fx.reverb.size", 0.60f }, { "fx.reverb.decay", 0.45f },
         { "fx.chorus.amount", 0.24f }, { "fx.chorus.mode", dim1 }, { "fx.chorus.rate", 0.20f },
         { "mix.master.level", 0.72f } } },
 
@@ -311,7 +339,7 @@ std::vector<FactoryPreset> factoryPresets()
         { "voice.amp.attack", 0.002f }, { "voice.amp.decay", 0.55f }, { "voice.amp.sustain", 0.40f }, { "voice.amp.release", 0.45f },
         { "fx.vibe.mode", vibeChorus }, { "fx.vibe.intensity", 0.72f }, { "fx.vibe.speed", 0.42f },
         { "fx.analog.amount", 0.18f }, { "fx.analog.type", vintage },
-        { "fx.reverb.amount", 0.18f }, { "fx.reverb.algorithm", room },
+        { "fx.reverb.amount", 0.05f }, { "fx.reverb.algorithm", room },
         { "mix.master.level", 0.62f } } },
 
     // =======================================================================
@@ -347,7 +375,7 @@ std::vector<FactoryPreset> factoryPresets()
         { "fx.doom.mix", 0.58f }, { "fx.doom.wet.mode", flip }, { "fx.doom.wet.time", 0.42f }, { "fx.doom.wet.modify", 0.88f },
         { "fx.doom.balance", 1.0f }, { "fx.doom.routing", inputOnly }, { "fx.doom.clock", 0.85f },
         { "fx.doom.glue", 0.20f }, { "fx.doom.spread", 0.85f }, { "fx.doom.eq", 0.10f },
-        { "fx.reverb.amount", 0.34f }, { "fx.reverb.algorithm", hall }, { "fx.reverb.decay", 0.55f },
+        { "fx.reverb.amount", 0.17f }, { "fx.reverb.algorithm", hall }, { "fx.reverb.decay", 0.55f },
         { "mix.master.level", 0.54f } } },
 
     { "Radio Ghost", "EXPERIMENTAL", "P(X3)",
@@ -367,7 +395,7 @@ std::vector<FactoryPreset> factoryPresets()
         { "fx.doom.loop.modify", 0.30f }, { "fx.doom.routing", inputPlusLoop }, { "fx.doom.balance", 0.55f },
         { "fx.doom.clock", 0.42f }, { "fx.doom.glue", 0.28f }, { "fx.doom.spread", 0.70f },
         { "fx.doom.cross", 0.35f }, { "fx.doom.cross.source", 0 },
-        { "fx.reverb.amount", 0.26f }, { "fx.reverb.algorithm", cloud },
+        { "fx.reverb.amount", 0.11f }, { "fx.reverb.algorithm", cloud },
         { "mix.master.level", 0.52f } } },
 
     { "Comb Reactor", "EXPERIMENTAL", "P(X3)",
@@ -402,10 +430,25 @@ std::vector<FactoryPreset> factoryPresets()
         { "fx.chorus.width", 0.95f }, { "fx.chorus.depth", 0.58f }, { "fx.chorus.character", 0.45f },
         { "fx.spread.amount", 0.70f }, { "fx.spread.mode", wide }, { "fx.spread.width", 0.85f },
         { "fx.spread.depth", 0.60f }, { "fx.spread.high.width", 0.90f },
-        { "fx.reverb.amount", 0.22f }, { "fx.reverb.algorithm", plate },
+        { "fx.reverb.amount", 0.08f }, { "fx.reverb.algorithm", plate },
         { "mix.master.level", 0.54f } } },
 
     };
+
+    useReverbPreset(presets, "Sunken Bell", room, "Small Studio");
+    useReverbPreset(presets, "Neon Arterial", plate, "Synth Plate");
+    useReverbPreset(presets, "Hollow Siren", room, "Synth Room");
+    useReverbPreset(presets, "Vowel Machine", plate, "Vocal-ish Synth");
+    useReverbPreset(presets, "Slow Weather", cloud, "Synth Cloud");
+    useReverbPreset(presets, "Frozen Transmission", cloud, "Ethereal Pad");
+    useReverbPreset(presets, "Porcelain", plate, "Bright Plate");
+    useReverbPreset(presets, "Rain on Copper", room, "Wide Room");
+    useReverbPreset(presets, "Music Box", hall, "Synth Hall");
+    useReverbPreset(presets, "Lamp Swirl", room, "Synth Room");
+    useReverbPreset(presets, "Splinter Choir", hall, "Wide Pad");
+    useReverbPreset(presets, "Radio Ghost", cloud, "Dark Cloud");
+    useReverbPreset(presets, "Dimension Drift", plate, "Long Plate");
+    return presets;
 }
 
 } // namespace px3::presets

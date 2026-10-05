@@ -205,7 +205,13 @@ Want to change an FX algorithm?
   not a bus effect - it runs per source before the four sources are summed. Any
   change must keep `PX3Tests analoggolden` bit-exact unless it is meant to.
 - DELAY: `shared/DSP/Delay/Delay.cpp`
-- REVERB: `shared/DSP/Reverb/Reverb.cpp`
+- REVERB: `shared/DSP/Reverb/` - the six types in `ReverbEngines.h`, the shared
+  path (pre-delay, type switching, MIX) in `Reverb.cpp`, parameters and presets
+  in `ReverbParameters.h` / `ReverbPresets.h` (docs/REVERB_DSP_DESIGN.md).
+  Tests: `PX3Tests reverb`; numbers: `PX3Tests reverbmetrics` and
+  `PX3Diag reverb-metrics [rate]`; listening set + preset screen:
+  `PX3Diag reverb-renders <dir>` (`PX3_RV_ONLY=<name>`, `PX3_RV_NOWAV=1`);
+  click hunting: `PX3Diag reverb-zip <type> <control>`.
 - MOOD: `shared/DSP/Mood/Mood.cpp`
 - DOOM: `shared/DSP/Doom/Doom.cpp` - design notes in `docs/DOOM_DSP_DESIGN.md`
 - LUCY: `shared/DSP/Lucy/Lucy.cpp` - design notes in `docs/LUCY_DSP_DESIGN.md`
@@ -422,7 +428,8 @@ pass/fail results. These exist so that "sounds better" can be argued from number
 - `probe` - general parameter sweeps
 - `gainstage` - level through each stage of the chain
 - `vibemetrics` - per-voice drift correlation, DC offset, level neutrality
-- `reverbmetrics` - echo density, spectral flatness, decay nonlinearity, RT60
+- `reverbmetrics` - per type and decay: RT60, mixing time, tail ringing against
+  decaying noise, spectral flatness, decay nonlinearity, correlation, balance
 - `delaymetrics` - echo times, zero-amount transparency, stability, sample-rate consistency
 - `delaystress` - control sweeps followed by silence, to catch tails that never decay
 - `moodmetrics` - per-mode stereo behaviour, clock transposition, degrade response

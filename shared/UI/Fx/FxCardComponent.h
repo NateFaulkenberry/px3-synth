@@ -85,17 +85,27 @@ public:
     // say it holds two things.
     void addHeadingRow(const juce::String& text, const juce::String& tooltip = {});
 
+    // A KNOB SLOT: one cell of the most recently added knob row, shared by
+    // several controls of which at most one is shown (the Reverb's per-type
+    // control: EARLY, SHIMMER, DRIP or SHAPE). Every member is a real knob,
+    // attached by id like any other and automatable whether shown or not.
+    void addKnobSlotToLastRow(const juce::String& slotId, std::vector<KnobSpec> members);
+    // Shows `memberId` in the slot; an empty id leaves the cell empty.
+    void showSlotMember(const juce::String& slotId, const juce::String& memberId);
+    juce::String shownSlotMember(const juce::String& slotId) const;
+
+    // A knob its current mode does not read: drawn faded, still movable.
+    void setKnobDimmed(const juce::String& id, bool dimmed);
+    bool isKnobDimmed(const juce::String& id) const;
+    // A knob whose meaning follows a mode (the Reverb's DECAY reads LENGTH on
+    // GATED): its caption, the value-readout's restore text, and tooltips.
+    void setKnobCaption(const juce::String& id, const juce::String& caption, const juce::String& tooltip);
+
     // Marks the most recently added row as ADVANCED: it is laid out only while
     // the card's SHIFT/ADVANCED switch (setAltMode) is on, and takes no space
     // otherwise. This is the card's "advanced fold".
     void markLastRowAdvanced();
 
-    // A strip along the bottom of the card, outside the declared rows, for a
-    // product-specific extra (the Synth's Reverb IR loader). Not owned. Takes
-    // space only while shown (setFooterShown).
-    void setFooter(juce::Component* footerComponent, int heightPx);
-    void setFooterShown(bool shouldShow);
-    bool isFooterShown() const noexcept { return footer != nullptr && footerShown; }
 
     // One line saying what the effect does: the card's tooltip (hover anywhere
     // on its faceplate) and the power button's.
@@ -181,9 +191,6 @@ private:
     void showValueFor(juce::Component* knobComponent, bool show);
     bool isRowLaidOut(const Row& row) const noexcept { return ! row.advanced || altMode; }
     juce::String description;
-    juce::Component* footer { nullptr };
-    int footerHeight { 0 };
-    bool footerShown { false };
 
     struct KnobEntry
     {
@@ -200,6 +207,12 @@ private:
         // The printed names, restored when a value readout ends.
         juce::String caption;
         juce::String altCaption;
+
+        // Knob-slot membership: the cell this knob shares, and whether it is
+        // the one the slot currently shows.
+        juce::String slot {};
+        bool slotShown { false };
+        bool dimmed { false };
     };
 
     struct ChoiceEntry
@@ -218,6 +231,7 @@ private:
     void layoutToggleRow(int rowIndex, const Row& row);
     void layoutChoiceRow(int rowIndex, const Row& row);
     void layoutKnobRow(int rowIndex, const Row& row, bool feature);
+    KnobEntry makeKnobEntry(const KnobSpec& spec);
 
     juce::String styleKey;
     juce::String title;

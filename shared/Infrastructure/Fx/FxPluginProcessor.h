@@ -64,6 +64,11 @@ protected:
     // processSampleFrame inlines.
     virtual void processFxBlock(juce::AudioBuffer<float>& buffer) = 0;
 
+    // State that is not a parameter (PX3 Reverb's preset selection). Written
+    // as properties on the state root; a product that has none ignores both.
+    virtual void writeExtraState(juce::ValueTree&) const {}
+    virtual void readExtraState(const juce::ValueTree&) {}
+
 private:
     double bpm { 120.0 };
 

@@ -6,7 +6,6 @@
 #include "SpeechBubbleLabel.h"
 #include "MacroKnobLook.h"
 #include "FxCardComponent.h"
-#include "ReverbIrStrip.h"
 
 #include <JuceHeader.h>
 
@@ -550,7 +549,7 @@ private:
     void buildVibeCard();
     void buildAnalogCard();
     void attachCardControls(px3::ui::FxCardComponent& card,
-                            std::initializer_list<std::pair<const char*, const char*>> knobs,
+                            const std::vector<std::pair<const char*, const char*>>& knobs,
                             std::initializer_list<std::pair<const char*, const char*>> choices,
                             const char* enabledParameterId);
     void refreshLfoFrequencyLabel();
@@ -1006,8 +1005,6 @@ private:
     px3::ui::FxCardComponent* driveCard { nullptr };
     px3::ui::FxCardComponent* vibeCard { nullptr };
     px3::ui::FxCardComponent* analogCard { nullptr };
-    // The Reverb card's IR loader footer, shown while MODE is IR.
-    ReverbIrStrip reverbIrStrip;
     std::unique_ptr<MixPanel> mixPanel;
     std::unique_ptr<SettingsPanel> settingsPanel;
     std::unique_ptr<TopMenuBar> topMenuBar;

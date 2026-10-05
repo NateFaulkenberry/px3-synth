@@ -407,7 +407,7 @@ clean rather than releasing an old tail.
 | **LUCY** | Spectral degradation built on a masking coder: low-bitrate artifacts, packet loss, spectral freeze and jitter | PX3 Lucy | [LUCY_DSP_DESIGN.md](docs/LUCY_DSP_DESIGN.md) |
 | **DELAY** | Seven algorithms — Granular, Tape, Analog/BBD, Ping-Pong, Stereo, Modulated, Diffusion — with tempo sync; FEEDBACK sets a decay time | PX3 Delay | — |
 | **MOOD** | Micro-looper (ENV / TAPE / STRETCH) and wet channel (REVERB / DELAY / SLIP) tied together by CLOCK, the engine's sample rate | PX3 Mood | [MOOD_DSP_DESIGN.md](docs/MOOD_DSP_DESIGN.md) |
-| **REVERB** | ROOM, PLATE (Dattorro), HALL and CLOUD feedback networks, and IR for your own impulse responses | PX3 Reverb | — |
+| **REVERB** | Six algorithmic types - ROOM (image-source reflections), PLATE (Dattorro), HALL (16-line FDN), CLOUD (with octave-up SHIMMER), SPRING (dispersive chirps) and GATED - each with its own presets | PX3 Reverb | [REVERB_DSP_DESIGN.md](docs/REVERB_DSP_DESIGN.md) |
 | **SPREAD** | Mono-compatible widening by allpass decorrelation, on the master bus after everything else | PX3 Spread | [STEREO_SPREAD_DSP_DESIGN.md](docs/STEREO_SPREAD_DSP_DESIGN.md) |
 
 Mood, Doom and Lucy are inspired by Chase Bliss pedals (behaviour only, no code);

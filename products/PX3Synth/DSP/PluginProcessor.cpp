@@ -536,7 +536,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     reverbEnabledParam = parameterCatalog.createBool("fx.reverb.enabled", "Reverb Enabled", true);
     reverbAlgorithmParam = parameterCatalog.createChoice("fx.reverb.algorithm",
                                                            "Reverb Mode",
-                                                           juce::StringArray { "ROOM", "PLATE", "HALL", "CLOUD", "IR" },
+                                                           px3::reverb::typeChoices(),
                                                            0);
     moodEnabledParam = parameterCatalog.createBool("fx.mood.enabled", "Mood Enabled", true);
     moodFreezeParam = parameterCatalog.createBool("fx.mood.freeze", "Mood Freeze", false);
@@ -743,16 +743,16 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
                                                          px3::AnalogEngine::profileNames(),
                                                          0);
 
-    reverbSizeParam = parameterCatalog.createFloat("fx.reverb.size", "Reverb Size", juce::NormalisableRange<float>(0.0f, 1.0f), 0.52f);
-    reverbDecayParam = parameterCatalog.createFloat("fx.reverb.decay", "Reverb Decay", juce::NormalisableRange<float>(0.0f, 1.0f), 0.48f);
-    reverbDampingParam = parameterCatalog.createFloat("fx.reverb.damping", "Reverb Damping", juce::NormalisableRange<float>(0.0f, 1.0f), 0.46f);
-    reverbPreDelayParam = parameterCatalog.createFloat("fx.reverb.pre.delay", "Reverb PreDelay", juce::NormalisableRange<float>(0.0f, 1.0f), 0.08f);
-    reverbModDepthParam = parameterCatalog.createFloat("fx.reverb.mod.depth", "Reverb Mod Depth", juce::NormalisableRange<float>(0.0f, 1.0f), 0.24f);
-    reverbModRateParam = parameterCatalog.createFloat("fx.reverb.mod.rate", "Reverb Mod Rate", juce::NormalisableRange<float>(0.0f, 1.0f), 0.18f);
-    reverbWidthParam = parameterCatalog.createFloat("fx.reverb.width", "Reverb Width", juce::NormalisableRange<float>(0.0f, 1.0f), 0.86f);
-    reverbCloudFeedbackParam = parameterCatalog.createFloat("fx.reverb.cloud.feedback", "Reverb Cloud Feedback", juce::NormalisableRange<float>(0.0f, 1.0f), 0.62f);
-    reverbCloudDiffusionParam = parameterCatalog.createFloat("fx.reverb.cloud.diffusion", "Reverb Cloud Diffusion", juce::NormalisableRange<float>(0.0f, 1.0f), 0.54f);
-    reverbShimmerParam = parameterCatalog.createFloat("fx.reverb.shimmer", "Reverb Shimmer", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
+    // The reverb's controls, declared once in ReverbParameters.h for the Synth
+    // and PX3 Reverb. Their value text follows the type: DECAY at the same
+    // position is a different number of seconds in a room and a hall.
+    for (const auto& spec : px3::reverb::kParameterSpecs)
+    {
+        auto* algorithm = reverbAlgorithmParam;
+        reverbControlParams[static_cast<std::size_t>(spec.control)] = parameterCatalog.createFloat(
+            spec.id, spec.name, juce::NormalisableRange<float>(0.0f, 1.0f), spec.defaultValue,
+            px3::reverb::attributesFor(spec.control, [algorithm] { return algorithm->getIndex(); }));
+    }
     pitchBendRangeParam = parameterCatalog.createInt("performance.pitch.bend.range",
                                                        "Pitch Bend Range",
                                                        1,
@@ -1017,16 +1017,10 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
 
     addParameter(analogEnabledParam);
     addParameter(analogProfileParam);
-    addParameter(reverbSizeParam);
-    addParameter(reverbDecayParam);
-    addParameter(reverbDampingParam);
-    addParameter(reverbPreDelayParam);
-    addParameter(reverbModDepthParam);
-    addParameter(reverbModRateParam);
-    addParameter(reverbWidthParam);
-    addParameter(reverbCloudFeedbackParam);
-    addParameter(reverbCloudDiffusionParam);
-    addParameter(reverbShimmerParam);
+    for (auto* parameter : reverbControlParams)
+    {
+        addParameter(parameter);
+    }
     addParameter(pitchBendRangeParam);
     for (int lfoIndex = 0; lfoIndex < kLfoSourceCount; ++lfoIndex)
     {

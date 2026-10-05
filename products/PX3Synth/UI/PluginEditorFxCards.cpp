@@ -10,6 +10,7 @@
 // nothing that was file-local to PluginEditor.cpp.
 
 #include "PluginEditor.h"
+#include "ReverbCard.h"
 #include "ParameterKnob.h"
 #include "KnobOverlays.h"
 #include "Card.h"
@@ -92,11 +93,16 @@ void PX3SynthAudioProcessorEditor::refreshFxBypassUI()
     {
         reverbCard->bypassButton().setToggleState(reverbEnabled2, juce::dontSendNotification);
         reverbCard->setActive(reverbEnabled2);
-        // IR is the last algorithm choice; its loader shows only in that mode.
-        const auto& algorithm = audioProcessor.getReverbAlgorithmParam();
-        const auto irMode = algorithm.choices[algorithm.getIndex()] == "IR";
-        reverbCard->setFooterShown(irMode);
-        if (irMode) { reverbIrStrip.refresh(); }
+        // Per-type slot, captions, dimming and the PRESET menu (ReverbCard.h,
+        // shared with PX3 Reverb).
+        const auto type = audioProcessor.getReverbAlgorithmParam().getIndex();
+        px3::ui::reverbCard::syncControls(*reverbCard, type);
+        if (auto* box = reverbCard->choice("preset"))
+        {
+            px3::ui::reverbCard::syncPresetMenu(*box, type, audioProcessor.getReverbPresetSelection(),
+                                                [this](px3::reverb::Control c)
+                                                { return static_cast<const juce::RangedAudioParameter&>(audioProcessor.getReverbControlParam(c)).getValue(); });
+        }
     }
 
     const auto chorusEnabled = audioProcessor.getChorusEnabledParam().get();
@@ -316,7 +322,7 @@ void PX3SynthAudioProcessorEditor::buildLucyCard()
 // up on the processor - the IDs are the contract, the card ids are local names.
 void PX3SynthAudioProcessorEditor::attachCardControls(
     px3::ui::FxCardComponent& card,
-    std::initializer_list<std::pair<const char*, const char*>> knobs,
+    const std::vector<std::pair<const char*, const char*>>& knobs,
     std::initializer_list<std::pair<const char*, const char*>> choices,
     const char* enabledParameterId)
 {
@@ -350,20 +356,15 @@ void PX3SynthAudioProcessorEditor::buildReverbCard()
     // (FxCardDeclarations.h).
     auto card = std::make_unique<px3::ui::FxCardComponent>("reverb", "REVERB");
     px3::ui::fxcards::declareReverbRows(*card, audioProcessor.getReverbAlgorithmParam().choices);
-    attachCardControls(*card,
-                       { { "amount", "fx.reverb.amount" }, { "size", "fx.reverb.size" },
-                         { "decay", "fx.reverb.decay" }, { "damping", "fx.reverb.damping" },
-                         { "preDelay", "fx.reverb.pre.delay" }, { "modDepth", "fx.reverb.mod.depth" },
-                         { "modRate", "fx.reverb.mod.rate" }, { "width", "fx.reverb.width" },
-                         { "cloudFeedback", "fx.reverb.cloud.feedback" },
-                         { "cloudDiffusion", "fx.reverb.cloud.diffusion" },
-                         { "shimmer", "fx.reverb.shimmer" } },
-                       { { "algorithm", "fx.reverb.algorithm" } },
-                       "fx.reverb.enabled");
-    reverbIrStrip.onLoad = [this](const juce::File& file) { return audioProcessor.loadReverbImpulseResponse(file); };
-    reverbIrStrip.onClear = [this] { audioProcessor.clearReverbImpulseResponse(); };
-    reverbIrStrip.currentName = [this] { return audioProcessor.getReverbImpulseResponseName(); };
-    card->setFooter(&reverbIrStrip, 26);
+    std::vector<std::pair<const char*, const char*>> knobs { { "amount", "fx.reverb.amount" } };
+    for (const auto& spec : px3::reverb::kParameterSpecs)
+        knobs.push_back({ px3::ui::reverbCard::kKnobIds[static_cast<int>(spec.control)], spec.id });
+    attachCardControls(*card, knobs, { { "algorithm", "fx.reverb.algorithm" } }, "fx.reverb.enabled");
+    if (auto* box = card->choice("preset"))
+    {
+        px3::ui::reverbCard::wirePresetMenu(*box, [this] { return audioProcessor.getReverbAlgorithmParam().getIndex(); },
+                                            [this](int type, const juce::String& name) { audioProcessor.applyReverbPreset(type, name); });
+    }
     reverbCard = card.get();
     fxPanel->addCard(px3::fxStageReverb, std::move(card));
 }

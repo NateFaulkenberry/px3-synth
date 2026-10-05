@@ -15,6 +15,7 @@
 #include "MockUpdateProvider.h"
 #include "OscillatorMode.h"
 #include "UniVibe.h"
+#include "Reverb.h"
 
 #include <algorithm>
 #include <chrono>
@@ -865,6 +866,75 @@ int main(int argc, char* argv[])
             }, 200, 3);
             std::printf("  16 voices, VIBE %-3s  median %8.1f us (%5.2f%%), p99 %8.1f us\n", on ? "on" : "off",
                         timing.medianMicros, 100.0 * timing.medianMicros / budget, timing.p99Micros);
+        }
+        return 0;
+    }
+
+    if (filter == "reverb")
+    {
+        // REVERB is a stereo FX-chain stage. Each algorithm is timed as the
+        // class alone on noise, fully wet, so the figure is the DSP and nothing
+        // else. Median of five sweeps, because the machine is shared.
+        const auto budget = 1.0e6 * static_cast<double>(kBlockSize) / kSampleRate;
+        std::printf("\nPX3 REVERB CPU  %.0f Hz, %d samples (class alone, stereo noise, median of 5)\n",
+                    kSampleRate, kBlockSize);
+        static constexpr const char* kNames[] = { "ROOM", "PLATE", "HALL", "CLOUD", "SPRING", "GATED" };
+        const auto algorithmCount = juce::jlimit(1, 6, juce::SystemStats::getEnvironmentVariable("PX3_BENCH_REVERB_TYPES", "6").getIntValue());
+        for (int algorithm = 0; algorithm < algorithmCount; ++algorithm)
+        {
+            for (const auto shimmer : { 0.0f, 1.0f })
+            {
+                if (shimmer > 0.0f && algorithm != 3) { continue; }
+                std::vector<double> sweeps;
+                float sink = 0.0f;
+                for (int sweep = 0; sweep < 5; ++sweep)
+                {
+                    auto reverb = std::make_unique<::Reverb>();
+                    reverb->prepare(kSampleRate);
+                    ReverbSettings settings;
+                    settings.enabled = true;
+                    settings.amount = 1.0f;
+                    settings.algorithmIndex = algorithm;
+                    settings.decay = 0.7f;
+                    settings.size = 0.7f;
+                    settings.shimmer = shimmer;
+                    juce::Random random(7);
+                    std::vector<float> noise(static_cast<std::size_t>(kBlockSize) * 2u);
+                    for (auto& v : noise) { v = random.nextFloat() * 0.5f - 0.25f; }
+                    for (int block = 0; block < 200; ++block)   // past the type fade-in
+                    {
+                        reverb->updateForBlock(settings, kBlockSize);
+                        for (int i = 0; i < kBlockSize; ++i)
+                        {
+                            float l = 0.0f, r = 0.0f;
+                            reverb->processSampleFrame(noise[static_cast<std::size_t>(i)],
+                                                       noise[static_cast<std::size_t>(i + kBlockSize)], l, r);
+                            sink += l + r;
+                        }
+                    }
+                    constexpr int kBlocks = 1500;
+                    const auto start = std::chrono::steady_clock::now();
+                    for (int block = 0; block < kBlocks; ++block)
+                    {
+                        reverb->updateForBlock(settings, kBlockSize);
+                        for (int i = 0; i < kBlockSize; ++i)
+                        {
+                            float l = 0.0f, r = 0.0f;
+                            reverb->processSampleFrame(noise[static_cast<std::size_t>(i)],
+                                                       noise[static_cast<std::size_t>(i + kBlockSize)], l, r);
+                            sink += l + r;
+                        }
+                    }
+                    sweeps.push_back(std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - start).count()
+                                     / static_cast<double>(kBlocks));
+                }
+                std::sort(sweeps.begin(), sweeps.end());
+                const auto micros = sweeps[sweeps.size() / 2];
+                std::printf("  %-6s%s %8.2f us per block (%5.3f%% of budget)  best %8.2f  [sink %g]\n",
+                            kNames[algorithm], shimmer > 0.0f ? "+SHIM" : "     ", micros, 100.0 * micros / budget,
+                            sweeps.front(), static_cast<double>(sink));
+                std::fflush(stdout);
+            }
         }
         return 0;
     }

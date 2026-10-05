@@ -25,6 +25,7 @@
 #include "MoodControlModel.h"
 #include "PianoKeyboard.h"
 #include "Reverb.h"
+#include "ReverbParameters.h"
 #include "SubOscTypes.h"
 #include "SynthSound.h"
 #include "SmoothedGain.h"
@@ -540,19 +541,16 @@ public:
     juce::AudioParameterFloat& getReverbAmountParam() const;
     juce::AudioParameterBool& getReverbEnabledParam() const;
     juce::AudioParameterChoice& getReverbAlgorithmParam() const;
-    // The nine that had no UI. They were registered, automatable and persisted
-    // from the start - only unreachable, because nothing in the editor asked
-    // for them. The Reverb card shows them now, the same nine the standalone
-    // has always shown.
-    juce::AudioParameterFloat& getReverbSizeParam() const;
-    juce::AudioParameterFloat& getReverbDecayParam() const;
-    juce::AudioParameterFloat& getReverbDampingParam() const;
-    juce::AudioParameterFloat& getReverbPreDelayParam() const;
-    juce::AudioParameterFloat& getReverbModDepthParam() const;
-    juce::AudioParameterFloat& getReverbModRateParam() const;
-    juce::AudioParameterFloat& getReverbWidthParam() const;
-    juce::AudioParameterFloat& getReverbCloudFeedbackParam() const;
-    juce::AudioParameterFloat& getReverbCloudDiffusionParam() const;
+    // PRE-DELAY .. SHAPE (see px3::reverb::Control). MIX is getReverbAmountParam.
+    juce::AudioParameterFloat& getReverbControlParam(px3::reverb::Control control) const;
+    // The Reverb card's PRESET menu: the last preset applied, as "TYPE/Name",
+    // or empty. A selection, not a parameter - the values it set are the
+    // parameters. Saved with the state and in patches.
+    juce::String getReverbPresetSelection() const;
+    void setReverbPresetSelection(const juce::String& selection);
+    // Message thread. Writes the preset's controls (not MIX, not the bypass)
+    // as host gestures; the reverb smooths every one, so it cannot click.
+    void applyReverbPreset(int type, const juce::String& name);
     juce::AudioParameterBool& getMoodEnabledParam() const;
     juce::AudioParameterBool& getMoodFreezeParam() const;
     juce::AudioParameterFloat& getMoodMixParam() const;
@@ -1083,16 +1081,8 @@ private:
     float outputSplitCurrent { 0.0f };
     float outputSplitCoeff { 1.0f };
     juce::AudioParameterChoice* analogProfileParam { nullptr };
-    juce::AudioParameterFloat* reverbSizeParam { nullptr };
-    juce::AudioParameterFloat* reverbDecayParam { nullptr };
-    juce::AudioParameterFloat* reverbDampingParam { nullptr };
-    juce::AudioParameterFloat* reverbPreDelayParam { nullptr };
-    juce::AudioParameterFloat* reverbModDepthParam { nullptr };
-    juce::AudioParameterFloat* reverbModRateParam { nullptr };
-    juce::AudioParameterFloat* reverbWidthParam { nullptr };
-    juce::AudioParameterFloat* reverbCloudFeedbackParam { nullptr };
-    juce::AudioParameterFloat* reverbCloudDiffusionParam { nullptr };
-    juce::AudioParameterFloat* reverbShimmerParam { nullptr };
+    std::array<juce::AudioParameterFloat*, px3::reverb::kControlCount> reverbControlParams {};
+    juce::String reverbPresetSelection;   // message thread
     juce::AudioParameterInt* pitchBendRangeParam { nullptr };
     std::array<juce::AudioParameterBool*, kLfoSourceCount> lfoEnabledParams { { nullptr, nullptr, nullptr } };
     std::array<juce::AudioParameterFloat*, kLfoSourceCount> lfoFrequencyParams { { nullptr, nullptr, nullptr } };
@@ -1463,13 +1453,6 @@ public:
 private:
     px3::AnalogEngine analogEngine;
     ::Reverb reverb;
-    juce::String reverbImpulseResponsePath;
-public:
-    // Reverb IR mode. Message thread: validates, then the convolution engine
-    // loads on its own thread. Empty string on success, else the reason.
-    juce::String loadReverbImpulseResponse(const juce::File& file);
-    void clearReverbImpulseResponse();
-    juce::String getReverbImpulseResponseName() const { return reverb.impulseResponseName(); }
 private:
     int selectedLfoTab { 0 };
     int selectedEnvTab { 0 };

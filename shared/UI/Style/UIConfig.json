@@ -2020,8 +2020,9 @@
         "labelColour": "#E8E8E8",
         "knobSize": 54,
         "featureKnobSize": 77,
-        "choiceWidth": 76,
-        "choiceMaxColumns": 3,
+        "choiceWidth": 120,
+        "choiceGap": 2,
+        "choiceMaxColumns": 2,
         "choiceHeight": 22,
         "labelHeight": 12,
         "readoutHeight": 15,
@@ -2088,19 +2089,19 @@
             }
           },
           "row1": {
-            "height": "11%"
+            "height": "12%"
           },
           "row2": {
-            "height": "19%"
+            "height": "21%"
           },
           "row3": {
-            "height": "19%"
+            "height": "21%"
           },
           "row4": {
             "height": "19%"
           },
           "row5": {
-            "height": "32%"
+            "height": "27%"
           }
         }
       }

@@ -1,4 +1,5 @@
 #include "PluginProcessor.h"
+#include "ReverbPresets.h"
 #include "PluginProcessorInternals.h"
 #include "LfoMode.h"
 #include "SubOscMode.h"
@@ -144,11 +145,11 @@ juce::ValueTree PX3SynthAudioProcessor::createParameterStateTree() const
         state.addChild(userWavetables, -1, nullptr);
     }
 
-    // The reverb's impulse response, by path. A missing file on another
-    // machine leaves the IR mode silent rather than failing the whole state.
-    if (reverbImpulseResponsePath.isNotEmpty())
+    // The Reverb card's PRESET selection ("TYPE/Name"). Only the label: the
+    // values it set are ordinary parameters, saved above like any other.
+    if (reverbPresetSelection.isNotEmpty())
     {
-        state.setProperty("reverbImpulseResponse", reverbImpulseResponsePath, nullptr);
+        state.setProperty("reverbPreset", reverbPresetSelection, nullptr);
     }
 
     // Envelope shapes, and only the ones the four ADSR parameters cannot
@@ -656,14 +657,7 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
         missingWavetableNames[static_cast<std::size_t>(osc)].clear();
     }
 
-    if (const auto irPath = state.getProperty("reverbImpulseResponse").toString(); irPath.isNotEmpty())
-    {
-        if (loadReverbImpulseResponse(juce::File(irPath)).isNotEmpty()) { reverbImpulseResponsePath = irPath; }
-    }
-    else
-    {
-        clearReverbImpulseResponse();
-    }
+    reverbPresetSelection = state.getProperty("reverbPreset").toString();
 
     if (const auto userWavetables = state.getChildWithName(kUserWavetablesId); userWavetables.isValid())
     {
@@ -834,15 +828,22 @@ void PX3SynthAudioProcessor::setLoadedPreset(const LoadedPreset& preset)
     loadedPreset = preset;
 }
 
-juce::String PX3SynthAudioProcessor::loadReverbImpulseResponse(const juce::File& file)
-{
-    const auto error = reverb.loadImpulseResponse(file);
-    if (error.isEmpty()) { reverbImpulseResponsePath = file.getFullPathName(); }
-    return error;
-}
+juce::String PX3SynthAudioProcessor::getReverbPresetSelection() const { return reverbPresetSelection; }
 
-void PX3SynthAudioProcessor::clearReverbImpulseResponse()
+void PX3SynthAudioProcessor::setReverbPresetSelection(const juce::String& selection) { reverbPresetSelection = selection; }
+
+void PX3SynthAudioProcessor::applyReverbPreset(int type, const juce::String& name)
 {
-    reverb.clearImpulseResponse();
-    reverbImpulseResponsePath.clear();
+    const auto* preset = px3::reverb::findPreset(type, name);
+    if (preset == nullptr) { return; }
+    const auto set = [](juce::RangedAudioParameter& parameter, float normalised)
+    {
+        parameter.beginChangeGesture();
+        parameter.setValueNotifyingHost(normalised);
+        parameter.endChangeGesture();
+    };
+    set(*reverbAlgorithmParam, reverbAlgorithmParam->convertTo0to1(static_cast<float>(preset->type)));
+    for (const auto& spec : px3::reverb::kParameterSpecs)
+        set(*reverbControlParams[static_cast<std::size_t>(spec.control)], px3::reverb::presetValue(*preset, spec.control));
+    reverbPresetSelection = juce::String(px3::reverb::kTypeNames[preset->type]) + "/" + preset->name;
 }

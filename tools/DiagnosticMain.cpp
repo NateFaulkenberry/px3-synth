@@ -10,6 +10,7 @@
 #include <JuceHeader.h>
 
 #include "PluginProcessor.h"
+#include "ReverbPresets.h"
 #include "OutputCeiling.h"
 #include "VoiceFilter.h"
 #include "OscillatorUnit.h"
@@ -2262,6 +2263,11 @@ int runOscillatorDump(const juce::String& path);
 
 // tools/VibeRenders.cpp
 int runVibeRenders(const juce::String& outDir);
+// tools/ReverbRenders.cpp
+int runReverbRenders(const juce::String& outDir);
+int runReverbMetrics(double rate);
+int runReverbZip(int type, const juce::String& what);
+int runReverbOnset(int type, int warmup);
 
 int main(int argc, char* argv[])
 {
@@ -2936,6 +2942,80 @@ int main(int argc, char* argv[])
             return exercised ? total : 1;
         };
         if (measureToggling("DOOM/LUCY/COMB switched on+off, playing") != 0) ++failures;
+
+        // REVERB: every type, switched while notes play; presets applied;
+        // MIX to zero and back (the engine sleeps and wakes); every control
+        // swept. The type switch zeroes the arena in chunks on the audio
+        // thread and must not allocate.
+        {
+            px3::diag::resetNoteStartSequence();
+            PX3SynthAudioProcessor processor;
+            setParameter(processor, "fx.reverb.enabled", 1.0f);
+            setParameter(processor, "fx.reverb.amount", 0.5f);
+            setParameter(processor, "mix.send.fx.level", 0.8f);
+            processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+            processor.prepareToPlay(kSampleRate, kBlockSize);
+            juce::AudioBuffer<float> buffer(2, kBlockSize);
+            for (int i = 0; i < 10; ++i)
+            {
+                buffer.clear();
+                juce::MidiBuffer midi;
+                if (i < 4) { midi.addEvent(juce::MidiMessage::noteOn(1, 48 + i * 4, 0.9f), 0); }
+                processor.processBlock(buffer, midi);
+            }
+            const auto presetsByType = [](int type) { return px3::reverb::presetsForType(type); };
+            constexpr int measuredBlocks = 720;
+            int switches = 0, applied = 0;
+            px3rt::allocationCount.store(0, std::memory_order_relaxed);
+            px3rt::traceDepth.store(0, std::memory_order_relaxed);
+            px3rt::captureTrace.store(true, std::memory_order_relaxed);
+            for (int i = 0; i < measuredBlocks; ++i)
+            {
+                px3rt::counting.store(false, std::memory_order_relaxed);
+                const auto type = (i / 40) % px3::reverb::kTypeCount;
+                if (i % 40 == 0) { setParameter(processor, "fx.reverb.algorithm", static_cast<float>(type)); ++switches; }
+                if (i % 40 == 15)
+                {
+                    const auto list = presetsByType(type);
+                    processor.applyReverbPreset(type, list[static_cast<std::size_t>(i / 40) % list.size()].name);
+                    ++applied;
+                }
+                if (i % 40 == 25) { setParameter(processor, "fx.reverb.amount", 0.0f); }
+                if (i % 40 == 32) { setParameter(processor, "fx.reverb.amount", 0.5f); }
+                {
+                    const auto& spec = px3::reverb::kParameterSpecs[static_cast<std::size_t>(i % px3::reverb::kControlCount)];
+                    setParameter(processor, spec.id, static_cast<float>((i * 37) % 100) / 100.0f);
+                }
+                if (i % 90 == 45)
+                {
+                    juce::MidiBuffer notes;
+                    notes.addEvent(juce::MidiMessage::noteOn(1, 60 + (i / 90) % 12, 0.8f), 0);
+                    buffer.clear();
+                    px3rt::counting.store(true, std::memory_order_relaxed);
+                    processor.processBlock(buffer, notes);
+                    continue;
+                }
+                px3rt::counting.store(true, std::memory_order_relaxed);
+                buffer.clear();
+                juce::MidiBuffer midi;
+                processor.processBlock(buffer, midi);
+            }
+            px3rt::counting.store(false, std::memory_order_relaxed);
+            px3rt::captureTrace.store(false, std::memory_order_relaxed);
+            const auto total = px3rt::allocationCount.load(std::memory_order_relaxed);
+            if (const auto depth = px3rt::traceDepth.load(std::memory_order_relaxed); depth > 0)
+            {
+                std::printf("    first allocation was %zu bytes, from:\n", px3rt::traceSize.load(std::memory_order_relaxed));
+                auto** symbols = backtrace_symbols(px3rt::traceFrames.data(), depth);
+                for (int f = 0; f < depth && f < 14; ++f) { std::printf("      %s\n", symbols != nullptr ? symbols[f] : "?"); }
+                std::free(symbols);
+                px3rt::traceDepth.store(0, std::memory_order_relaxed);
+            }
+            std::printf("  %-42s %8lld allocations over %d blocks (%d type switches, %d presets)  %s\n",
+                        "REVERB: types, presets, MIX sleep/wake", total, measuredBlocks, switches, applied,
+                        total == 0 ? "ok" : "*** ALLOCATING ON THE AUDIO THREAD ***");
+            if (total != 0) ++failures;
+        }
 
         std::printf("\n  %lld failure(s)\n", failures);
         return static_cast<int>(failures);
@@ -4911,6 +4991,22 @@ int main(int argc, char* argv[])
         runRegressionSuite(false);
         return 0;
     }
+    else if (arg == "reverb-metrics")
+    {
+        return runReverbMetrics(argc > 2 ? juce::String(argv[2]).getDoubleValue() : 48000.0);
+    }
+    else if (arg == "reverb-onset")
+    {
+        return runReverbOnset(argc > 2 ? juce::String(argv[2]).getIntValue() : 1, argc > 3 ? juce::String(argv[3]).getIntValue() : 16384);
+    }
+    else if (arg == "reverb-zip")
+    {
+        return runReverbZip(argc > 2 ? juce::String(argv[2]).getIntValue() : 0, argc > 3 ? juce::String(argv[3]) : juce::String("size"));
+    }
+    else if (arg == "reverb-renders")
+    {
+        return runReverbRenders(argc > 2 ? juce::String(argv[2]) : juce::String("/tmp/px3-reverb-renders"));
+    }
     else if (arg == "vibe-renders")
     {
         return runVibeRenders(argc > 2 ? juce::String(argv[2]) : juce::String("/tmp/px3-vibe-renders"));
@@ -5164,7 +5260,7 @@ int main(int argc, char* argv[])
     }
     else
     {
-        std::printf("usage: PX3Diag [primary|reintroduce|pruning|tail|release|regress|regress-legacy|eqspectrum|vibe-renders|updatecheck] [dry] [wavDir]\n");
+        std::printf("usage: PX3Diag [primary|reintroduce|pruning|tail|release|regress|regress-legacy|eqspectrum|vibe-renders|reverb-renders|updatecheck] [dry] [wavDir]\n");
         return 1;
     }
 

@@ -2,6 +2,7 @@
 
 #include <JuceHeader.h>
 
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -15,7 +16,7 @@ namespace px3::presets
 // way a refreshed preset reaches someone who has already run the plugin once -
 // the writer skips files that already exist. User presets live in a separate
 // root and are never touched by this.
-inline constexpr int kFactoryLibraryVersion = 23;
+inline constexpr int kFactoryLibraryVersion = 24;
 
 struct FactoryPreset
 {
@@ -29,6 +30,10 @@ struct FactoryPreset
     // ranges are skewed, so a hand-written normalised value is a guess;
     // converting through the parameter itself is not.
     std::vector<std::pair<const char*, float>> params;
+
+    // The Reverb card preset this patch's reverb controls came from, if any
+    // ("" = none), as "TYPE/Name": restored as the card's PRESET selection.
+    std::string reverbPreset {};
 };
 
 std::vector<FactoryPreset> factoryPresets();

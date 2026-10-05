@@ -339,15 +339,25 @@ void testVisualRedesign()
                                 chain << " " << typeid(*p).name() << (p->isVisible() ? "+" : "-") << p->getBounds().toString();
                         return chain; }());
 
-        // Reverb IR: the loader shows only in IR mode.
+        // Reverb: the fourth knob is the type's own control - SHIMMER on
+        // CLOUD only, nothing on PLATE - and controls a type does not read
+        // are dimmed.
         auto* reverb = panel != nullptr ? panel->cardForSection(px3::fxStageReverb) : nullptr;
-        const auto irBefore = reverb != nullptr && reverb->isFooterShown();
-        setParam(processor, "fx.reverb.algorithm", 4.0f);
+        setParam(processor, "fx.reverb.algorithm", 3.0f);
         editor->debugTimerTick();
-        const auto irAfter = reverb != nullptr && reverb->isFooterShown();
-        check("FxCards_ReverbIrLoaderShowsInIrMode", ! irBefore && irAfter,
-              juce::String(irBefore ? "shown before " : "hidden before ") + (irAfter ? "shown after" : "hidden after")
-                  + " algo " + juce::String(processor.getReverbAlgorithmParam().getIndex()));
+        const auto onCloud = reverb != nullptr ? reverb->shownSlotMember("typeSlot") : juce::String("no card");
+        const auto earlyDimmedOnCloud = reverb != nullptr && reverb->isKnobDimmed("early");
+        setParam(processor, "fx.reverb.algorithm", 1.0f);
+        editor->debugTimerTick();
+        const auto onPlate = reverb != nullptr ? reverb->shownSlotMember("typeSlot") : juce::String("no card");
+        setParam(processor, "fx.reverb.algorithm", 5.0f);
+        editor->debugTimerTick();
+        const auto modDimmedOnGated = reverb != nullptr && reverb->isKnobDimmed("modulation");
+        const auto lengthCaption = reverb != nullptr ? reverb->debugKnobCaption("decay") : juce::String();
+        check("FxCards_ReverbShowsEachTypesOwnControl",
+              onCloud == "shimmer" && onPlate.isEmpty() && earlyDimmedOnCloud && modDimmedOnGated && lengthCaption == "LENGTH",
+              "CLOUD slot '" + onCloud + "', PLATE slot '" + onPlate + "', GATED DECAY reads '" + lengthCaption + "'");
+        setParam(processor, "fx.reverb.algorithm", 0.0f);
 
         // Renamed captions: unclear labels from the audit are gone.
         juce::StringArray captions;

@@ -19,44 +19,66 @@ material is published filter data (section 7a), credited there.
 
 ## 2) Reverb
 
-### 2a) Dattorro plate topology (`ReverbType::Plate`)
+All six types are original implementations from the published literature
+below; no third-party source code is included. Design notes and measurements:
+`docs/REVERB_DSP_DESIGN.md`.
+
+### 2a) Dattorro plate topology (PLATE)
 
 - Reference: Jon Dattorro, *"Effect Design, Part 1: Reverberator and Other
   Filters"*, Journal of the Audio Engineering Society, Vol. 45 No. 9,
   September 1997.
-- Usage: the plate algorithm implements the topology described in that paper —
-  the four cascaded input diffusers, the figure-of-eight recirculating tank with
-  modulated allpasses, and the canonical seven-tap-per-channel output pickup.
-  The delay lengths in `kPlateBaseDelays` are the paper's published values, which
-  are specified for a 29761 Hz reference rate and are scaled to the running
-  sample rate at prepare time.
+- Usage: the plate's tank is the topology described in that paper - the input
+  diffusers, the figure-of-eight recirculating tank with modulated allpasses,
+  and the seven-tap-per-channel output pickup. The delay lengths in
+  `PlateEngine::kLen` are the paper's published values for a 29761 Hz
+  reference rate, scaled to the running rate. PX3 adds four short dense
+  diffusers ahead of them and derives the tank gain from a decay time.
 - A public-domain C reference implementation of the same paper
   (https://github.com/el-visio/dattorro-verb, MIT, el-visio) was consulted to
   confirm coefficient placement. No source was copied; the MIT text is retained
   below for completeness.
 
-### 2b) Feedback delay network (`ReverbType::Room`, `Hall`, `Cloud`)
+### 2b) Feedback delay networks (ROOM, HALL, CLOUD)
 
 - Reference: Jean-Marc Jot and Antoine Chaigne, *"Digital Delay Networks for
-  Designing Artificial Reverberators"*, AES 90th Convention, 1991. The
-  delay-compensated per-line gain rule `g = 10^(-3M / (RT60 * fs))` is from this
-  paper and is what makes the decay rate uniform across lines of different
-  lengths.
-- Reference: Fons Adriaensen, **zita-rev1**
-  (https://kokkinizita.linuxaudio.org/linuxaudio/, GPLv2+). Used as a reference
-  for a well-behaved incommensurate eight-line delay set and for the
-  allpass-inside-each-loop arrangement. The delay values in `kFdnDelaySeconds`
-  and `kFdnAllpassSeconds` follow the proportions Adriaensen documents. No zita
-  source is included in this project.
+  Designing Artificial Reverberators"*, AES 90th Convention, 1991: the
+  delay-compensated per-line gain `g = 10^(-3M / (RT60 * fs))`, applied per
+  frequency band.
+- Reference: Fons Adriaensen, **zita-rev1** (GPLv2+; documentation only): an
+  allpass inside each loop, and a decay control expressed as low/mid reverb
+  times with an HF "half-time" frequency. No zita source is included.
+- Reference: Sebastian J. Schlecht and Emanuel A. P. Habets, *"Time-Varying
+  Feedback Matrices in Feedback Delay Networks and Their Application in
+  Artificial Reverberation"*, JASA 138(3), 2015: ROOM's slowly rotating
+  feedback matrix.
+- Reference: J. B. Allen and D. A. Berkley, *"Image method for efficiently
+  simulating small-room acoustics"*, JASA 65(4), 1979: ROOM's and HALL's early
+  reflection patterns.
 - Reference: Manfred Schroeder, *"Natural Sounding Artificial Reverberation"*,
-  JAES Vol. 10 No. 3, 1962, for the input diffusion allpass chain and for the
-  backward-integration method used to measure RT60 in the test suite.
+  JAES Vol. 10 No. 3, 1962, for the allpass diffusers and for the backward
+  integration used to measure RT60 in the tests.
+
+### 2b-ii) Spring (SPRING)
+
+- Reference: Vesa Valimaki, Julian Parker and Jonathan S. Abel, *"Parametric
+  Spring Reverberation Effect"*, JAES 58(7/8), 2010; Julian Parker,
+  *"Efficient Dispersion Generation Structures for Spring Reverb Emulation"*,
+  EURASIP JASP 2011: the stretched-allpass dispersion cascade in a modulated
+  feedback loop.
+
+### 2b-iii) Shimmer (CLOUD)
+
+- Background: the pitch-shifted-feedback "shimmer" sound (Eno/Lanois) and
+  Sean Costello's ValhallaShimmer notes (pitch shifter in the feedback path,
+  randomised grain timing against comb artifacts). Architecture insight only;
+  no code.
 
 ### 2c) Reverb quality metrics (test suite only)
 
 - Reference: Jonathan Abel and Patty Huang, *"A Simple, Robust Measure of
   Reverberation Echo Density"*, AES 121st Convention, 2006. Implemented as
-  `normalisedEchoDensity` in `Source/Tools/ComponentTests.cpp`.
+  `echoDensity` in `tests/Tests/ReverbMeasure.h`.
 - Reference: ISO 3382-1:2009, *Acoustics — Measurement of room acoustic
   parameters*. The decay-curve nonlinearity measure used to check for flutter is
   the standard's linear-regression-residual method.

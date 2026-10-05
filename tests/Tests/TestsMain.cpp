@@ -2316,29 +2316,7 @@ int main(int argc, char* argv[])
 
     if (filter == "reverbmetrics")
     {
-        // Baseline characterisation of every algorithm at a few settings.
-        std::printf("\nREVERB QUALITY METRICS (fully wet impulse response)\n");
-        std::printf("  ED = normalised echo density (1.0 = fully diffuse)\n");
-        std::printf("  flat = spectral flatness of the late tail (higher = less metallic)\n");
-        std::printf("  ripple = deviation from a smooth exponential decay\n");
-        std::printf("  corr = inter-channel correlation (lower = wider)\n\n");
-        static const char* names[] = { "0 ROOM", "1 PLATE", "2 HALL", "3 CLOUD" };
-        for (int algorithm = 0; algorithm < 4; ++algorithm)
-        {
-            for (const auto decay : { 0.35f, 0.75f })
-            {
-                ReverbSettings s;
-                s.algorithmIndex = algorithm;
-                s.decay = decay;
-                s.size = 0.6f;
-                s.damping = 0.45f;
-                s.preDelay = 0.0f;
-                const auto m = measureReverb(s);
-                reportReverbMetrics((juce::String(names[algorithm]) + " decay " + juce::String(decay, 2)).toRawUTF8(), m);
-            }
-        }
-        std::printf("\n");
-        return 0;
+        return runReverbMetricsReport();
     }
 
     if (filter == "moodartifacts")

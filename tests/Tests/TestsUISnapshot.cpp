@@ -6,6 +6,9 @@
 
 #include "TestSupport.h"
 
+#include "../../products/PX3Reverb/PluginEditor.h"
+#include "ReverbPresets.h"
+
 #include <typeinfo>
 
 namespace px3tests
@@ -99,6 +102,26 @@ int runUISnapshot(const juce::String& outDir, int width, int height)
             juce::FileOutputStream stream(png);
             juce::PNGImageFormat().writeImageToStream(image, stream);
             editor->debugCloseBusInsert();
+        }
+    }
+    // The standalone PX3 Reverb card, on each type with a preset applied, at 2x.
+    {
+        PX3ReverbAudioProcessor reverb;
+        std::unique_ptr<juce::AudioProcessorEditor> fxEditor(reverb.createEditor());
+        if (auto* reverbEditor = dynamic_cast<PX3ReverbAudioProcessorEditor*>(fxEditor.get()))
+        {
+            for (int type = 0; type < px3::reverb::kTypeCount; ++type)
+            {
+                reverb.applyPreset(type, px3::reverb::presetsForType(type).front().name);
+                if (type == px3::reverb::cloud)
+                    reverb.control(px3::reverb::Control::decay).setValueNotifyingHost(0.5f);   // shows "Name*"
+                reverbEditor->debugRefresh();
+                const auto image = fxEditor->createComponentSnapshot(fxEditor->getLocalBounds(), true, 2.0f);
+                auto png = dir.getChildFile(juce::String("px3reverb-") + px3::reverb::kTypeNames[type] + ".png");
+                png.deleteFile();
+                juce::FileOutputStream stream(png);
+                juce::PNGImageFormat().writeImageToStream(image, stream);
+            }
         }
     }
     std::printf("wrote snapshots to %s\n", dir.getFullPathName().toRawUTF8());

@@ -165,6 +165,95 @@ void FxCardComponent::addKnobRow(std::vector<KnobSpec> specs)
     rows.push_back(std::move(row));
 }
 
+FxCardComponent::KnobEntry FxCardComponent::makeKnobEntry(const KnobSpec& spec)
+{
+    auto knob = std::make_unique<juce::Slider>();
+    knob->setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+    knob->setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+    knob->setTooltip(spec.tooltip);
+    addAndMakeVisible(*knob);
+    knob->addMouseListener(&valueCaption, false);
+
+    auto label = std::make_unique<ChipLabel>();
+    label->setText(spec.label, juce::dontSendNotification);
+    label->setJustificationType(juce::Justification::centred);
+    label->setFont(juce::FontOptions(11.5f));
+    label->setInterceptsMouseClicks(true, false);
+    label->setTooltip(spec.tooltip);
+    addAndMakeVisible(*label);
+
+    KnobEntry entry;
+    entry.id = spec.id;
+    entry.knob = std::move(knob);
+    entry.label = std::move(label);
+    entry.caption = spec.label;
+    return entry;
+}
+
+void FxCardComponent::addKnobSlotToLastRow(const juce::String& slotId, std::vector<KnobSpec> members)
+{
+    jassert(! rows.empty() && rows.back().kind == RowKind::knobs);
+    for (const auto& spec : members)
+    {
+        auto entry = makeKnobEntry(spec);
+        entry.slot = slotId;
+        entry.knob->setVisible(false);
+        entry.label->setVisible(false);
+        knobs.push_back(std::move(entry));
+    }
+    if (! rows.empty()) { rows.back().ids.push_back(slotId); }
+}
+
+void FxCardComponent::showSlotMember(const juce::String& slotId, const juce::String& memberId)
+{
+    bool changed = false;
+    for (auto& entry : knobs)
+    {
+        if (entry.slot != slotId) { continue; }
+        const auto shown = entry.id == memberId;
+        changed = changed || shown != entry.slotShown;
+        entry.slotShown = shown;
+    }
+    if (changed) { resized(); repaint(); }
+}
+
+juce::String FxCardComponent::shownSlotMember(const juce::String& slotId) const
+{
+    for (const auto& entry : knobs)
+        if (entry.slot == slotId && entry.slotShown) { return entry.id; }
+    return {};
+}
+
+void FxCardComponent::setKnobDimmed(const juce::String& id, bool dimmed)
+{
+    for (auto& entry : knobs)
+    {
+        if (entry.id != id || entry.dimmed == dimmed) { continue; }
+        entry.dimmed = dimmed;
+        entry.knob->setAlpha(dimmed ? 0.35f : 1.0f);
+        entry.label->setAlpha(dimmed ? 0.45f : 1.0f);
+    }
+}
+
+bool FxCardComponent::isKnobDimmed(const juce::String& id) const
+{
+    const auto it = std::find_if(knobs.begin(), knobs.end(), [&id](const KnobEntry& e) { return e.id == id; });
+    return it != knobs.end() && it->dimmed;
+}
+
+void FxCardComponent::setKnobCaption(const juce::String& id, const juce::String& caption, const juce::String& tooltip)
+{
+    for (auto& entry : knobs)
+    {
+        if (entry.id != id) { continue; }
+        if (entry.caption == caption && entry.knob->getTooltip() == tooltip) { return; }
+        entry.caption = caption;
+        entry.label->setText(caption, juce::dontSendNotification);
+        entry.label->setTooltip(tooltip);
+        entry.knob->setTooltip(tooltip);
+    }
+}
+
 bool FxCardComponent::hasAlternates() const noexcept
 {
     return std::any_of(knobs.begin(), knobs.end(),
@@ -216,22 +305,6 @@ void FxCardComponent::addHeadingRow(const juce::String& text, const juce::String
     row.kind = RowKind::heading;
     row.text = text;
     rows.push_back(std::move(row));
-}
-
-void FxCardComponent::setFooter(juce::Component* footerComponent, int heightPx)
-{
-    footer = footerComponent;
-    footerHeight = juce::jmax(0, heightPx);
-    if (footer != nullptr) { addChildComponent(*footer); }
-    setFooterShown(footerShown);
-}
-
-void FxCardComponent::setFooterShown(bool shouldShow)
-{
-    const auto changed = footerShown != shouldShow;
-    footerShown = shouldShow;
-    if (footer != nullptr) { footer->setVisible(footerShown); }
-    if (changed) { resized(); }
 }
 
 void FxCardComponent::markLastRowAdvanced()
@@ -666,6 +739,16 @@ void FxCardComponent::layoutKnobRow(int rowIndex, const Row& row, bool feature)
 
     for (std::size_t i = 0; i < row.ids.size(); ++i)
     {
+        // A knob slot's cell holds every member at the same bounds; only the
+        // shown one is visible (resized() sets that).
+        for (auto& member : knobs)
+        {
+            if (member.slot != row.ids[i]) { continue; }
+            layoutLabelledControl(flex.items.getReference(static_cast<int>(i)).currentBounds.toNearestInt(),
+                                  { nullptr, member.knob.get(), member.label.get(),
+                                    ControlShape::square, 0, readoutHeight, static_cast<int>(cellWidth) },
+                                  inner.rowControl(rowIndex));
+        }
         const auto it = std::find_if(knobs.begin(), knobs.end(),
                                      [&row, i](const KnobEntry& e) { return e.id == row.ids[i]; });
         if (it == knobs.end())
@@ -805,6 +888,8 @@ void FxCardComponent::resized()
 
         for (const auto& id : rows[i].ids)
         {
+            for (auto& member : knobs)
+                if (member.slot == id) { member.knob->setVisible(false); member.label->setVisible(false); }
             if (auto* k = knob(id)) { k->setVisible(false); }
             if (auto* l = knobLabel(id)) { l->setVisible(false); }
             if (auto* c = choice(id)) { c->setVisible(false); }
@@ -817,11 +902,6 @@ void FxCardComponent::resized()
 
     inner.setRowCount(static_cast<int>(laidOut.size()));
     auto rowsArea = card.contentBelowTitle();
-    if (isFooterShown())
-    {
-        footer->setBounds(rowsArea.removeFromBottom(footerHeight).reduced(4, 0));
-        rowsArea.removeFromBottom(4);
-    }
     inner.layout(rowsArea);
 
     // Pinned to cardInner's corner, outside the flex flow, so it stays put no
@@ -837,6 +917,8 @@ void FxCardComponent::resized()
         // their own one-of-two visibility.
         for (const auto& id : row.ids)
         {
+            for (auto& member : knobs)
+                if (member.slot == id) { member.knob->setVisible(member.slotShown); member.label->setVisible(member.slotShown); }
             const auto entry = std::find_if(knobs.begin(), knobs.end(),
                                             [&id](const KnobEntry& e) { return e.id == id; });
             if (entry != knobs.end())

@@ -522,27 +522,14 @@ ReverbSettings PX3SynthAudioProcessor::currentReverbSettings() const
     ReverbSettings settings;
     settings.enabled = reverbEnabledParam != nullptr && reverbEnabledParam->get();
     settings.algorithmIndex = reverbAlgorithmParam != nullptr ? reverbAlgorithmParam->getIndex() : 0;
-    settings.amount = reverbAmountParam->convertFrom0to1(applyModulationToNormalizedValue(reverbAmountParam,
-                                                                                           static_cast<juce::RangedAudioParameter*>(reverbAmountParam)->getValue()));
-    settings.size = reverbSizeParam->convertFrom0to1(applyModulationToNormalizedValue(reverbSizeParam,
-                                                                                       static_cast<juce::RangedAudioParameter*>(reverbSizeParam)->getValue()));
-    settings.decay = reverbDecayParam->convertFrom0to1(applyModulationToNormalizedValue(reverbDecayParam,
-                                                                                         static_cast<juce::RangedAudioParameter*>(reverbDecayParam)->getValue()));
-    settings.damping = reverbDampingParam->convertFrom0to1(applyModulationToNormalizedValue(reverbDampingParam,
-                                                                                             static_cast<juce::RangedAudioParameter*>(reverbDampingParam)->getValue()));
-    settings.preDelay = reverbPreDelayParam->convertFrom0to1(applyModulationToNormalizedValue(reverbPreDelayParam,
-                                                                                               static_cast<juce::RangedAudioParameter*>(reverbPreDelayParam)->getValue()));
-    settings.modDepth = reverbModDepthParam->convertFrom0to1(applyModulationToNormalizedValue(reverbModDepthParam,
-                                                                                               static_cast<juce::RangedAudioParameter*>(reverbModDepthParam)->getValue()));
-    settings.modRate = reverbModRateParam->convertFrom0to1(applyModulationToNormalizedValue(reverbModRateParam,
-                                                                                             static_cast<juce::RangedAudioParameter*>(reverbModRateParam)->getValue()));
-    settings.width = reverbWidthParam->convertFrom0to1(applyModulationToNormalizedValue(reverbWidthParam,
-                                                                                         static_cast<juce::RangedAudioParameter*>(reverbWidthParam)->getValue()));
-    settings.cloudFeedback = reverbCloudFeedbackParam->convertFrom0to1(applyModulationToNormalizedValue(reverbCloudFeedbackParam,
-                                                                                                         static_cast<juce::RangedAudioParameter*>(reverbCloudFeedbackParam)->getValue()));
-    settings.cloudDiffusion = reverbCloudDiffusionParam->convertFrom0to1(applyModulationToNormalizedValue(reverbCloudDiffusionParam,
-                                                                                                           static_cast<juce::RangedAudioParameter*>(reverbCloudDiffusionParam)->getValue()));
-    settings.shimmer = modulatedParameterValue(reverbShimmerParam);
+    settings.amount = modulatedParameterValue(reverbAmountParam);
+    // Every reverb control is a modulation destination; the reverb smooths
+    // each one itself, so an LFO on SIZE is a glide, not a staircase.
+    for (const auto& spec : px3::reverb::kParameterSpecs)
+    {
+        px3::reverb::settingsField(settings, spec.control)
+            = modulatedParameterValue(reverbControlParams[static_cast<std::size_t>(spec.control)]);
+    }
     return settings;
 }
 

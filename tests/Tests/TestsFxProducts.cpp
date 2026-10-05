@@ -880,20 +880,17 @@ void testFxProducts()
                   : unstyled.joinIntoString("; "));
     }
 
-    // ---- the reverb's nine survive a save and reload -----------------------
+    // ---- the reverb's controls survive a save and reload --------------------
     //
-    // They were registered from the start and had no UI, so nothing had ever
-    // moved them and then asked for them back. Now that the card exposes them,
-    // a value set in a session has to still be there when it reopens.
+    // Every control in ReverbParameters.h, the type-specific ones included: a
+    // value set in a session has to still be there when it reopens.
     //
     // Both products, because they persist by different routes: the Synth writes
     // a ValueTree keyed by parameter ID, the effect uses the base class. Either
     // could drop a parameter without the other noticing.
     {
-        const std::array<const char*, 9> ids { {
-            "fx.reverb.size", "fx.reverb.decay", "fx.reverb.damping", "fx.reverb.pre.delay",
-            "fx.reverb.mod.depth", "fx.reverb.mod.rate", "fx.reverb.width",
-            "fx.reverb.cloud.feedback", "fx.reverb.cloud.diffusion" } };
+        std::vector<const char*> ids;
+        for (const auto& spec : px3::reverb::kParameterSpecs) { ids.push_back(spec.id); }
 
         const auto setAll = [&](juce::AudioProcessor& processor, float value)
         {
@@ -968,10 +965,10 @@ void testFxProducts()
             roundTrip("Reverb", a, b);
         }
 
-        check("FxProducts_TheReverbsNineParametersSurviveASaveAndReload",
+        check("FxProducts_TheReverbsControlsSurviveASaveAndReload",
               lost.isEmpty(),
               lost.isEmpty()
-                  ? "all nine reload at the value they were saved at, in both the "
+                  ? "all " + juce::String(static_cast<int>(ids.size())) + " reload at the value they were saved at, in both the "
                     "Synth and the standalone"
                   : lost.joinIntoString(", "));
     }

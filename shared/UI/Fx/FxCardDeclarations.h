@@ -51,26 +51,41 @@ inline void declareChorusRows(FxCardComponent& card, const juce::StringArray& mo
                              "Fades from bypass to the hardware's own wet/dry balance and stereo routing" });
 }
 
+// REVERB: six types, each with its own presets. MODE then PRESET, then the
+// shared controls; the fourth knob of the first row is the type's own control
+// (EARLY on ROOM and HALL, SHIMMER on CLOUD, DRIP on SPRING, SHAPE on GATED;
+// empty on PLATE). ReverbCard.h keeps the slot, the captions, the dimming of
+// controls a type does not read and the PRESET menu in step with MODE.
 inline void declareReverbRows(FxCardComponent& card, const juce::StringArray& algorithmChoices)
 {
-    card.setDescription("Space: room, plate, hall, or CLOUD (an endless granular wash with optional shimmer).");
-    card.addChoiceRow({ { "algorithm", "MODE", "ROOM, PLATE, HALL, or CLOUD (REGEN, SMEAR and SHIMMER apply to CLOUD)",
-                          algorithmChoices } });
+    card.setDescription("Algorithmic space: ROOM, PLATE, HALL, CLOUD (with SHIMMER), SPRING and GATED. "
+                        "PRESET offers starting points for the selected type; every knob stays live.");
+    card.addChoiceRow({ { "algorithm", "MODE",
+                          "ROOM: early reflections into a short dense tail. PLATE: dense, bright, immediate. "
+                          "HALL: a large smooth late field. CLOUD: an ambient wash with octave-up SHIMMER. "
+                          "SPRING: a dripping spring tank. GATED: a shaped burst that stops dead",
+                          algorithmChoices },
+                        // Beside MODE, with both boxes wide enough for a phrase
+                        // ("Vocal-ish Synth*") - see cards.reverb.controls.choiceWidth.
+                        { "preset", "PRESET", "Starting points for this type. A star means you have changed it since", {} } });
 
     card.addKnobRow({ { "size", "SIZE", "Size of the space" },
-                      { "decay", "DECAY", "How long the tail lasts" },
-                      { "damping", "DAMPING", "How fast the top end of the tail dies away" },
-                      { "preDelay", "PRE-DELAY", "Gap before the tail begins" } });
+                      { "decay", "DECAY", "Reverberation time" },
+                      { "preDelay", "PRE-DELAY", "Gap before the reverb begins" } });
+    card.addKnobSlotToLastRow("typeSlot",
+                              { { "early", "EARLY", "ROOM / HALL: early reflections against the late tail" },
+                                { "shimmer", "SHIMMER", "CLOUD: octave-up regeneration inside the tail - 0 is a plain cloud" },
+                                { "drip", "DRIP", "SPRING: how strongly each echo chirps" },
+                                { "shape", "SHAPE", "GATED: reverse swell (0), flat gate (middle), falling (full)" } });
 
-    card.addKnobRow({ { "modDepth", "MOD DEPTH", "How much the tail's delay lines are modulated (chorused movement)" },
-                      { "modRate", "MOD RATE", "Speed of that modulation" },
-                      { "width", "WIDTH", "Stereo width of the tail" } });
+    card.addKnobRow({ { "damping", "DAMPING", "How much faster the top end dies away (0 = flat)" },
+                      { "low", "LOW", "How long the low end lasts against the mids, x0.5 to x2" },
+                      { "diffusion", "DIFFUSION", "Grainy to smooth" } });
 
-    card.addKnobRow({ { "cloudFeedback", "REGEN", "CLOUD: how much of the tail is fed back in (longer, denser)" },
-                      { "cloudDiffusion", "SMEAR", "CLOUD: how much the grains are blurred together" },
-                      { "shimmer", "SHIMMER", "CLOUD: an octave-up copy fed back into the tail" } });
+    card.addKnobRow({ { "modulation", "MOD", "Slow random movement in the tail; keeps long tails from ringing" },
+                      { "width", "WIDTH", "Stereo width of the reverb; 0 is mono, full is the type's own image" } });
 
-    card.addFeatureKnobRow({ "amount", "MIX", "Dry against reverb" });
+    card.addFeatureKnobRow({ "amount", "MIX", "Dry against reverb (equal power; full is reverb only)" });
 }
 
 // Spread sits on the MASTER bus, after everything: it is not part of the

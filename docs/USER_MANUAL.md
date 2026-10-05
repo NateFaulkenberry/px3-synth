@@ -1115,31 +1115,45 @@ roughens. Turning DEGRADE up will never change the pitch of your loop.
 
 ## REVERB
 
-**Controls:** a **MODE** menu, **MIX**, and:
+**Controls:** **MODE** (the type), **PRESET** (starting points for that type),
+**MIX**, and:
 
 | Control | Function |
 | --- | --- |
-| **SIZE** | Size of the space |
-| **DECAY** | How long the tail lasts |
-| **DAMPING** | How fast the top end of the tail dies away |
-| **PRE-DELAY** | Gap before the tail begins |
-| **MOD DEPTH / MOD RATE** | Chorused movement in the tail |
-| **WIDTH** | Stereo width of the tail |
-| **REGEN, SMEAR, SHIMMER** | CLOUD only: feedback, grain blur, and an octave-up copy fed back into the tail |
+| **SIZE** | Size of the space (the room's dimensions, the plate's area, the spring's length) |
+| **DECAY** | Reverberation time, shown in seconds. The range follows the type: halfway is a medium room on ROOM and a medium hall on HALL. On GATED it reads **LENGTH**: how long the burst lasts |
+| **PRE-DELAY** | Gap before the reverb begins, 0-250 ms |
+| **DAMPING** | How much faster the top end dies away. 0 is flat; full is dark |
+| **LOW** | How long the low end lasts against the mids, x0.5 to x2 |
+| **DIFFUSION** | Grainy to smooth. On SPRING it reads **SPLASH** |
+| **MOD** | Slow random movement in the tail; keeps long tails from ringing |
+| **WIDTH** | Stereo width of the reverb. 0 is mono; full is the type's own image. It never changes the mono sum |
+| fourth knob | The type's own control - see below. Empty on PLATE |
 
-| MODE | Character |
-| --- | --- |
-| **ROOM** | Distinct early reflections into a short tail. Small, believable spaces. |
-| **PLATE** | A dense, bright plate. Classic on vocals, snares and leads. |
-| **HALL** | A long, diffuse tail with damping. Concert-hall scale. |
-| **CLOUD** | An endless granular wash. **SHIMMER** shifts the tail up an octave and feeds it back, so it climbs as it fades. |
-| **IR** | Convolution with an impulse response you load: a recording of a real room, plate or anything else. Silent until one is loaded. |
+Controls a type does not use are dimmed (MOD and LOW on GATED, LOW on SPRING).
 
-For IR, use **LOAD IR...** along the bottom of the card (WAV, AIFF or FLAC, up to
-12 seconds); **CLEAR** unloads it.
+| MODE | Character | Its own control |
+| --- | --- | --- |
+| **ROOM** | Early reflections from a modelled room into a short, dense tail. Puts a sound in a space without an obvious tail | **EARLY**: reflections against the tail |
+| **PLATE** | Dense, bright and immediate: a plate is diffuse within a few milliseconds. Leads, keys, percussion, vowel sounds | - |
+| **HALL** | A large, smooth late field with the low end and the top end decaying at their own rates | **EARLY**: the hall's first reflections |
+| **CLOUD** | An ambient wash: attacks swell into it, and it can hold for up to a minute | **SHIMMER**: the tail is pitched up an octave and fed back into itself, so it climbs as it fades. 0 is a plain cloud |
+| **SPRING** | A spring tank: every echo arrives as a rising chirp | **DRIP**: how strongly each echo chirps |
+| **GATED** | A shaped burst that stops dead - the 80s drum room | **SHAPE**: reverse swell (0), flat gate (middle), falling (full) |
 
-**Use them for:** ROOM to place a sound without obviously reverberating it. PLATE
-for shine. HALL and CLOUD for scale and atmosphere.
+**PRESET** lists starting points for the current type only, named by what they
+are for (Tight Room, Wide Pad, Short Decay, Shimmer Wash, Surf Tank, 80s Gate
+...). Choosing one sets the type's controls - never MIX or the bypass - and
+every knob stays live: move one and the menu shows the name with a star
+("Wide Pad*"). The choice is saved with the session and with patches.
+
+Changing MODE while sound is playing fades the old tail out over 50 ms and
+starts the new type fresh, without a click.
+
+**Use them for:** ROOM to place a sound without obviously reverberating it.
+PLATE for shine. HALL for size. CLOUD for atmosphere, with SHIMMER for the
+octave-up halo. SPRING for retro and dub. GATED for percussion that needs to be
+big and short.
 
 ## SPREAD
 
