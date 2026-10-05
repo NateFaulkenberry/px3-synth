@@ -3,7 +3,8 @@
 P(X3) contains no third-party source code beyond JUCE. The notices below record
 published research and open-source projects that were used as *references* while
 implementing this project's DSP. Every algorithm here was written from scratch
-against the described technique; nothing was copied.
+against the described technique; no code was copied. The only reproduced
+material is published filter data (section 7a), credited there.
 
 ---
 
@@ -233,3 +234,83 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+---
+
+## 7) Chorus
+
+### 7a) Holters & Parker BBD filter fit / jpcima rc-effect-playground
+
+- Paper: Martin Holters and Julian D. Parker, *"A Combined Model for a Bucket
+  Brigade Device and its Input and Output Filters"*, Proc. DAFx-18, Aveiro,
+  2018. https://www.hsu-hh.de/ant/wp-content/uploads/sites/699/2018/09/Holters-Parker-2018-A-Combined-Model-for-a-Bucket-Brigade-Device-and-its-Input-and-Output-Filters.pdf
+- Repository: https://github.com/jpcima/rc-effect-playground
+  (`sources/bbd_filter.cpp`, namespace `j60`)
+- Author: Jean Pierre Cimalando
+- License: ISC (text below)
+- Usage in this project: the pole/residue values of the Juno-60 BBD input and
+  output filters (Holters & Parker's fit, as tabulated in jpcima's
+  `bbd_filter.cpp`) are reproduced as constants in
+  `shared/DSP/Chorus/Chorus.cpp` (and in the reference curve of
+  `tests/Tests/TestsChorusAndSpread.cpp`). They are discretised by this
+  project's own impulse-invariant parallel-section code. Two further JUNO-60
+  choices follow jpcima's Faust model (`sources/chorus.dsp`): in I+II both lines
+  are swept in phase, and the dry sits at 0.83 against the BBD path.
+  No source code was copied: jpcima's clocked BBD simulation is not used.
+
+#### ISC License (rc-effect-playground)
+
+Copyright (C) 2019-2020 J.P. Cimalando <https://jpcima.sdf1.org/>
+
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted, provided that the above
+copyright notice and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND
+FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
+OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+PERFORMANCE OF THIS SOFTWARE.
+
+### 7b) pendragon-andyh Juno60 analysis
+
+- Repository: https://github.com/pendragon-andyh/Juno60 (`Chorus/README.md`)
+- Author: Andy Harman / Pendragon Software Limited
+- License: MIT (text below)
+- Usage in this project: the measured Juno-60 chorus figures - one triangle LFO,
+  right line inverted, Chorus I 0.513 Hz and II 0.863 Hz over 1.66-5.35 ms,
+  I+II 9.75 Hz and near mono - define the JUNO-60 modes. Measurements only; no
+  code was used.
+
+#### MIT License (pendragon-andyh/Juno60)
+
+Copyright (c) 2015 Andy Harman and Pendragon Software Limited.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+### 7c) Other chorus references (no code, no licence terms)
+
+- Roland SDD-320 owner's manual (modes, block diagram COMP - DELAY - EXP).
+- BOSS CE-2W owner's manual (CE-1 mode: output A chorus only / output B direct
+  only in stereo).
+- Jürgen Haible, "String Ensemble / Triple Chorus" (Solina modulation:
+  two three-phase generators, slow and fast, summed per BBD).
+- Panasonic MN3009 / MN3002 data (256 / 512 stages, t = N / 2 f_clk).

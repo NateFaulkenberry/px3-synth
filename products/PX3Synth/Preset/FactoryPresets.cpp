@@ -18,7 +18,7 @@ enum ReverbAlgo { room = 0, plate, hall, cloud };
 enum VibeType   { warm = 0, hot, cool, vintage, clean, loFi };
 
 // DIM 1 is the softest and has the LONGEST delay; DIM 4 is the strongest.
-enum ChorusMode { dim1 = 0, dim2, dim3, dim4, dim1plus4, dim2plus4, dim3plus4, ensemble, ceWarm };
+enum ChorusMode { dim1 = 0, dim2, dim3, dim4, dim1plus4, dim2plus4, dim3plus4, ensemble, ce1, juno60I, juno60II, juno60Both };
 enum SpreadMode { classic = 0, wide, deep, monoSafe };
 
 enum DoomLoopMode { burst = 0, radio, mask };
@@ -168,8 +168,8 @@ std::vector<FactoryPreset> factoryPresets()
         { "mix.master.level", 0.56f } } },
 
     { "Vowel Machine", "LEADS", "P(X3)",
-      "A formant lead parked on a vowel, run through the CE-style single-path chorus for "
-      "warmth rather than width. It talks.",
+      "A formant lead parked on a vowel, run through the CE-1 chorus on its mono output (WIDTH 0: "
+      "direct and chorus on both sides) for warmth rather than width. It talks.",
       { { "voice.osc1.mode", formant }, { "voice.osc1.vowel", 2 }, { "voice.osc1.macro.a", 0.55f }, { "voice.osc1.macro.b", 0.62f },
         { "fx.vibe.enabled", 0 }, { "fx.delay.enabled", 1 }, { "fx.reverb.enabled", 0 }, { "fx.mood.enabled", 0 },
         { "fx.doom.enabled", 0 }, { "fx.lucy.enabled", 0 }, { "fx.chorus.enabled", 1 }, { "fx.spread.enabled", 0 },
@@ -177,7 +177,8 @@ std::vector<FactoryPreset> factoryPresets()
         { "voice.osc2.enabled", 1 }, { "voice.osc2.mode", saw }, { "voice.osc2.tuning.octave", -1.0f }, { "mix.osc2.level", 0.38f },
         { "voice.filter1.enabled", 1 }, { "voice.filter1.type", bandPass }, { "voice.filter1.cutoff", 1400.0f }, { "voice.filter1.resonance", 0.95f },
         { "voice.amp.attack", 0.030f }, { "voice.amp.decay", 0.30f }, { "voice.amp.sustain", 0.82f }, { "voice.amp.release", 0.34f },
-        { "fx.chorus.amount", 0.48f }, { "fx.chorus.mode", ceWarm }, { "fx.chorus.character", 0.72f }, { "fx.chorus.tone", -0.25f },
+        { "fx.chorus.amount", 0.48f }, { "fx.chorus.mode", ce1 }, { "fx.chorus.character", 0.72f }, { "fx.chorus.tone", -0.25f },
+        { "fx.chorus.width", 0.0f },
         { "fx.delay.amount", 0.22f }, { "fx.delay.algorithm", analogBbd }, { "fx.delay.time", 0.42f }, { "fx.delay.feedback", 0.30f },
         { "fx.reverb.amount", 0.22f }, { "fx.reverb.algorithm", plate },
         { "mix.master.level", 0.95f } } },
@@ -187,8 +188,8 @@ std::vector<FactoryPreset> factoryPresets()
     // =======================================================================
 
     { "Slow Weather", "PADS", "P(X3)",
-      "A supersaw pad under a stacked Dimension chorus - two pairs at different rates, which "
-      "is denser and less periodic than either alone. CLOUD reverb behind it.",
+      "A supersaw pad under the Dimension's 2+4 combination - both buttons' switch states on "
+      "one anti-phase pair, faster and deeper than either alone. CLOUD reverb behind it.",
       { { "voice.osc1.mode", superSaw }, { "voice.osc1.macro.a", 0.46f }, { "voice.osc1.macro.b", 0.70f }, { "voice.osc1.macro.c", 0.40f },
         { "fx.vibe.enabled", 0 }, { "fx.delay.enabled", 0 }, { "fx.reverb.enabled", 1 }, { "fx.mood.enabled", 0 },
         { "fx.doom.enabled", 0 }, { "fx.lucy.enabled", 0 }, { "fx.chorus.enabled", 1 }, { "fx.spread.enabled", 1 },

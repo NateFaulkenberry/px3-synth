@@ -1,6 +1,8 @@
 #include "TestSupport.h"
 #include "Distortion.h"
 
+#include <complex>
+
 // testChorus, testStereoSpread
 
 namespace px3tests
@@ -25,7 +27,6 @@ Result runChorus(const ChorusSettings& settings,
 {
     px3::Chorus chorus;
     chorus.prepare(sampleRate);
-    chorus.setSeed(9876u);
     chorus.updateForBlock(settings);
 
     const auto total = static_cast<int>(sampleRate * seconds);
@@ -171,76 +172,620 @@ double pitchInstability(const Result& r, double sampleRate)
 }
 } // namespace chorustest
 
+// ============================================================================
+// CHORUS - hardware models, measured from the outside
+// ============================================================================
+//
+// Everything below drives the engine only through prepare / updateForBlock /
+// processSampleFrame and reads only its stereo output, so the same tests can
+// be compiled against any version of the engine. Delay trajectories come from
+// an impulse train: each impulse's wet copy arrives at the line's delay at that
+// moment, so the peak position after every impulse samples d(t) directly.
+namespace chorushw
+{
+using doomtest::Result;
+
+constexpr double kRate = 48000.0;
+constexpr int kModeJunoI = 9;
+constexpr int kModeJunoII = 10;
+constexpr int kModeJunoBoth = 11;
+constexpr int kModeEnsemble = 7;
+constexpr int kModeCe = 8;
+
+ChorusSettings hardware(int mode)
+{
+    // The defaults ARE the hardware: full intensity, every other control at
+    // its default.
+    ChorusSettings s;
+    s.enabled = true;
+    s.amount = 1.0f;
+    s.modeIndex = mode;
+    s.lowCut = 0.0f;
+    s.feedback = 0.0f;
+    s.mix = 1.0f;
+    return s;
+}
+
+template <typename InputFn>
+Result render(const ChorusSettings& s, double seconds, InputFn input)
+{
+    px3::Chorus chorus;
+    chorus.prepare(kRate);
+    const auto total = static_cast<int>(kRate * seconds);
+    Result r;
+    r.left.reserve(static_cast<std::size_t>(total));
+    r.right.reserve(static_cast<std::size_t>(total));
+    for (int n = 0; n < total; ++n)
+    {
+        if (n % 512 == 0)
+        {
+            chorus.updateForBlock(s);
+        }
+        float inL = 0.0f;
+        float inR = 0.0f;
+        input(n, inL, inR);
+        float l = 0.0f;
+        float r2 = 0.0f;
+        chorus.processSampleFrame(inL, inR, l, r2);
+        r.left.push_back(l);
+        r.right.push_back(r2);
+    }
+    return r;
+}
+
+struct Trajectory
+{
+    std::vector<double> timeSeconds;
+    std::vector<double> left;        // ms
+    std::vector<double> right;       // ms
+    std::vector<double> leftSign;
+    std::vector<double> rightSign;
+};
+
+// Peak of |x| in [from, to), refined by a parabola. Returns the position and
+// the sign of the sample at the peak.
+std::pair<double, double> peakIn(const std::vector<float>& x, int from, int to)
+{
+    auto best = from;
+    for (int i = from; i < to; ++i)
+    {
+        if (std::abs(x[static_cast<std::size_t>(i)]) > std::abs(x[static_cast<std::size_t>(best)]))
+        {
+            best = i;
+        }
+    }
+    auto pos = static_cast<double>(best);
+    if (best > from && best + 1 < to)
+    {
+        const auto a = std::abs(static_cast<double>(x[static_cast<std::size_t>(best - 1)]));
+        const auto b = std::abs(static_cast<double>(x[static_cast<std::size_t>(best)]));
+        const auto c = std::abs(static_cast<double>(x[static_cast<std::size_t>(best + 1)]));
+        const auto denom = a - 2.0 * b + c;
+        if (std::abs(denom) > 1.0e-12)
+        {
+            pos += 0.5 * (a - c) / denom;
+        }
+    }
+    return { pos, x[static_cast<std::size_t>(best)] >= 0.0f ? 1.0 : -1.0 };
+}
+
+Trajectory track(ChorusSettings s, bool leftOnly, double spacingMs, double seconds,
+                 double windowFromMs, double windowToMs)
+{
+    s.character = 0.0f;   // keep the impulses linear
+    const auto spacing = static_cast<int>(kRate * spacingMs * 0.001);
+    const auto warm = static_cast<int>(kRate * 0.5);
+    const auto out = render(s, seconds, [&](int n, float& l, float& r)
+    {
+        const auto hit = n >= warm && (n - warm) % spacing == 0 ? 0.5f : 0.0f;
+        l = hit;
+        r = leftOnly ? 0.0f : hit;
+    });
+
+    Trajectory t;
+    const auto from = static_cast<int>(kRate * windowFromMs * 0.001);
+    const auto to = static_cast<int>(kRate * windowToMs * 0.001);
+    for (int n0 = warm; n0 + to < static_cast<int>(out.left.size()); n0 += spacing)
+    {
+        const auto l = peakIn(out.left, n0 + from, n0 + to);
+        const auto r = peakIn(out.right, n0 + from, n0 + to);
+        t.timeSeconds.push_back(static_cast<double>(n0) / kRate);
+        t.left.push_back((l.first - n0) / kRate * 1000.0);
+        t.right.push_back((r.first - n0) / kRate * 1000.0);
+        t.leftSign.push_back(l.second);
+        t.rightSign.push_back(r.second);
+    }
+    return t;
+}
+
+double meanOf(const std::vector<double>& v)
+{
+    auto s = 0.0;
+    for (const auto x : v) { s += x; }
+    return v.empty() ? 0.0 : s / static_cast<double>(v.size());
+}
+
+double pearson(const std::vector<double>& a, const std::vector<double>& b)
+{
+    const auto ma = meanOf(a);
+    const auto mb = meanOf(b);
+    auto sab = 0.0, saa = 0.0, sbb = 0.0;
+    for (std::size_t i = 0; i < a.size() && i < b.size(); ++i)
+    {
+        sab += (a[i] - ma) * (b[i] - mb);
+        saa += (a[i] - ma) * (a[i] - ma);
+        sbb += (b[i] - mb) * (b[i] - mb);
+    }
+    return sab / std::sqrt(std::max(1.0e-18, saa * sbb));
+}
+
+// The frequency at which the trajectory has most energy, by a fine scan.
+double dominantRate(const Trajectory& t, const std::vector<double>& d, double lo, double hi)
+{
+    const auto m = meanOf(d);
+    auto bestF = lo;
+    auto bestP = -1.0;
+    for (auto f = lo; f <= hi; f += 0.0005 * (hi + lo))
+    {
+        auto re = 0.0, im = 0.0;
+        for (std::size_t i = 0; i < d.size(); ++i)
+        {
+            const auto ph = juce::MathConstants<double>::twoPi * f * t.timeSeconds[i];
+            re += (d[i] - m) * std::cos(ph);
+            im += (d[i] - m) * std::sin(ph);
+        }
+        const auto p = re * re + im * im;
+        if (p > bestP) { bestP = p; bestF = f; }
+    }
+    return bestF;
+}
+
+// Least-squares fit of c + sum_k (a_k cos + b_k sin)(2 pi f_k t): amplitude
+// and phase of each named frequency.
+struct Component { double amplitude; double phase; };
+std::vector<Component> fitSinusoids(const Trajectory& t, const std::vector<double>& d,
+                                    const std::vector<double>& freqs)
+{
+    const auto n = 1 + 2 * freqs.size();
+    std::vector<std::vector<double>> ata(n, std::vector<double>(n + 1, 0.0));
+    std::vector<double> row(n);
+    for (std::size_t i = 0; i < d.size(); ++i)
+    {
+        row[0] = 1.0;
+        for (std::size_t k = 0; k < freqs.size(); ++k)
+        {
+            const auto ph = juce::MathConstants<double>::twoPi * freqs[k] * t.timeSeconds[i];
+            row[1 + 2 * k] = std::cos(ph);
+            row[2 + 2 * k] = std::sin(ph);
+        }
+        for (std::size_t a = 0; a < n; ++a)
+        {
+            for (std::size_t b = 0; b < n; ++b) { ata[a][b] += row[a] * row[b]; }
+            ata[a][n] += row[a] * d[i];
+        }
+    }
+    // Gaussian elimination.
+    for (std::size_t col = 0; col < n; ++col)
+    {
+        auto pivot = col;
+        for (auto r = col + 1; r < n; ++r)
+        {
+            if (std::abs(ata[r][col]) > std::abs(ata[pivot][col])) { pivot = r; }
+        }
+        std::swap(ata[col], ata[pivot]);
+        const auto div = ata[col][col];
+        if (std::abs(div) < 1.0e-15) { continue; }
+        for (auto c = col; c <= n; ++c) { ata[col][c] /= div; }
+        for (std::size_t r = 0; r < n; ++r)
+        {
+            if (r == col) { continue; }
+            const auto f = ata[r][col];
+            for (auto c = col; c <= n; ++c) { ata[r][c] -= f * ata[col][c]; }
+        }
+    }
+    std::vector<Component> out;
+    for (std::size_t k = 0; k < freqs.size(); ++k)
+    {
+        const auto a = ata[1 + 2 * k][n];
+        const auto b = ata[2 + 2 * k][n];
+        out.push_back({ std::sqrt(a * a + b * b), std::atan2(b, a) });
+    }
+    return out;
+}
+
+double wrapDegrees(double radians)
+{
+    auto deg = radians * 180.0 / juce::MathConstants<double>::pi;
+    while (deg > 180.0) { deg -= 360.0; }
+    while (deg < -180.0) { deg += 360.0; }
+    return deg;
+}
+
+double minOf(const std::vector<double>& v) { return *std::min_element(v.begin(), v.end()); }
+double maxOf(const std::vector<double>& v) { return *std::max_element(v.begin(), v.end()); }
+
+// Holters & Parker's Juno-60 BBD input and output filters (DAFx-18), as the
+// analogue reference the engine's filters are measured against.
+double junoAnalogueMagnitude(double hz)
+{
+    using C = std::complex<double>;
+    const std::array<C, 5> rin { { { 251589, 0 }, { -130428, -4165 }, { -130428, 4165 }, { 4634, -22873 }, { 4634, 22873 } } };
+    const std::array<C, 5> pin { { { -46580, 0 }, { -55482, 25082 }, { -55482, -25082 }, { -26292, -59437 }, { -26292, 59437 } } };
+    const std::array<C, 5> rout { { { 5092, 0 }, { 11256, -99566 }, { 11256, 99566 }, { -13802, -24606 }, { -13802, 24606 } } };
+    const std::array<C, 5> pout { { { -176261, 0 }, { -51468, 21437 }, { -51468, -21437 }, { -26276, -59699 }, { -26276, 59699 } } };
+    auto h = [](const std::array<C, 5>& r, const std::array<C, 5>& p, double f)
+    {
+        const C s(0.0, juce::MathConstants<double>::twoPi * f);
+        C sum(0.0, 0.0);
+        for (std::size_t i = 0; i < 5; ++i) { sum += r[i] / (s - p[i]); }
+        return sum;
+    };
+    return std::abs(h(rin, pin, hz) * h(rout, pout, hz)) / std::abs(h(rin, pin, 0.0) * h(rout, pout, 0.0));
+}
+
+double rmsOf(const std::vector<float>& v, std::size_t from, std::size_t to)
+{
+    auto s = 0.0;
+    for (auto i = from; i < to; ++i) { s += static_cast<double>(v[i]) * v[i]; }
+    return std::sqrt(s / static_cast<double>(std::max<std::size_t>(1u, to - from)));
+}
+
+float sawAt(int n, double hz)
+{
+    const auto phase = juce::MathConstants<double>::twoPi * hz * n / kRate;
+    auto sum = 0.0;
+    for (int h = 1; h <= 12; ++h) { sum += std::sin(phase * h) / h; }
+    return 0.28f * static_cast<float>(sum);
+}
+} // namespace chorushw
+
+void testChorusHardwareModels()
+{
+    using namespace chorushw;
+
+    // ---- JUNO-60 I / II: rate, swing, phase, polarity ------------------------
+    // pendragon-andyh's Juno-60 measurements: I 0.513 Hz and II 0.863 Hz, BOTH
+    // over 1.66-5.35 ms (3.69 ms peak to peak); one triangle LFO with the right
+    // line inverted; both lines added to the dry with positive polarity.
+    for (const auto mode : { kModeJunoI, kModeJunoII })
+    {
+        const auto t = track(hardware(mode), false, 25.0, 12.0, 1.0, 9.0);
+        const auto expectedRate = mode == kModeJunoI ? 0.513 : 0.863;
+        const auto rate = dominantRate(t, t.left, expectedRate * 0.5, expectedRate * 1.5);
+        const auto swingL = maxOf(t.left) - minOf(t.left);
+        const auto swingR = maxOf(t.right) - minOf(t.right);
+        const auto centreL = 0.5 * (maxOf(t.left) + minOf(t.left));
+        const auto corr = pearson(t.left, t.right);
+        auto positive = true;
+        for (std::size_t i = 0; i < t.leftSign.size(); ++i)
+        {
+            positive = positive && t.leftSign[i] > 0.0 && t.rightSign[i] > 0.0;
+        }
+        const auto name = mode == kModeJunoI ? "I" : "II";
+        check(mode == kModeJunoI ? "ChorusHw_JunoIRateMatchesTheJuno60"
+                                 : "ChorusHw_JunoIIRateMatchesTheJuno60",
+              std::abs(rate / expectedRate - 1.0) < 0.02,
+              juce::String(name) + " LFO " + juce::String(rate, 4) + " Hz (Juno-60 " + juce::String(expectedRate, 3) + ")");
+        check(mode == kModeJunoI ? "ChorusHw_JunoISweepsTheJuno60DelayRange"
+                                 : "ChorusHw_JunoIISweepsTheJuno60DelayRange",
+              std::abs(swingL - 3.69) < 0.2 && std::abs(swingR - 3.69) < 0.2
+                  && centreL > 3.45 && centreL < 3.95,
+              juce::String(name) + " L " + juce::String(minOf(t.left), 2) + "-" + juce::String(maxOf(t.left), 2)
+                  + " ms, R " + juce::String(minOf(t.right), 2) + "-" + juce::String(maxOf(t.right), 2)
+                  + " ms (hardware 1.66-5.35, plus filter group delay)");
+        check(mode == kModeJunoI ? "ChorusHw_JunoILinesSweepInOpposition"
+                                 : "ChorusHw_JunoIILinesSweepInOpposition",
+              corr < -0.9, juce::String(name) + " L/R delay correlation " + juce::String(corr, 3));
+        check(mode == kModeJunoI ? "ChorusHw_JunoIWetIsPositiveOnBothSides"
+                                 : "ChorusHw_JunoIIWetIsPositiveOnBothSides",
+              positive, juce::String(name) + (positive ? " both wet copies in phase with the dry" : " a wet copy is inverted"));
+    }
+
+    // ---- JUNO-60 I+II -------------------------------------------------------
+    {
+        const auto t = track(hardware(kModeJunoBoth), false, 8.0, 6.0, 1.0, 6.5);
+        const auto rate = dominantRate(t, t.left, 5.0, 15.0);
+        const auto swing = maxOf(t.left) - minOf(t.left);
+        const auto corr = pearson(t.left, t.right);
+        check("ChorusHw_JunoBothRateIs9_75Hz", std::abs(rate / 9.75 - 1.0) < 0.03,
+              "I+II LFO " + juce::String(rate, 3) + " Hz (Juno-60 recording 9.75)");
+        check("ChorusHw_JunoBothSweepsNarrowlyInPhase",
+              std::abs(swing - 0.4) < 0.1 && corr > 0.9,
+              "I+II swing " + juce::String(swing, 3) + " ms (3.3-3.7), L/R correlation " + juce::String(corr, 3));
+    }
+
+    // ---- Juno: stereo image against the Juno-60 recordings -------------------
+    {
+        auto corrFor = [](int mode)
+        {
+            return render(hardware(mode), 4.0, [](int n, float& l, float& r) { l = r = sawAt(n, 220.0); })
+                .correlation();
+        };
+        const auto cI = corrFor(kModeJunoI);
+        const auto cII = corrFor(kModeJunoII);
+        const auto cBoth = corrFor(kModeJunoBoth);
+        // Recordings (jpcima, pendragon): saw L/R correlation 0.20-0.25 for
+        // I and II, 0.974 for I+II.
+        check("ChorusHw_JunoStereoImageMatchesTheRecordings",
+              cI < 0.6 && cII < 0.6 && cBoth > 0.95,
+              "L/R correlation I " + juce::String(cI, 3) + ", II " + juce::String(cII, 3) + ", I+II "
+                  + juce::String(cBoth, 3));
+    }
+
+    // ---- Juno: BBD filters against Holters & Parker --------------------------
+    {
+        auto s = hardware(kModeJunoI);
+        s.depth = 0.0f;
+        s.character = 0.0f;
+        const auto n0 = static_cast<int>(kRate * 0.3);
+        const auto out = render(s, 0.5, [&](int n, float& l, float& r) { l = r = n == n0 ? 1.0f : 0.0f; });
+        const auto from = static_cast<std::size_t>(n0 + 24);    // past the dry impulse
+        const auto to = static_cast<std::size_t>(n0 + 1200);
+        auto response = [&](double hz)
+        {
+            std::complex<double> sum(0.0, 0.0);
+            for (auto i = from; i < to; ++i)
+            {
+                const auto ph = -juce::MathConstants<double>::twoPi * hz * static_cast<double>(i) / kRate;
+                sum += static_cast<double>(out.left[i]) * std::complex<double>(std::cos(ph), std::sin(ph));
+            }
+            return std::abs(sum);
+        };
+        // Referenced to 300 Hz rather than DC: the 20 Hz floor of LOW CUT
+        // takes the DC out of a finite window.
+        const auto reference = response(300.0);
+        const auto referenceTarget = junoAnalogueMagnitude(300.0);
+        juce::String detail;
+        auto ok = reference > 0.5;
+        for (const auto hz : { 1000.0, 4000.0, 6000.0, 8000.0, 10000.0, 12000.0 })
+        {
+            const auto measured = 20.0 * std::log10(std::max(1.0e-9, response(hz) / reference));
+            const auto target = 20.0 * std::log10(junoAnalogueMagnitude(hz) / referenceTarget);
+            const auto tolerance = hz > 10500.0 ? 1.5 : 1.0;
+            ok = ok && std::abs(measured - target) < tolerance;
+            detail << juce::String(static_cast<int>(hz / 1000.0)) << "k " << juce::String(measured, 1) << "/"
+                   << juce::String(target, 1) << "  ";
+        }
+        check("ChorusHw_JunoFiltersMatchHoltersParker", ok, "dB measured/target " + detail);
+    }
+
+    // ---- mono sum per family --------------------------------------------------
+    {
+        juce::String detail;
+        auto ok = true;
+        for (int mode = 0; mode < px3::Chorus::modeCount(); ++mode)
+        {
+            const auto out = render(hardware(mode), 2.0, [](int n, float& l, float& r) { l = r = sawAt(n, 220.0); });
+            auto diff = 0.0, dry = 0.0;
+            for (std::size_t i = out.left.size() / 2; i < out.left.size(); ++i)
+            {
+                const auto x = static_cast<double>(sawAt(static_cast<int>(i), 220.0));
+                const auto m = 0.5 * (static_cast<double>(out.left[i]) + out.right[i]);
+                diff += (m - x) * (m - x);
+                dry += x * x;
+            }
+            const auto rel = std::sqrt(diff / dry);
+            // Dimension: the wet is pure side, so the mono sum IS the dry.
+            // Everything else keeps its chorus in mono, as the hardware does.
+            const auto dimension = mode <= 6;
+            const auto pass = dimension ? rel < 1.0e-3 : rel > 0.15;
+            ok = ok && pass;
+            detail << mode << ":" << juce::String(rel, 3) << (pass ? " " : "! ");
+        }
+        check("ChorusHw_MonoSumBehavesAsEachHardwareDoes", ok,
+              "|mono - dry| / dry by mode: " + detail);
+    }
+
+    // ---- CE-1: output A chorus only, output B direct only --------------------
+    {
+        const auto n0 = static_cast<int>(kRate * 0.3);
+        const auto out = render(hardware(kModeCe), 0.5, [&](int n, float& l, float& r) { l = r = n == n0 ? 0.5f : 0.0f; });
+        const auto idx = static_cast<std::size_t>(n0);
+        const auto wetFrom = idx + 24;
+        const auto wetTo = idx + static_cast<std::size_t>(kRate * 0.012);
+        const auto lDry = std::abs(out.left[idx]);
+        const auto rDry = std::abs(out.right[idx]);
+        const auto lWet = rmsOf(out.left, wetFrom, wetTo);
+        const auto rWet = rmsOf(out.right, wetFrom, wetTo);
+        check("ChorusHw_Ce1StereoIsChorusLeftDirectRight",
+              lDry < 1.0e-3f && rDry > 0.45f && lWet > 1.0e-3 && rWet < 1.0e-5,
+              "L dry " + juce::String(lDry, 4) + " wet " + juce::String(lWet, 5) + ", R dry "
+                  + juce::String(rDry, 4) + " wet " + juce::String(rWet, 6));
+    }
+
+    // ---- Dimension: one pair, rounded triangle, specified rates ---------------
+    {
+        juce::String detail;
+        auto ok = true;
+        auto plateauOk = true;
+        juce::String plateauDetail;
+        // The model's figures (design doc section 4): two speeds by two depths
+        // on buttons 1-4, combinations as parallel switch states.
+        const std::array<double, 7> rates { { 0.25, 0.25, 0.5, 0.5, 0.75, 0.75, 1.0 } };
+        const std::array<double, 7> excursions { { 2.0, 2.5, 1.5, 2.5, 2.5, 2.5, 2.5 } };
+        for (int mode = 0; mode <= 6; ++mode)
+        {
+            const auto expectedRate = rates[static_cast<std::size_t>(mode)];
+            // Left input only: line A alone, on L in phase and on R inverted.
+            const auto t = track(hardware(mode), true, 25.0, 4.0 / expectedRate + 0.6, 1.0, 20.0);
+            const auto rate = dominantRate(t, t.left, expectedRate * 0.6, expectedRate * 1.4);
+            const auto swing = maxOf(t.left) - minOf(t.left);
+            const auto expectedSwing = 2.0 * excursions[static_cast<std::size_t>(mode)];
+            const auto pass = std::abs(rate / expectedRate - 1.0) < 0.03
+                              && std::abs(swing / expectedSwing - 1.0) < 0.1;
+            ok = ok && pass;
+            detail << mode << ":" << juce::String(rate, 3) << "Hz/" << juce::String(swing, 2) << "ms ";
+
+            // The LFO is a triangle with only slightly rounded corners: the
+            // delay's slope (the detune) sits at its plateau most of the cycle.
+            std::vector<double> velocity;
+            for (std::size_t i = 1; i < t.left.size(); ++i) { velocity.push_back(std::abs(t.left[i] - t.left[i - 1])); }
+            auto sorted = velocity;
+            std::sort(sorted.begin(), sorted.end());
+            const auto plateau = sorted[sorted.size() * 3 / 4];
+            auto atPlateau = 0;
+            for (const auto v : velocity) { atPlateau += v > 0.85 * plateau ? 1 : 0; }
+            const auto fraction = static_cast<double>(atPlateau) / static_cast<double>(velocity.size());
+            plateauOk = plateauOk && fraction > 0.8;
+            plateauDetail << mode << ":" << juce::String(fraction, 2) << " ";
+        }
+        check("ChorusHw_DimensionModesRunAtTheirRatesAndSwings", ok, detail);
+        check("ChorusHw_DimensionLfoIsATriangleNotATrapezoid", plateauOk,
+              "share of the cycle at constant detune: " + plateauDetail);
+    }
+
+    {
+        // The SDD-320 has two BBDs. A combination button changes how that pair
+        // is driven - it cannot add a second pair. From a left-only impulse,
+        // the left output must hold exactly one wet copy.
+        juce::String detail;
+        auto ok = true;
+        for (int mode = 4; mode <= 6; ++mode)
+        {
+            auto s = hardware(mode);
+            s.character = 0.0f;
+            s.depth = 0.0f;
+            const auto n0 = static_cast<int>(kRate * 0.3);
+            const auto out = render(s, 0.5, [&](int n, float& l, float& r) { l = n == n0 ? 0.5f : 0.0f; r = 0.0f; });
+            const auto from = static_cast<std::size_t>(n0 + 24);
+            const auto to = static_cast<std::size_t>(n0) + static_cast<std::size_t>(kRate * 0.03);
+            auto biggest = 0.0f;
+            for (auto i = from; i < to; ++i) { biggest = juce::jmax(biggest, std::abs(out.left[i])); }
+            // Count separate arrivals: local maxima above 30% of the biggest,
+            // more than 0.5 ms apart.
+            auto arrivals = 0;
+            auto lastArrival = -1.0e9;
+            for (auto i = from + 1; i + 1 < to; ++i)
+            {
+                const auto v = std::abs(out.left[i]);
+                if (v > 0.3f * biggest && v >= std::abs(out.left[i - 1]) && v >= std::abs(out.left[i + 1])
+                    && static_cast<double>(i) - lastArrival > kRate * 0.0005)
+                {
+                    ++arrivals;
+                    lastArrival = static_cast<double>(i);
+                }
+            }
+            ok = ok && arrivals == 1;
+            detail << mode << ":" << arrivals << " ";
+        }
+        check("ChorusHw_DimensionCombinationsDriveOnePair", ok, "wet arrivals per left impulse: " + detail);
+    }
+
+    // ---- Dimension compander round trip ---------------------------------------
+    {
+        // Line A alone (left input only) comes out inverted on R. With the
+        // sweep stopped and the BBD linear, compressor and expander must undo
+        // each other at every level.
+        auto s = hardware(1);
+        s.depth = 0.0f;
+        s.character = 0.0f;
+        auto gainAt = [&s](float level)
+        {
+            const auto out = render(s, 1.5, [level](int n, float& l, float& r)
+            {
+                l = level * static_cast<float>(std::sin(juce::MathConstants<double>::twoPi * 1000.0 * n / kRate));
+                r = 0.0f;
+            });
+            const auto from = static_cast<std::size_t>(kRate * 0.8);
+            const auto wet = 2.0 * rmsOf(out.right, from, out.right.size());   // R = -0.5 A
+            return 20.0 * std::log10(std::max(1.0e-9, wet / (level / std::sqrt(2.0))));
+        };
+        const auto quiet = gainAt(0.1f);    // -20 dBFS
+        const auto loud = gainAt(0.5f);     // -6 dBFS
+        check("ChorusHw_DimensionCompanderRoundTripIsTransparent",
+              std::abs(quiet) < 1.0 && std::abs(loud) < 1.0 && std::abs(quiet - loud) < 0.5,
+              "line gain at -20 dBFS " + juce::String(quiet, 2) + " dB, at -6 dBFS " + juce::String(loud, 2) + " dB");
+    }
+
+    // ---- Ensemble: two generators, three phases --------------------------------
+    {
+        auto s = hardware(kModeEnsemble);
+        s.width = 1.0f;   // line 1 hard left, line 3 hard right
+        const auto t = track(s, false, 10.0, 8.6, 1.0, 9.5);
+        // Solina-style: slow ~0.6-0.8 Hz and fast ~6-6.4 Hz generators.
+        const auto slow = 0.7;
+        const auto fast = 6.3;
+        const auto slowSwing = 1.6;
+        const auto fastSwing = 0.12;
+        const auto fitL = fitSinusoids(t, t.left, { slow, fast });
+        const auto fitR = fitSinusoids(t, t.right, { slow, fast });
+        const auto slowPhase = std::abs(wrapDegrees(fitL[0].phase - fitR[0].phase));
+        const auto fastPhase = std::abs(wrapDegrees(fitL[1].phase - fitR[1].phase));
+        check("ChorusHw_EnsembleHasBothGenerators",
+              fitL[0].amplitude > 0.6 * slowSwing
+                  && fitL[1].amplitude > 0.5 * fastSwing
+                  && fitR[0].amplitude > 0.6 * slowSwing
+                  && fitR[1].amplitude > 0.5 * fastSwing,
+              "L slow " + juce::String(fitL[0].amplitude, 3) + " ms @" + juce::String(slow, 2) + " Hz, fast "
+                  + juce::String(fitL[1].amplitude, 3) + " ms @" + juce::String(fast, 2) + " Hz");
+        check("ChorusHw_EnsembleLinesAre120DegreesApart",
+              std::abs(slowPhase - 120.0) < 15.0 && std::abs(fastPhase - 120.0) < 25.0,
+              "outer lines apart by " + juce::String(slowPhase, 1) + " deg (slow), " + juce::String(fastPhase, 1)
+                  + " deg (fast)");
+    }
+
+    // ---- mode changes crossfade ---------------------------------------------
+    {
+        // Juno II -> DIM 1 under a sine: the base delay jumps from 3.5 to 10 ms,
+        // so an instant switch is a step in the wet signal.
+        px3::Chorus chorus;
+        chorus.prepare(kRate);
+        auto s = hardware(kModeJunoII);
+        const auto switchAt = static_cast<int>(kRate * 1.0);
+        auto steady = 0.0f, around = 0.0f, previous = 0.0f;
+        for (int n = 0; n < static_cast<int>(kRate * 1.5); ++n)
+        {
+            if (n == switchAt) { s.modeIndex = 0; }
+            if (n % 512 == 0 || n == switchAt) { chorus.updateForBlock(s); }
+            const auto x = 0.5f * static_cast<float>(std::sin(juce::MathConstants<double>::twoPi * 220.0 * n / kRate));
+            float l = 0.0f, r = 0.0f;
+            chorus.processSampleFrame(x, x, l, r);
+            const auto step = std::abs(l - previous);
+            previous = l;
+            if (n > static_cast<int>(kRate * 0.3) && n < switchAt) { steady = juce::jmax(steady, step); }
+            if (n >= switchAt && n < switchAt + static_cast<int>(kRate * 0.1)) { around = juce::jmax(around, step); }
+        }
+        check("ChorusHw_ModeChangeCrossfades", around < steady * 1.5f,
+              "worst step steady " + juce::String(steady, 4) + ", across the change " + juce::String(around, 4));
+    }
+
+    // ---- cost ------------------------------------------------------------------
+    {
+        juce::String detail;
+        auto worst = 0.0;
+        for (int mode = 0; mode < px3::Chorus::modeCount(); ++mode)
+        {
+            px3::Chorus chorus;
+            chorus.prepare(kRate);
+            chorus.updateForBlock(hardware(mode));
+            const auto total = static_cast<int>(kRate * 2.0);
+            std::vector<float> input(static_cast<std::size_t>(total));
+            for (int n = 0; n < total; ++n) { input[static_cast<std::size_t>(n)] = sawAt(n, 220.0); }
+            auto sink = 0.0f;
+            const auto start = juce::Time::getHighResolutionTicks();
+            for (int n = 0; n < total; ++n)
+            {
+                float l = 0.0f, r = 0.0f;
+                chorus.processSampleFrame(input[static_cast<std::size_t>(n)], input[static_cast<std::size_t>(n)], l, r);
+                sink += l + r;
+            }
+            const auto seconds = juce::Time::highResolutionTicksToSeconds(juce::Time::getHighResolutionTicks() - start);
+            const auto ns = seconds * 1.0e9 / total;
+            worst = std::max(worst, ns);
+            detail << mode << ":" << juce::String(ns, 0) << (std::isfinite(sink) ? "" : "?") << " ";
+        }
+        check("ChorusHw_CostPerSampleIsBounded", worst < 1000.0, "ns/sample by mode: " + detail);
+    }
+}
+
 void testChorus()
 {
     suite("CHORUS");
 
-    {
-        // JUNO I, II and I+II: audible, finite, and at their own rates - the
-        // pitch wobble of a sine through each cycles at about 0.5, 0.86 and 8 Hz.
-        auto wobbleRate = [](int mode, bool& finite, double& changed)
-        {
-            px3::Chorus chorus;
-            chorus.prepare(48000.0);
-            ChorusSettings settings;
-            settings.enabled = true;
-            settings.amount = 1.0f;
-            settings.mix = 1.0f;
-            settings.depth = 1.0f;
-            settings.modeIndex = mode;
-            std::vector<double> crossings;
-            finite = true;
-            double diff = 0.0, dry = 0.0;
-            float previous = 0.0f;
-            for (int n = 0; n < 48000 * 6; ++n)
-            {
-                if (n % 512 == 0) chorus.updateForBlock(settings);
-                const auto x = 0.3f * static_cast<float>(std::sin(juce::MathConstants<double>::twoPi * 440.0 * n / 48000.0));
-                float l = 0, r = 0;
-                chorus.processSampleFrame(x, x, l, r);
-                finite = finite && std::isfinite(l) && std::isfinite(r);
-                if (n > 48000) { diff += static_cast<double>(l - x) * (l - x); dry += static_cast<double>(x) * x; }
-                if (n > 48000 && previous < 0.0f && l >= 0.0f) crossings.push_back(static_cast<float>(n - 1) + previous / (previous - l));
-                previous = l;
-            }
-            changed = std::sqrt(diff / dry);
-            // Period series -> count its oscillations about its own mean.
-            std::vector<double> periods;
-            for (std::size_t k = 1; k < crossings.size(); ++k) periods.push_back(crossings[k] - crossings[k - 1]);
-            double mean = 0.0;
-            for (const auto p : periods) mean += p;
-            mean /= static_cast<double>(periods.size());
-            // Smooth over 8 periods so sample-level jitter does not count.
-            std::vector<double> smoothedSeries;
-            double smoothed = periods[0];
-            for (const auto p : periods) { smoothed += (p - smoothed) * 0.125; smoothedSeries.push_back(smoothed - mean); }
-            double spread = 0.0;
-            for (const auto v : smoothedSeries) spread += v * v;
-            const auto threshold = 0.3 * std::sqrt(spread / static_cast<double>(smoothedSeries.size()));
-            // Schmitt trigger: a cycle counts only once the series has gone
-            // clearly below and then clearly above, so jitter is not a cycle.
-            int swings = 0;
-            auto low = false;
-            for (const auto v : smoothedSeries)
-            {
-                if (v < -threshold) low = true;
-                else if (v > threshold && low) { ++swings; low = false; }
-            }
-            return swings / 5.0;   // per second over the 5 measured seconds
-        };
-        bool finiteI = false, finiteII = false, finiteBoth = false;
-        double changedI = 0, changedII = 0, changedBoth = 0;
-        const auto rateI = wobbleRate(9, finiteI, changedI);
-        const auto rateII = wobbleRate(10, finiteII, changedII);
-        const auto rateBoth = wobbleRate(11, finiteBoth, changedBoth);
-        check("Chorus_JunoModesRunAtTheirOwnRates",
-              finiteI && finiteII && finiteBoth && changedI > 0.01 && changedII > 0.01 && changedBoth > 0.01
-                  // Absolute counts on I and II read high: with dry in the
-                  // output the deep modes' phase rotation adds crossings. The
-                  // ratio is unaffected (spec 0.863 / 0.513 = 1.68).
-                  && std::abs(rateII / rateI - 1.68) < 0.25 && rateBoth > 2.0 * rateII,
-              "wobble cycles/s: I " + juce::String(rateI, 2) + ", II " + juce::String(rateII, 2) + ", I+II " + juce::String(rateBoth, 2));
-    }
+    // The Juno-60, Dimension, CE-1 and ensemble models are measured against
+    // their hardware in testChorusHardwareModels() (the old wobble-count check
+    // pinned the Juno modes to 8 Hz for I+II and to one line inverted on R,
+    // neither of which is the Juno-60).
 
     using namespace chorustest;
 
@@ -368,9 +913,10 @@ void testChorus()
 
     // ---- mono compatibility ------------------------------------------------
     {
-        // L + R = 2*dry by construction: the wet terms are equal and opposite.
-        // A widener that made its width out of phase cancellation would lose
-        // level here.
+        // DIMENSION modes (the default DIM 2 here): L + R = 2*dry by
+        // construction, the wet terms being equal and opposite. The other
+        // families keep their chorus in mono, as their hardware does - see
+        // ChorusHw_MonoSumBehavesAsEachHardwareDoes.
         juce::String detail;
         auto allRetained = true;
 
@@ -446,13 +992,10 @@ void testChorus()
               "mode 1 " + juce::String(px3::Chorus::specFor(0).baseDelayMs, 1) + " ms, mode 4 "
                   + juce::String(px3::Chorus::specFor(3).baseDelayMs, 1) + " ms");
 
-        // The combination modes stack a second pair at its own rate.
-        check("Chorus_CombinationModesStackASecondPair",
-              px3::Chorus::specFor(4).stackedMode >= 0
-                  && px3::Chorus::specFor(5).stackedMode >= 0
-                  && px3::Chorus::specFor(6).stackedMode >= 0
-                  && px3::Chorus::specFor(1).stackedMode < 0,
-              "");
+        // (The old Chorus_CombinationModesStackASecondPair pinned an invented
+        // architecture: the SDD-320 has two BBDs, so a combination button can
+        // only change how that one pair is driven. Replaced by
+        // ChorusHw_DimensionCombinationsDriveOnePair.)
     }
 
     // ---- depth, width, feedback -------------------------------------------
@@ -576,7 +1119,7 @@ void testChorus()
             }
         }
         check("Chorus_EveryModeAtMaximumEverythingStaysValid", allSurvive,
-              detail.isEmpty() ? "all nine modes at maximum on a supersaw" : detail);
+              detail.isEmpty() ? "every mode at maximum on a supersaw" : detail);
     }
 
     {
@@ -599,7 +1142,6 @@ void testChorus()
         {
             px3::Chorus chorus;
             chorus.prepare(kSampleRate);
-            chorus.setSeed(24u);
 
             auto s = audible();
             const auto total = static_cast<int>(kSampleRate * 3.0);
@@ -777,6 +1319,8 @@ void testChorus()
         check("Chorus_FxOrderIncludingChorusSurvivesState",
               restored.getFxProcessingOrder() == order, "");
     }
+
+    testChorusHardwareModels();
 }
 
 // ============================================================================

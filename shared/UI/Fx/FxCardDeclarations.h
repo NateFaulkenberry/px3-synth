@@ -23,25 +23,32 @@ inline void wireAdvancedSwitch(FxCardComponent& card)
 
 inline void declareChorusRows(FxCardComponent& card, const juce::StringArray& modeChoices)
 {
-    card.setDescription("Thickens and widens with modulated short delays: dimension, ensemble and Juno-style modes.");
+    card.setDescription("Bucket-brigade chorus models: Dimension D, string ensemble, CE-1 and Juno-60. "
+                        "At the default knob positions each mode runs at its hardware's own settings.");
     card.addChoiceRow({ { "mode", "MODE",
-                          "DIM: Dimension-style anti-phase pair. ENSEMBLE: three-phase string ensemble. "
-                          "JUNO I / II / I+II: one BBD line per side on a triangle LFO.",
+                          "DIM: Dimension D anti-phase pair with compander; 1+4 / 2+4 / 3+4 are both buttons on "
+                          "the same pair. ENSEMBLE: string-machine ensemble, three lines on slow and fast "
+                          "three-phase sweeps. CE-1: one line - chorus on the left, direct on the right. "
+                          "JUNO-60 I / II: two lines swept in opposition (II faster). JUNO-60 I+II: fast, "
+                          "narrow and in phase - near mono.",
                           modeChoices } });
 
-    card.addKnobRow({ { "rate", "RATE", "Modulation speed" },
-                      { "depth", "DEPTH", "How far the delay lines are swept (pitch movement)" },
-                      { "width", "WIDTH", "Stereo width of the wet signal" },
-                      { "spread", "PHASE", "Phase offset between the left and right sweeps" } });
+    card.addKnobRow({ { "rate", "RATE", "LFO speed; the default is the hardware's rate" },
+                      { "depth", "DEPTH", "Delay sweep; the default is the hardware's swing, full is twice it" },
+                      { "width", "WIDTH",
+                        "Stereo spread of the wet; the default is the hardware's routing (CE-1: 0 is its mono "
+                        "output; ENSEMBLE: 0 is the original mono)" },
+                      { "spread", "PHASE", "LFO phase between the lines; the default is the hardware's" } });
 
     card.addKnobRow({ { "tone", "TONE", "Warm to clear, on the wet path only" },
-                      { "lowCut", "LOW CUT", "Keeps the bass out of the chorus so it stays anchored" },
-                      { "feedback", "FEEDBACK", "Resonant colour; capped short of flanging" },
+                      { "lowCut", "LOW CUT", "Extra high-pass on the wet only (no original had one); off at zero" },
+                      { "feedback", "FEEDBACK", "Extra resonant colour (no original had it); capped short of flanging" },
                       { "character", "VINTAGE",
-                        "Bucket-brigade character: emphasis, companding noise and bandwidth. 0 is clean" },
+                        "Bucket-brigade drive: 0 is linear, the default the hardware's, full is hot" },
                       { "mix", "DRY/WET", "Final balance of dry against chorus" } });
 
-    card.addFeatureKnobRow({ "amount", "INTENSITY", "Scales depth, width and colour together" });
+    card.addFeatureKnobRow({ "amount", "INTENSITY",
+                             "Fades from bypass to the hardware's own wet/dry balance and stereo routing" });
 }
 
 inline void declareReverbRows(FxCardComponent& card, const juce::StringArray& algorithmChoices)

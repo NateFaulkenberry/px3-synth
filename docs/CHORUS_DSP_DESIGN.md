@@ -1,298 +1,284 @@
 # CHORUS — DSP Design
 
-A Dimension D-inspired stereo chorus for the P(X3) synthesiser, with the BOSS
-CE-1 and the Juno/Solina ensemble circuits as secondary references.
+Four families of bucket-brigade (BBD) chorus, each built to the topology of the
+hardware it is named after: the Roland SDD-320 Dimension D, a Solina-style
+string ensemble, the BOSS CE-1, and the Roland Juno-60.
 
-The design target is Roland's own claim for the SDD-320:
+Rebuilt 2026-10-05 after an audit found the previous engine was one generic
+anti-phase pair with a trapezoid LFO, presented under hardware names. The
+problems it had are listed in §7 so they do not come back.
 
-> "The Dimension D gives a new dimension **without the apparent movement of
-> sound** produced by most other chorus devices."
+**The rule for every mode:** at the default control positions (RATE 0.35,
+DEPTH 0.5, WIDTH 0.75, SPREAD 0.5, VINTAGE 0.5, LOW CUT 0, FEEDBACK 0, MIX 1)
+and INTENSITY 1, the mode runs at its hardware's own figures. INTENSITY fades
+from bypass to that hardware's wet/dry balance and stereo routing.
 
-and
-
-> "Monaural inputs … from a single point sound source into a sound which fills
-> the entire stereo field."
-
-Those two sentences are the whole brief. Width without wobble is not a tuning
-problem — it is an architecture, and a single modulated delay plus a sine LFO
-cannot produce it at any setting.
-
----
-
-## 1. Research
-
-### Roland SDD-320 Dimension D
-
-**Documented by Roland:** four modes, "MODE 1 produces the softest effect; MODE
-4 produces the strongest effect"; combination buttons; mono input feeds both
-dimension channels; >95 dB S/N (A-weighted); balanced and unbalanced I/O.
-Roland does not publish the circuit's operating principle.
-
-**From published circuit analysis and service documentation** (flagged as
-secondary, not Roland's own words):
-
-- **Two independent BBD delay lines**, with **companders** and
-  **pre-emphasis / de-emphasis** for noise performance.
-- A **trapezoidal LFO** driving the BBD clock VCOs, roughly ±3 V.
-- Two modulation speeds (on the order of a 2-second and a 4-second cycle) and
-  two depths, selected by the mode buttons.
-- **Mode 1** lowers the modulation depth *and* runs the VCOs slower, so its
-  delay is longer than modes 2–4 — reported in the region of 8–12 ms.
-- **Cross-channel routing with polarity inversion** between the two delay
-  paths.
-
-That last point is the mechanism. Sources:
-- Roland — SDD-320 owner's manual, <https://archive.org/stream/SDD-320_owners_manual/SDD-320_owners_manual_djvu.txt>
-- Roland — SDD-320 service notes
-- Community circuit analysis (Klark Teknik BBD-320 threads, GroupDIY SDD-320
-  calibration)
-
-### BOSS CE-1 Chorus Ensemble
-
-A single BBD path with a preamp, a compander, and a sine-ish LFO; a chorus/
-vibrato switch that removes the dry path for vibrato. Its character comes from
-its **bandwidth limit and its compander**, not from noise. Used here as the
-reference for warmth and for a single-path chorus, not cloned.
-
-### Juno-60 / 106, JX-3P/8P, Solina
-
-The Juno chorus is **two BBD lines modulated in opposition**, summed to L and R
-oppositely — the same trick as the Dimension D at a larger depth and rate. The
-Solina-family ensemble uses **three phase-offset LFOs** across multiple delay
-paths, which is why a string machine sounds like an ensemble rather than like
-one detuned copy.
-
-### DSP references
-
-- Fractional delay and interpolation — Välimäki & Laakso, *Principles of
-  Fractional Delay Filters*; CCRMA on delay-line interpolation,
-  <https://ccrma.stanford.edu/~jos/>.
-- BBD behaviour: bandwidth limiting, companding, pre/de-emphasis, clock
-  feedthrough — standard analogue delay literature.
+Every figure below is marked **[measured]** (taken from a recording or a
+first-hand measurement of the hardware), **[documented]** (manufacturer or
+peer-reviewed), or **[unverified]** (a modelling choice where no primary source
+was found).
 
 ---
 
-## 2. Why a single modulated delay fails
+## 1. Shared structure
 
 ```
-dry + delay(t + d·sin(ωt))
+               ┌──────────────────────── one BBD line ─────────────────────────┐
+ x ─► [HPF ─► pre-emph ─► 2:1 comp] ─► input LPF ─► (+fb) ─► tanh ─► delay(t) ─►
+      └──────── Dimension only ───┘                         ▲   (cubic read)  │
+                                                            └────── fb ◄──────┤
+  ◄── [2:1 exp ─► de-emph] ◄── output LPF ◄─────────────────────────────────────┘
+      └─ Dimension only ─┘
 ```
 
-The wet copy's pitch is `1 + d·ω·cos(ωt)` — it goes sharp and flat, audibly and
-periodically. Panning it, or inverting the LFO for the right channel, does not
-fix it: each ear still hears a copy whose pitch is moving.
-
-The Dimension D's answer:
-
-```
-delay A = base + depth·L(t)
-delay B = base − depth·L(t)        ← anti-phase
-
-L = dry + wetA − wetB
-R = dry − wetA + wetB
-```
-
-Two consequences fall straight out of the algebra:
-
-1. **The average pitch is constant.** When A goes sharp, B goes flat by the same
-   amount. The ear integrates the pair and hears no vibrato — but the two copies
-   are decorrelated from each other, which is what width is.
-2. **`L + R = 2·dry`.** The wet terms cancel exactly in mono. The effect
-   disappears when summed, and nothing combs. That is the strongest mono
-   compatibility any chorus can have, and it is a property of the structure
-   rather than of a setting.
-
-CHORUS is built on this pair, and every mode is a different way of driving it.
+- **Delay.** A circular buffer read by a cubic (Catmull-Rom) interpolator. The
+  delay follows the LFO **linearly in time**, as both published Juno models do.
+  On the hardware the LFO drives the clock VCO, and delay is N/(2·f_clk). Whether
+  the VCO's control law makes the delay linear in the LFO is **[unverified]**.
+- **Filters.** Fixed, designed in `prepare()`, and stored per mode. Nothing is
+  designed or `exp()`'d in the audio path. The user filters are a one-pole low
+  cut, whose coefficient is computed per block and linearly smoothed per sample,
+  and a tone tilt with a fixed coefficient.
+- **Why not a clocked BBD simulation.** The Holters–Parker model clocks the BBD
+  at 24–77 kHz (Juno-60) and needs no interpolation. Its only audible
+  difference from fixed filters around an interpolated delay is aliasing from
+  that clock, and the 5th-order input filter suppresses it (−33 dB at 20 kHz).
+  The cost is several complex one-poles per BBD tick. A fixed-filter
+  approximation reproduces the Holters–Parker magnitude response within 0.5 dB
+  to 12 kHz (test `ChorusHw_JunoFiltersMatchHoltersParker`).
+- **Saturation.** `tanh(k·v)/k` at the point the BBD samples its input, with
+  k = 1.2 × VINTAGE. VINTAGE 0 is exactly linear; 0.5 (the default) is gentle.
+  Measurements show the MN3009 rounds a sawtooth **[measured, pendragon]**; the
+  amount is **[unverified]**.
+- **Mode changes** crossfade two complete engines (two "slots") over 40 ms with
+  a smoothstep (C1) gain. No delay, filter or routing switches in one sample.
+  While the effect is inaudible, the mode changes outright.
+- **The dry path is never filtered or delayed.** Latency: none.
 
 ---
 
-## 3. Architecture
+## 2. JUNO-60 I / II / I+II
 
-```
-                    INPUT (stereo)
-                          │
-        ┌─────────────────┼──────────────────┐
-        │ dry (untouched) │                  │
-        │                 ▼                  │
-        │        ┌────────────────┐          │
-        │        │ pre-emphasis   │          │
-        │        │ + compressor   │  BBD in  │
-        │        └────────┬───────┘          │
-        │                 │                  │
-        │   ┌─────────────┴─────────────┐    │
-        │   ▼                           ▼    │
-        │ ┌──────────┐            ┌──────────┐
-        │ │ DELAY A  │            │ DELAY B  │
-        │ │ base+d·L │            │ base−d·L │   anti-phase
-        │ │ Lagrange │            │ Lagrange │
-        │ └────┬─────┘            └────┬─────┘
-        │      │                       │
-        │      ▼                       ▼
-        │ ┌──────────────────────────────────┐
-        │ │ bandwidth limit + soft saturate  │
-        │ │ expander + de-emphasis           │
-        │ │ wet high-pass (low-end anchor)   │
-        │ └────┬────────────────────┬────────┘
-        │      │ wetA               │ wetB
-        │      ▼                    ▼
-        │   L = dry + wetA − wetB
-        └─► R = dry − wetA + wetB
-                          │
-                          ▼
-                     WIDTH · MIX
-                          │
-                          ▼
-                       OUTPUT
-```
+### Hardware
 
-`ENSEMBLE` adds a third path with its LFO at 120°, distributed across the pair;
-`CE WARM` collapses to one path with heavier companding and a lower bandwidth.
+- One triangle LFO drives two 256-stage MN3009 lines, one for left and one for
+  right. The right line's modulation is inverted (180°). Measurements from
+  recordings **[measured, pendragon-andyh]**:
 
----
+  | Mode | LFO rate | Delay range | Output |
+  |---|---|---|---|
+  | I | 0.513 Hz | 1.66–5.35 ms | stereo |
+  | II | 0.863 Hz | 1.66–5.35 ms | stereo |
+  | I+II | 9.75 Hz | 3.3–3.7 ms | ≈ mono |
 
-## 4. Subsystems
+  **I and II differ only in rate.** The Juno-60 service notes label the rates
+  0.5 / 0.83 / "1" Hz; the Juno-6 notes label them 0.4 / 0.67 / 8.06 Hz
+  (quoted by pendragon). The previous engine's 8 Hz for I+II came from the
+  Juno-6 figure.
+- Independent check (this project, against the jpcima and pendragon
+  recordings): modulation periodicity 0.512 / 0.862 / ≈9.7 Hz. Saw L/R
+  correlation: I 0.25, II 0.23, I+II 0.974, chorus off 1.000. The 0.974 shows
+  that in I+II the wet has the **same polarity** on both sides and the lines
+  move **in phase**.
+- Outputs: L = dry + BBD_L and R = dry + BBD_R, both positive. The dry gain is
+  0.83 against the BBD path **[unverified, jpcima's fit]**.
+- Filters: 5th-order input and 5th-order output filters fitted to a real
+  Juno-60 by Holters & Parker (DAFx-18) **[documented]**. Input filter −3 dB at
+  6.5 kHz; output filter −3 dB at 8.8 kHz.
+- **No compander** in the Juno-60 schematics **[measured, pendragon]**.
+- The Juno-106 has I, II and I+II (both buttons pressed) **[documented, Roland
+  JX-08 / SH-4d manuals]**. Its rates and circuit values were not obtained, so
+  these modes are labelled JUNO-60.
 
-### 4.1 Modulation trajectory — trapezoid, not sine
+### Model
 
-The SDD-320's LFO is reported as **trapezoidal**. That is not incidental: a
-trapezoid moves linearly between its extremes and dwells at them, so the
-*velocity* — which is what pitch shift actually is — is constant over most of
-the cycle rather than sinusoidal. A sine's pitch deviation is itself sinusoidal
-and reads as "wooo"; a trapezoid's is close to two steady detunings with short
-transitions, which reads as two slightly detuned copies. The corners are
-rounded so the pitch does not step.
-
-Rate sits in the region the hardware occupies — cycles of seconds, not hertz —
-with the useful range weighted there rather than spread to 20 Hz.
-
-**Not perfectly periodic:** a very slow, bounded random walk modulates the rate
-and the depth by a few percent. Enough that the cycle never repeats exactly,
-small enough that it is never heard as modulation of its own. This is the only
-randomness in the effect and it is smoothed, bounded and correlated.
-
-### 4.2 Fractional delay
-
-**Cubic Lagrange (Catmull-Rom)**, matching `Delay`, `CombResonator` and `Doom`
-in this codebase. Linear interpolation of a delay line moving at chorus rates is
-audible as a dull, gritty modulation — its error is a level-dependent low-pass
-that moves with the delay. Allpass interpolation is rejected because it is
-recursive and produces transients under exactly the continuous modulation this
-effect applies.
-
-### 4.3 BBD character
-
-Not noise. In order:
-
-1. **Pre-emphasis** — a high-shelf boost before the delay.
-2. **Compressor** — a soft, slow-acting gain reduction.
-3. **Bandwidth limit** — a low-pass standing in for the BBD's clock-limited
-   response, which is most of what makes an analogue chorus sound softer than a
-   digital one.
-4. **Soft saturation** — gentle, and inside the delay path only.
-5. **Expander** — the compressor's inverse.
-6. **De-emphasis** — the complement of the pre-emphasis.
-
-Pre/de-emphasis around a compander is the documented BBD noise-reduction
-arrangement, and it also produces the tone: the boost-then-cut is not exactly
-complementary once saturation and bandwidth limiting sit between them, and that
-asymmetry is the warmth. `CHARACTER` scales the whole group. At zero the wet
-path is clean and modern.
-
-**No noise generator.** A hiss floor is not what makes a chorus sound analogue,
-and adding one to a synthesiser is a defect.
-
-### 4.4 Low-end anchoring
-
-The dry path is never filtered — it is the pitch and transient anchor, and on a
-bass patch it is most of what is heard. The **wet** path is high-passed, so the
-fundamental is not among the copies being detuned. A bass note keeps its weight
-and its pitch while its harmonics move.
-
-`LOW CUT` exposes the corner. Its default is placed where a synth bass
-fundamental sits below it and the second harmonic above.
-
-### 4.5 Modes
-
-Every mode is a real change of architecture or of the modulation driving it, not
-a preset of the same numbers.
-
-| Mode | Structure |
-|---|---|
-| **DIM 1** | anti-phase pair, longest base delay, slowest LFO, smallest depth — the documented "softest", and the documented longer delay of mode 1 |
-| **DIM 2** | shorter base delay, faster LFO, moderate depth |
-| **DIM 3** | as 2, larger depth |
-| **DIM 4** | shortest base delay, fastest LFO, largest depth — the documented "strongest" |
-| **DIM 1+4** | both pairs running together at their own rates, summed. The combination buttons stack modes on the hardware; two pairs at different rates is a denser, less periodic field than either alone |
-| **DIM 2+4** | as above, from modes 2 and 4 |
-| **DIM 3+4** | as above, from modes 3 and 4 |
-| **ENSEMBLE** | three paths, LFOs at 120°, distributed across the anti-phase sum — the string-machine arrangement |
-| **CE WARM** | one path, heavier companding, lower bandwidth, sine LFO — the single-BBD chorus |
-
-### 4.6 AMOUNT
-
-A macro, not a multiplier over everything. Measured relationships:
-
-```
-AMOUNT   depth      wet level   width    character
-0        —          0           —        —          (dry)
-0.25     35%        45%         60%      30%        subtle width, stable centre
-0.5      65%        80%         85%      55%        classic lush synth chorus
-0.75     85%        100%        100%     75%        unmistakably modulated
-1.0      100%       100%        115%     100%       expansive, still not seasick
-```
-
-Wet level reaches full before depth does, so pushing AMOUNT past the middle
-deepens the movement rather than simply getting louder. `MIX` remains a separate
-final dry/wet for placing the effect in a chain; `AMOUNT` is what the effect
-does, `MIX` is how much of it you hear.
-
-### 4.7 Feedback
-
-Present but deliberately small, and capped well below where comb resonance
-dominates. Chorus is defined by the *relationship* between a clean dry and
-decorrelated wet copies; feedback strengthens the comb and turns it into a
-flanger. It is available for colour and cannot reach flanger territory.
+- Two lines: line A fed from the left input, line B from the right. With a
+  mono input this is identical to the hardware's single input.
+- Rounded triangle LFO with corner fraction 0.01 for I and II. For I+II the
+  corner is 0.08: jpcima hears the I+II LFO as "sine-like" **[unverified]**.
+- Line B phase: 0.5 cycle for I and II, 0 for I+II, plus (SPREAD − 0.5).
+- Centre 3.505 ms ± 1.845 ms for I and II; 3.5 ± 0.2 ms for I+II.
+- Holters–Parker pole/residue filters, impulse-invariant, as parallel real
+  sections (one first-order, two second-order), DC-normalised to the analogue
+  gain. Bilinear was rejected: it warps the 7–10 kHz poles and darkens 10 kHz
+  by 4–5 dB at 44.1 kHz.
+- Output: L = 0.83·x + A, R = 0.83·x + B at INTENSITY 1. WIDTH scales (A − B);
+  0.75 is the hardware.
+- No compander, emphasis, low cut, feedback or random wander. LOW CUT and
+  FEEDBACK remain as user extras, off by default.
 
 ---
 
-## 5. Parameters
+## 3. DIM 1–4, 1+4, 2+4, 3+4 (SDD-320 Dimension D)
 
-| Parameter | Range | Default | Purpose | With AMOUNT |
-|---|---|---|---|---|
-| `chorusEnabled` | bool | true | bypass | — |
-| `chorusAmount` | 0…1 | **0.0** | macro intensity | — |
-| `chorusMode` | 9 modes | DIM 2 | architecture | — |
-| `chorusRate` | 0…1 | 0.35 | LFO rate, weighted to hardware territory | independent |
-| `chorusDepth` | 0…1 | 0.5 | modulation excursion | scaled by AMOUNT |
-| `chorusWidth` | 0…1 | 0.75 | stereo expansion of the wet pair | scaled by AMOUNT |
-| `chorusSpread` | 0…1 | 0.5 | LFO phase offset between paths | independent |
-| `chorusTone` | −1…+1 | 0.0 | warm ↔ clear on the wet path | independent |
-| `chorusLowCut` | 0…1 | 0.3 | wet-path high-pass; the bass anchor | independent |
-| `chorusFeedback` | 0…1 | 0.0 | colour; capped short of flanging | independent |
-| `chorusCharacter` | 0…1 | 0.5 | BBD group depth | scaled by AMOUNT |
-| `chorusMix` | 0…1 | 1.0 | final dry/wet | independent |
+### Hardware
 
-Latency: **none**. The dry path is unfiltered and undelayed.
+- Two independent BBD lines with compander and pre/de-emphasis; block diagram
+  COMP → DELAY → EXP "for noise reduction"; MODE 1 softest, MODE 4 strongest;
+  mono input feeds both channels **[documented, owner's manual]**.
+- Sweep direction opposite on the two channels; out-of-phase signal fed to the
+  opposite side **[documented, Home & Studio Recording review, 1984]**.
+- LFO "almost perfectly triangular with only the tiniest amount of dwell"; two
+  speeds (~2 s and ~4 s cycles) × two depths; delays ≈ 5 / 5.5 ms on the two
+  sides (except button 1); ~8 kHz steep filtering after the lines; bass
+  roll-off before the compander **[measured, one first-hand report (Fractal
+  forum)]**.
+- Mode 1: 8–12 ms **[measured, Klark Teknik BBD-320 thread]**.
+- Combination buttons 1+4, 2+4 and 3+4 exist **[documented, Roland]**. What
+  they do in the circuit is **[unverified]**.
 
-## 6. CPU
+### Model
 
-Two to three delay lines with cubic interpolation, one shelf pair, one low-pass
-and one high-pass per channel. Comparable to the existing `Delay`. All buffers
-allocated in `prepare()`.
+| Mode | Rate | Centre (A / B) | Swing at DEPTH 0.5 |
+|---|---|---|---|
+| DIM 1 | 0.25 Hz | 9.5 / 10.5 ms | ±2.0 ms |
+| DIM 2 | 0.25 Hz | 4.99 / 5.51 ms | ±2.5 ms |
+| DIM 3 | 0.5 Hz | 4.99 / 5.51 ms | ±1.5 ms |
+| DIM 4 | 0.5 Hz | 4.99 / 5.51 ms | ±2.5 ms |
+| DIM 1+4 | 0.75 Hz | 9.5 / 10.5 ms | ±2.5 ms |
+| DIM 2+4 | 0.75 Hz | 4.99 / 5.51 ms | ±2.5 ms |
+| DIM 3+4 | 1.0 Hz | 4.99 / 5.51 ms | ±2.5 ms |
 
-## 7. Testing strategy
+- Rates and the 2 × 2 structure follow the measurement. Which button gets
+  which depth, and the depth values, are **[unverified]**, chosen so that
+  detune rises from DIM 1 to DIM 4 as the manual requires.
+- Combinations are switch states on **the same pair** (the unit has two BBDs).
+  The model treats the two buttons' timing resistors as parallel, so the rates
+  add; it takes the deeper depth and the lower button's centre delay
+  **[unverified]**.
+- The previous engine ran a second pair, which the hardware cannot do.
+- One rounded-triangle LFO (corner 0.02, about 92% of each cycle at constant
+  detune). Line B at +0.5 cycle.
+- Per line: 1st-order HPF at 150 Hz; pre-emphasis shelf (zero 2 kHz, pole
+  6 kHz, +9.5 dB) and its exact inverse; NE570-style 2:1 compander; 4th-order
+  Butterworth at 8 kHz before and after the delay. Corners and orders are
+  **[unverified]**.
+- **Compander.** The compressor's rectifier is on its output (gain = ref /
+  env(out), so out ∝ √(ref·in)). The expander's is on its input (gain =
+  env(in) / ref). The detectors are matched (2 ms attack, 20 ms release, ref
+  0.25, gain at most 20 dB). The pair is exactly inverse across a pure delay,
+  and departs from it only where the filters and saturation between them
+  change the signal. That departure is the colour.
+- Output: L = dry + 0.5(A − B), R = dry − 0.5(A − B). The wet is pure side, so
+  the mono sum is exactly the dry. The cross-feed gain of 1 (full cancellation)
+  is **[unverified]**.
 
-Construction and defaults; 44.1/48/88.2/96 kHz and several block sizes; silence,
-impulse and sines from 50 Hz to 10 kHz; every mode; depth zero producing no
-pitch modulation; **mono collapse at five AMOUNT settings**; correlation across
-the width range; left-only, right-only and identical-stereo input; low-end
-stability on a bass patch; automation sweeps on every continuous control;
-extreme settings; state and preset round-trip; FX ordering.
+---
 
-The two measurements that matter most, because they are the design brief:
+## 4. ENSEMBLE (Solina-style string ensemble)
 
-1. **Pitch stability** — the wet pair's average pitch deviation must stay far
-   below a single-delay chorus at the same depth. Measured as the deviation of
-   the summed signal's zero-crossing period.
-2. **Mono collapse** — `L + R` must retain its level and its spectrum, because
-   the wet terms cancel by construction rather than partially.
+### Hardware
+
+- Three BBD lines, each clock VCO driven by the sum of a slow "chorus" and a
+  fast "vibrato" three-phase generator, 0/120/240° **[documented, J. Haible]**.
+- Rates: chorus ~0.6–0.8 Hz, vibrato ~6–6.4 Hz **[measured, coarse: forum
+  scope traces; SS-30 blog]**.
+- Mono output.
+
+### Model
+
+- Three lines from the mono sum. Slow sine at 0.7 Hz, ±1.6 ms; fast sine at
+  6.3 Hz, ±0.12 ms; centre 6 ms. Line i at i/3 cycle on both generators
+  (SPREAD scales the spacing). Swings and centre are **[unverified]**.
+- 4th-order Butterworth at 7 kHz before and after **[unverified]**.
+- WIDTH pans the lines L / centre / R with a sum-preserving law: gL = (1 − p),
+  gR = (1 + p), each × 1/√3. The mono sum is always the original's mono output,
+  dry + Σ line/√3. WIDTH 0 is the original.
+
+---
+
+## 5. CE-1 (BOSS CE-1 Chorus Ensemble)
+
+### Hardware
+
+- One 512-stage MN3002 **[documented]**. Clock 60–200 kHz, i.e. 1.3–4.3 ms
+  **[unverified, forum]**.
+- Output A (mono) carries direct + chorus. In stereo, output A carries **chorus
+  only** and output B **direct only** **[documented, BOSS CE-2W manual, CE-1
+  mode]**.
+- Chorus INTENSITY is the only chorus control; the rate is fixed.
+
+### Model
+
+- One line from the mono sum; sine LFO 0.7 Hz; centre 2.8 ms, ±0.75 ms at
+  DEPTH 0.5; 4th-order Butterworth at 6.5 kHz either side. All of these are
+  **[unverified]**. No compander.
+- Routing: s = INTENSITY × min(1, WIDTH / 0.75).
+  - L = (1 − s)·dryL + wet
+  - R = (1 − s)·(dryR + wet) + s·mono
+- At the defaults this is the CE-1's stereo output (L chorus, R direct). WIDTH
+  0 is its mono output, with direct + chorus on both sides.
+
+---
+
+## 6. Controls
+
+| Control | Meaning | Hardware at |
+|---|---|---|
+| INTENSITY (`amount`) | bypass → the hardware's wet/dry and routing | 1 |
+| RATE | ×2^((rate − 0.35)·3) on every LFO | 0.35 |
+| DEPTH | swing ×(2·depth), never closer than 0.5 ms to zero delay | 0.5 |
+| WIDTH | Juno/DIM: (A − B) × width/0.75; ENSEMBLE: pan; CE-1: spatial amount | 0.75 (ENSEMBLE: 0) |
+| PHASE (`spread`) | pair: line B phase + (spread − 0.5); ENSEMBLE: spacing × 2·spread | 0.5 |
+| VINTAGE (`character`) | BBD drive, 0 linear | 0.5 |
+| TONE | wet tilt, one-pole split at 1.4 kHz | 0 |
+| LOW CUT | extra wet HPF 20–420 Hz | 0 (20 Hz) |
+| FEEDBACK | line output into its input, ≤ 0.55 | 0 |
+| DRY/WET (`mix`) | final crossfade against the input | 1 |
+
+---
+
+## 7. What the previous engine got wrong (do not reintroduce)
+
+1. **Juno: one line, inverted on R.** Both ears heard the same pitch
+   trajectory and the mono sum cancelled the chorus. The hardware has two lines
+   moving in opposition, added with the same polarity.
+2. **Juno I and II differed in depth**, and I could not reach the hardware
+   swing. On the hardware they differ only in rate.
+3. **Juno I+II at 8 Hz, stereo.** It is 9.75 Hz and near mono.
+4. **A trapezoid LFO** justified as "flats are steady detuning". Pitch is the
+   derivative of delay, so a flat is *zero* detune. Its sine-warped ramps also
+   left a slope step at every corner.
+5. **DIM combinations as two stacked pairs at different rates.**
+6. **ENSEMBLE had one slow LFO.** Its output L+R contained the third path
+   while the comments claimed the mono sum cancelled.
+7. **CE WARM was dry ± wet.** The CE-1's stereo is chorus on one side and
+   direct on the other.
+8. **The "compander" expander divided by the compressor's current gain** —
+   computed on the undelayed signal, so it was not an inverse.
+9. **`exp()` per sample** for every one-pole coefficient. A ±5% random rate
+   and depth wander that no hardware had.
+
+---
+
+## 8. Tests (`PX3Tests chorus`)
+
+The hardware tests (`ChorusHw_*`) measure the engine only from its stereo
+output, so they compile against any version of it.
+
+- Delay trajectories come from an impulse train. The wet peak after each
+  impulse samples d(t).
+- Juno: rates, swing, opposition / in-phase, wet polarity, the stereo image
+  against the recordings, and the filter response against Holters–Parker.
+- Mono sum per family.
+- CE-1: chorus left / direct right.
+- Dimension: rates and swings, triangle plateau share, one pair in the
+  combinations, compander round trip at −20 and −6 dBFS.
+- Ensemble: both generators, 120° spacing.
+- Mode-change crossfade, and cost per sample.
+
+---
+
+## Sources
+
+- pendragon-andyh, Juno60 chorus analysis (MIT): https://github.com/pendragon-andyh/Juno60/blob/master/Chorus/README.md
+- jpcima, rc-effect-playground (ISC): https://github.com/jpcima/rc-effect-playground
+- M. Holters, J. D. Parker, "A Combined Model for a Bucket Brigade Device and its Input and Output Filters", DAFx-18: https://www.hsu-hh.de/ant/wp-content/uploads/sites/699/2018/09/Holters-Parker-2018-A-Combined-Model-for-a-Bucket-Brigade-Device-and-its-Input-and-Output-Filters.pdf
+- Roland JX-08 reference manual, JUNO-106 chorus modes: https://static.roland.com/manuals/jx-08_reference/eng/17811878.html
+- Roland SDD-320 owner's manual: https://archive.org/stream/SDD-320_owners_manual/SDD-320_owners_manual_djvu.txt
+- Home & Studio Recording, June 1984, Roland Dimension D review: https://www.muzines.co.uk/articles/roland-dimension-d/4054
+- Dimension D first-hand measurement (Fractal Audio forum): https://forum.fractalaudio.com/threads/roland-dimension-d.21886/
+- BOSS CE-2W owner's manual (CE-1 output routing): https://www.fullcompass.com/common/files/31565-BOSSCE2WChorusPedalOwnersManual.pdf
+- J. Haible, String Ensemble / Triple Chorus: http://jhaible.com/legacy/triple_chorus/triple_chorus.html
+- SS-30 chorus notes: http://ss30m.blogspot.com/2016/08/altogether-now-chorus-stereo-chorus.html
+- Panasonic MN3009 (256 stages, t = N / 2 f_clk): https://xvive.com/audio/product/mn3009/

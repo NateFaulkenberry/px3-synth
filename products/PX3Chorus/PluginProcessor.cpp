@@ -14,7 +14,7 @@ PX3ChorusAudioProcessor::PX3ChorusAudioProcessor()
     addParameter(depthParam = new juce::AudioParameterFloat("fx.chorus.depth", "Chorus Depth", unit, 0.5f));
     addParameter(widthParam = new juce::AudioParameterFloat("fx.chorus.width", "Chorus Width", unit, 0.75f));
     addParameter(spreadParam = new juce::AudioParameterFloat("fx.chorus.spread", "Chorus Spread", unit, 0.5f));
-    addParameter(lowCutParam = new juce::AudioParameterFloat("fx.chorus.low.cut", "Chorus Low Cut", unit, 0.3f));
+    addParameter(lowCutParam = new juce::AudioParameterFloat("fx.chorus.low.cut", "Chorus Low Cut", unit, 0.0f));
     addParameter(feedbackParam = new juce::AudioParameterFloat("fx.chorus.feedback", "Chorus Feedback", unit, 0.0f));
     addParameter(characterParam = new juce::AudioParameterFloat("fx.chorus.character", "Chorus Character", unit, 0.5f));
     addParameter(mixParam = new juce::AudioParameterFloat("fx.chorus.mix", "Chorus Mix", unit, 1.0f));
@@ -25,7 +25,7 @@ PX3ChorusAudioProcessor::PX3ChorusAudioProcessor()
     addParameter(modeParam = new juce::AudioParameterChoice(
         "fx.chorus.mode", "Chorus Mode",
         juce::StringArray { "DIM 1", "DIM 2", "DIM 3", "DIM 4", "DIM 1+4",
-                            "DIM 2+4", "DIM 3+4", "ENSEMBLE", "CE WARM", "JUNO I", "JUNO II", "JUNO I+II" }, 1));
+                            "DIM 2+4", "DIM 3+4", "ENSEMBLE", "CE-1", "JUNO-60 I", "JUNO-60 II", "JUNO-60 I+II" }, 1));
 }
 
 void PX3ChorusAudioProcessor::prepareFx(double sampleRate, int)

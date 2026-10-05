@@ -650,7 +650,10 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
                                                       0);
 
     // ---- CHORUS ----------------------------------------------------------
-    // Dimension D-inspired. See docs/CHORUS_DSP_DESIGN.md.
+    // Dimension D, Solina ensemble, CE-1 and Juno-60 BBD models. At the
+    // default controls each mode runs at its hardware's own figures (LOW CUT
+    // and FEEDBACK, which no original had, default off). See
+    // docs/CHORUS_DSP_DESIGN.md.
     chorusEnabledParam = parameterCatalog.createBool("fx.chorus.enabled", "Chorus Enabled", true);
     // Zero by default, like reverbAmount: adding an effect must not change
     // what existing patches sound like.
@@ -659,7 +662,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     chorusDepthParam = parameterCatalog.createFloat("fx.chorus.depth", "Chorus Depth", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
     chorusWidthParam = parameterCatalog.createFloat("fx.chorus.width", "Chorus Width", juce::NormalisableRange<float>(0.0f, 1.0f), 0.75f);
     chorusSpreadParam = parameterCatalog.createFloat("fx.chorus.spread", "Chorus Spread", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
-    chorusLowCutParam = parameterCatalog.createFloat("fx.chorus.low.cut", "Chorus Low Cut", juce::NormalisableRange<float>(0.0f, 1.0f), 0.3f);
+    chorusLowCutParam = parameterCatalog.createFloat("fx.chorus.low.cut", "Chorus Low Cut", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
     chorusFeedbackParam = parameterCatalog.createFloat("fx.chorus.feedback", "Chorus Feedback", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f);
     chorusCharacterParam = parameterCatalog.createFloat("fx.chorus.character", "Chorus Character", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f);
     chorusMixParam = parameterCatalog.createFloat("fx.chorus.mix", "Chorus Mix", juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f);
@@ -668,7 +671,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
                                                       "Chorus Mode",
                                                       juce::StringArray { "DIM 1", "DIM 2", "DIM 3", "DIM 4",
                                                                           "DIM 1+4", "DIM 2+4", "DIM 3+4",
-                                                                          "ENSEMBLE", "CE WARM", "JUNO I", "JUNO II", "JUNO I+II" },
+                                                                          "ENSEMBLE", "CE-1", "JUNO-60 I", "JUNO-60 II", "JUNO-60 I+II" },
                                                       1);
 
     // ---- STEREO SPREAD ---------------------------------------------------
