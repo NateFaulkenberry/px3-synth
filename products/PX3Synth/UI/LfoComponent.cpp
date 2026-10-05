@@ -445,6 +445,9 @@ void LfoComponent::layoutCompact()
     auto area = card.contentBelowTitle().reduced(c::pad, c::pad - 1);
     const auto rowH = c::captionHeight + c::boxHeight;
 
+    // Clear of the header, so the display does not sit against it.
+    area.removeFromTop(c::headerClearance);
+
     // The display on top, the controls under it - WAVE | KEY SYNC, CLOCK |
     // DIVISION, RATE | AMOUNT - placed from the bottom up so the display takes
     // what they leave.

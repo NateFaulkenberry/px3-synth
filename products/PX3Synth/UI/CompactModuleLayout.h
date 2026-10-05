@@ -18,6 +18,7 @@ inline constexpr int readoutHeight = 12;   // value under a knob
 inline constexpr int boxHeight = 20;       // dropdowns and switches
 inline constexpr int pad = 4;              // module content inset
 inline constexpr int gap = 3;              // between cells and rows
+inline constexpr int headerClearance = 6;  // a display at the top of a module, clear of its header
 
 // A row of `count` equal cells with `gap` between them.
 inline std::vector<juce::Rectangle<int>> cells(juce::Rectangle<int> row, int count)

@@ -636,38 +636,14 @@ void EnvelopeComponent::layoutCompact()
     auto area = card.contentBelowTitle().reduced(c::pad, c::pad - 1);
     const auto rowH = c::captionHeight + c::boxHeight;
 
-    // TYPE | LOOP | SYNC: TYPE (ADSR / BREAKPOINT) where ASSIGN used to be.
-    {
-        auto row = area.removeFromTop(rowH);
-        const auto chipW = juce::jlimit(36, 52, row.getWidth() / 5);
-        if (syncButton != nullptr)
-        {
-            c::boxCell(row.removeFromRight(chipW), nullptr, *syncButton);
-            row.removeFromRight(c::gap);
-        }
-        if (loopButton != nullptr)
-        {
-            c::boxCell(row.removeFromRight(chipW), nullptr, *loopButton);
-            row.removeFromRight(c::gap);
-        }
-        if (adsrOnly)
-        {
-            modeBox.setVisible(false);
-            modeLabel.setVisible(false);
-        }
-        else
-        {
-            modeBox.setVisible(true);
-            modeLabel.setVisible(true);
-            c::boxCell(row, &modeLabel, modeBox);
-        }
-    }
-    area.removeFromTop(c::gap);
+    // Clear of the header, so the editor does not sit against it.
+    area.removeFromTop(c::headerClearance);
 
-    // One knob row under the display, in two groups - A D S R | AMOUNT KEY -
-    // so the display gets the height a second row would take. The knobs give
-    // way before the display does.
-    const auto knob = juce::jlimit(20, 40, area.getHeight() - 56 - (c::captionHeight + c::readoutHeight + 2) - c::gap);
+    // The editor on top and the controls under it, as on the LFO cards: one
+    // knob row - A D S R | AMOUNT KEY - then TYPE | LOOP | SYNC above it,
+    // placed from the bottom up so the editor takes what they leave. The
+    // knobs give way before the editor does.
+    const auto knob = juce::jlimit(20, 40, area.getHeight() - 56 - (c::captionHeight + c::readoutHeight + 2) - rowH - 2 * c::gap);
     auto row = area.removeFromBottom(c::knobRowHeight(knob));
 
     if (adsrKnobsBuilt)
@@ -691,9 +667,36 @@ void EnvelopeComponent::layoutCompact()
         if (amountKnob != nullptr) { c::knobCell(cell[0], amountLabel, *amountKnob, amountValueLabel, knob); }
         if (keyKnob != nullptr) { c::knobCell(cell[1], keyLabel, *keyKnob, keyValueLabel, knob); }
     }
+    area.removeFromBottom(c::gap);
 
-    // Clear of the display, so the captions do not read as part of it.
-    area.removeFromBottom(6);
+    // TYPE | LOOP | SYNC: TYPE (ADSR / BREAKPOINT) where ASSIGN used to be.
+    {
+        auto typeRow = area.removeFromBottom(rowH);
+        const auto chipW = juce::jlimit(36, 52, typeRow.getWidth() / 5);
+        if (syncButton != nullptr)
+        {
+            c::boxCell(typeRow.removeFromRight(chipW), nullptr, *syncButton);
+            typeRow.removeFromRight(c::gap);
+        }
+        if (loopButton != nullptr)
+        {
+            c::boxCell(typeRow.removeFromRight(chipW), nullptr, *loopButton);
+            typeRow.removeFromRight(c::gap);
+        }
+        if (adsrOnly)
+        {
+            modeBox.setVisible(false);
+            modeLabel.setVisible(false);
+        }
+        else
+        {
+            modeBox.setVisible(true);
+            modeLabel.setVisible(true);
+            c::boxCell(typeRow, &modeLabel, modeBox);
+        }
+    }
+    // Clear of the editor, so the TYPE caption does not read as part of it.
+    area.removeFromBottom(c::gap + 2);
 
     compactGraph = area;
 }
