@@ -146,7 +146,7 @@ void Mood::reset()
     historyWritePos = 0;
     wetWritePos = 0;
     loopReadPos = 0.0f;
-    loopHeldReadPos = 0.0f;
+    loopReversePos = 0.0f;
     envFollower = 0.0f;
     envPanPhase = 0.0f;
     envPanDirection = 1.0f;
@@ -170,6 +170,9 @@ void Mood::reset()
     clockDivider = 1.0f;
     internalSampleRate = sampleRateHz;
     heldOutput = {};
+    previousOutput = {};
+    antiAliasState = {};
+    previousFiltered = {};
 
     wetDampState = { { 0.0f, 0.0f } };
     degradeNoiseState = { { 0.0f, 0.0f } };
@@ -295,6 +298,20 @@ float Mood::readSpliced(const std::vector<float>& line,
     const auto t = juce::jlimit(0.0f, 1.0f, (pos - fadeBegins) / fadeLength);
     const auto wrapped = readInterp(line, startAbs + pos - loopLength);
     return here * (1.0f - t) + wrapped * t;
+}
+
+float Mood::windowMotionPerStep() const
+{
+    // The history is written once a step unless frozen, and every loop window
+    // is placed relative to its write head.
+    return currentSettings.freeze ? 0.0f : 1.0f;
+}
+
+float Mood::wrapLoopPosition(float pos, float loopLength)
+{
+    if (!(loopLength > 0.0f)) { return 0.0f; }
+    pos -= loopLength * std::floor(pos / loopLength);
+    return pos >= loopLength ? 0.0f : pos;
 }
 
 float Mood::spliceFadeFor(float loopLength) const
@@ -433,7 +450,7 @@ Mood::Frame Mood::renderLoopTape(float spread)
     // the reverse head is never read on the right and is not computed there.
     const auto fade = spliceFadeFor(loopSamples);
     const auto forwardOffset = loopReadPos;
-    const auto reverseOffset = loopSamples - loopReadPos;
+    const auto reverseOffset = loopReversePos;
     const auto forwardL = readSpliced(historyBuffer[0], loopStart, forwardOffset, loopSamples, fade);
     const auto forwardR = readSpliced(historyBuffer[1], loopStart, forwardOffset, loopSamples, fade);
     const auto reverseL = readSpliced(historyBuffer[0], loopStart, reverseOffset, loopSamples, fade);
@@ -442,9 +459,14 @@ Mood::Frame Mood::renderLoopTape(float spread)
     out.l = forwardL + (reverseL - forwardL) * spread;
     out.r = forwardR;
 
-    loopReadPos += rate;
-    while (loopReadPos < 0.0f) loopReadPos += loopSamples;
-    while (loopReadPos >= loopSamples) loopReadPos -= loopSamples;
+    // The heads' speeds are relative to the AUDIO, not to the window. Unless
+    // frozen, the window itself moves on one sample a step with the write
+    // head, so that motion comes off each head's own: without it the forward
+    // head played at 1 + rate - an octave up at normal speed - and the reverse
+    // head at 1 - rate.
+    const auto windowMotion = windowMotionPerStep();
+    loopReadPos = wrapLoopPosition(loopReadPos + rate - windowMotion, loopSamples);
+    loopReversePos = wrapLoopPosition(loopReversePos - rate - windowMotion, loopSamples);
     return out;
 }
 
@@ -570,11 +592,10 @@ Mood::Frame Mood::renderLoopEnv(float inL, float inR, float spread)
         }
     }
 
-    loopReadPos += 1.0f;
-    if (loopReadPos >= static_cast<float>(sliceSamples))
-    {
-        loopReadPos = 0.0f;
-    }
+    // Live playback at the audio's own speed: as in TAPE, the window already
+    // moves with the write head unless frozen. Advancing a whole sample on
+    // top of that read the history at twice its speed, an octave up.
+    loopReadPos = wrapLoopPosition(loopReadPos + 1.0f - windowMotionPerStep(), static_cast<float>(sliceSamples));
 
     // The pan only moves while a slice is playing; below the threshold the
     // incoming image is left exactly as it arrived.
@@ -1082,21 +1103,94 @@ void Mood::processSampleFrame(float inL, float inR, float& outL, float& outR)
         internalSampleRate = juce::jmax(1.0, sampleRateHz / static_cast<double>(clockDivider));
     }
 
+    // Down to the internal rate. It used to take whichever host sample the
+    // step happened to land on - one or two apart at random at a divider like
+    // 1.335 - with nothing removing what the lower rate cannot hold, and both
+    // came back as hiss on bright material. Now the input is lowpassed at the
+    // internal Nyquist and read at the instant the step actually falls,
+    // between two host samples. At full clock neither applies.
+    auto filteredL = inL;
+    auto filteredR = inR;
+    if (clockDivider > 1.0001f)
+    {
+        if (clockDivider != antiAliasDivider)
+        {
+            const auto engaging = antiAliasDivider <= 1.0001f;
+            // Only when CLOCK crosses a semitone: the divider is quantised.
+            antiAliasDivider = clockDivider;
+            const auto w = juce::MathConstants<float>::pi * juce::jmin(0.45f, 0.45f / clockDivider);
+            const auto k = std::tan(w);
+            const auto q = 0.7071f;
+            const auto norm = 1.0f / (1.0f + k / q + k * k);
+            antiAlias.b0 = k * k * norm;
+            antiAlias.b1 = 2.0f * antiAlias.b0;
+            antiAlias.b2 = antiAlias.b0;
+            antiAlias.a1 = 2.0f * (k * k - 1.0f) * norm;
+            antiAlias.a2 = (1.0f - k / q + k * k) * norm;
+
+            // Coming in from full clock, the filter starts as if it had been
+            // running on this input all along. From zero it would step from
+            // silence to the signal - a click every time CLOCK left 100%.
+            if (engaging)
+            {
+                for (std::size_t c = 0; c < 2; ++c)
+                {
+                    const auto x = c == 0 ? inL : inR;
+                    auto& z = antiAliasState[c];
+                    z[1] = (antiAlias.b2 - antiAlias.a2) * x;
+                    z[0] = (antiAlias.b1 - antiAlias.a1) * x + z[1];
+                }
+            }
+        }
+        const auto run = [this](float x, std::array<float, 2>& z)
+        {
+            const auto y = antiAlias.b0 * x + z[0];
+            z[0] = antiAlias.b1 * x - antiAlias.a1 * y + z[1];
+            z[1] = antiAlias.b2 * x - antiAlias.a2 * y;
+            return y;
+        };
+        filteredL = run(inL, antiAliasState[0]);
+        filteredR = run(inR, antiAliasState[1]);
+    }
+    else
+    {
+        antiAliasDivider = 1.0f;
+    }
+
     clockPhase += clockIncrement;
     if (clockPhase >= 1.0f)
     {
         clockPhase -= std::floor(clockPhase);
-        heldOutput = processInternalStep(inL, inR);
+        // The step fell `clockPhase / clockIncrement` host samples ago.
+        const auto back = juce::jlimit(0.0f, 1.0f, clockPhase / clockIncrement);
+        previousOutput = heldOutput;
+        heldOutput = processInternalStep(filteredL + (previousFiltered.l - filteredL) * back,
+                                         filteredR + (previousFiltered.r - filteredR) * back);
     }
+    previousFiltered = { filteredL, filteredR };
 
-    // Zero-order hold on the way back up to the host rate. The aliasing this
-    // leaves behind at low clock settings is the character of the control, not
-    // an artifact to be filtered away.
+    // Back up to the host rate by gliding from one internal step to the next,
+    // evenly in time, rather than holding each one. A hold at a non-integer
+    // divider is a staircase whose treads are one or two host samples long at
+    // random - heard as static over everything played, not as the lower
+    // clock's character. Lower clock settings still darken and alias; they no
+    // longer crackle.
+    //
+    // A true glide needs the next step before it can head for it, so the wet
+    // runs one internal period late - a single sample at full clock. Arriving
+    // a host sample early instead (no latency at full clock) left the glide
+    // stalled for that sample whenever two fell inside one step: a flat spot
+    // in every period, which is the same static again. One period, always,
+    // so nothing switches in or out as CLOCK moves.
+    const auto glide = clockPhase;
+    const auto wetL = previousOutput.l + (heldOutput.l - previousOutput.l) * glide;
+    const auto wetR = previousOutput.r + (heldOutput.r - previousOutput.r) * glide;
+
     const auto wetMix = clamp01(currentSettings.mix);
     const auto dryMix = 1.0f - wetMix;
 
-    const auto processedL = dryMix * inL + wetMix * heldOutput.l;
-    const auto processedR = dryMix * inR + wetMix * heldOutput.r;
+    const auto processedL = dryMix * inL + wetMix * wetL;
+    const auto processedR = dryMix * inR + wetMix * wetR;
 
     outL = sanitizeAudioSample(juce::jmap(enabledMix, inL, processedL));
     outR = sanitizeAudioSample(juce::jmap(enabledMix, inR, processedR));

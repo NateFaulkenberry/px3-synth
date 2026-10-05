@@ -92,6 +92,8 @@ private:
                       float fadeLength) const;
     // Length of that crossfade, in internal samples, for a given loop length.
     float spliceFadeFor(float loopLength) const;
+    float windowMotionPerStep() const;
+    static float wrapLoopPosition(float pos, float loopLength);
     float readAllpass(int channel, int stage, float x, float g);
 
     void writeHistory(float l, float r);
@@ -141,9 +143,17 @@ private:
     float clockDivider { 1.0f };
     double internalSampleRate { 44100.0 };
     Frame heldOutput {};
+    Frame previousOutput {};      // the internal step before heldOutput, for the glide between them
+    // Ahead of the internal rate: a 2-pole lowpass at its Nyquist, then the
+    // input read at the exact instant each step falls.
+    struct Biquad { float b0 { 1.0f }, b1 { 0.0f }, b2 { 0.0f }, a1 { 0.0f }, a2 { 0.0f }; };
+    Biquad antiAlias;
+    float antiAliasDivider { 0.0f };
+    std::array<std::array<float, 2>, 2> antiAliasState {};   // [channel][z1, z2]
+    Frame previousFiltered {};
 
     float loopReadPos { 0.0f };
-    float loopHeldReadPos { 0.0f };
+    float loopReversePos { 0.0f };   // TAPE's reverse head, as an offset into the loop
     float envFollower { 0.0f };
     float envPanPhase { 0.0f };
     float envPanDirection { 1.0f };

@@ -1419,12 +1419,18 @@ void testMood()
     // also switched in and out on the raw gate, a step on one channel or the
     // other at every edge.
     //
-    // At full clock (so the zero-order hold is not counted) and on BOTH
-    // channels, the output's second difference stays within what the input's
-    // own does - a seam is a spike there however it is smoothed elsewhere.
+    // And at reduced CLOCK, which used to hold each internal step until the
+    // next: at a divider like 1.335 (CLOCK 85%) the treads were one or two host
+    // samples long at random, and every one was a step - static over anything
+    // bright.
+    //
+    // On BOTH channels, the output's second difference stays within what the
+    // input's own does - a seam is a spike there however it is smoothed
+    // elsewhere.
     {
         double worst = 0.0;
         juce::String detail;
+        for (const auto clock : { 1.0f, 0.85f, 0.67f })
         for (const auto sens : { 0.0f, 0.5f, 1.0f })
         {
             for (const auto spread : { 0.0f, 0.5f, 1.0f })
@@ -1438,7 +1444,7 @@ void testMood()
                 s.loopMode = px3::MoodLoopMode::env;
                 s.wetMode = px3::MoodWetMode::reverb;
                 s.routing = px3::MoodRouting::dryToWet;
-                s.clock = 1.0f;
+                s.clock = clock;
                 s.degrade = 0.0f;
                 s.spread = spread;
                 s.feedback = 0.35f;
@@ -1473,7 +1479,8 @@ void testMood()
                         const auto delta = out[c] - previous[c];
                         if (i > static_cast<int>(fs))
                         {
-                            localWorst = juce::jmax(localWorst, static_cast<double>(std::abs(delta - previousDelta[c])));
+                            const auto d2v = static_cast<double>(std::abs(delta - previousDelta[c]));
+                            localWorst = juce::jmax(localWorst, d2v);
                         }
                         previousDelta[c] = delta;
                         previous[c] = out[c];
@@ -1482,7 +1489,7 @@ void testMood()
                 worst = juce::jmax(worst, localWorst);
                 if (localWorst > 0.02)
                 {
-                    detail += "sens " + fmt(sens, 1) + " spread " + fmt(spread, 1) + ": " + fmt(localWorst, 4) + " ";
+                    detail += "clock " + fmt(clock, 2) + " sens " + fmt(sens, 1) + " spread " + fmt(spread, 1) + ": " + fmt(localWorst, 4) + " ";
                 }
             }
         }
@@ -1490,6 +1497,63 @@ void testMood()
               detail.isEmpty(),
               detail.isEmpty() ? ("worst second difference " + fmt(worst, 4) + " (the input's own peaks at 0.0106)")
                                : detail);
+    }
+
+    // Unfrozen, a loop plays at the speed it says. The window a loop is read
+    // from is placed against the write head, so it moves on a sample every step
+    // by itself; the heads also advanced a full step on top of that, so TAPE at
+    // 1x and ENV's live path played the history back an octave up (and TAPE's
+    // other speeds at 1 + rate). The clock test above freezes first, which hid it.
+    //
+    // LOOP->WET with a feedback-free DELAY, so everything heard came off the loop.
+    {
+        auto loopHz = [](px3::MoodLoopMode mode, float modify, float level)
+        {
+            Mood mood;
+            mood.prepare(kSampleRate);
+            mood.reset();
+            px3::MoodUserParameters ms;
+            ms.enabled = true;
+            ms.mix = 1.0f;
+            ms.loopMode = mode;
+            ms.loopModify = modify;
+            ms.loopLength = 0.5f;
+            ms.wetMode = px3::MoodWetMode::delay;
+            ms.wetModify = 0.0f;
+            ms.wetTime = 0.0f;
+            ms.routing = px3::MoodRouting::loopToWet;
+            ms.spread = 0.0f;
+            ms.degrade = 0.0f;
+            ms.feedback = 0.0f;
+            ms.clock = 1.0f;
+            mood.updateForBlock(ms);
+
+            const auto total = static_cast<int>(kSampleRate * 4.0);
+            std::vector<float> out;
+            out.reserve(static_cast<std::size_t>(total));
+            for (int i = 0; i < total; ++i)
+            {
+                const auto in = std::sin(juce::MathConstants<float>::twoPi * 440.0f
+                                         * static_cast<float>(i) / static_cast<float>(kSampleRate)) * level;
+                float l = 0.0f, r = 0.0f;
+                mood.processSampleFrame(in, in, l, r);
+                out.push_back(r);
+            }
+            return estimateFrequency(out, static_cast<int>(kSampleRate * 2.5),
+                                     static_cast<int>(kSampleRate * 0.5), 50.0, 2000.0);
+        };
+
+        // TAPE's speeds are indexed in eighths of the knob: 0.5x, 1x, 2x.
+        const auto tapeHalf = loopHz(px3::MoodLoopMode::tape, 0.56f, 0.5f);
+        const auto tapeOne = loopHz(px3::MoodLoopMode::tape, 0.69f, 0.5f);
+        const auto tapeTwo = loopHz(px3::MoodLoopMode::tape, 0.81f, 0.5f);
+        // Quiet enough that the least sensitive detector never fires: the live path.
+        const auto envLive = loopHz(px3::MoodLoopMode::env, 0.0f, 0.1f);
+        const auto near = [](double hz, double want) { return std::abs(hz / want - 1.0) < 0.02; };
+        check("Mood_UnfrozenLoopsPlayAtTheirOwnPitch",
+              near(tapeHalf, 220.0) && near(tapeOne, 440.0) && near(tapeTwo, 880.0) && near(envLive, 440.0),
+              "440 Hz in: TAPE 0.5x " + fmt(tapeHalf, 1) + ", 1x " + fmt(tapeOne, 1) + ", 2x " + fmt(tapeTwo, 1)
+                  + " Hz; ENV live " + fmt(envLive, 1) + " Hz");
     }
 
     // Every mode pairing with FEEDBACK, SPREAD and DEGRADE all at maximum. The
@@ -1552,6 +1616,11 @@ void testMood()
             ms.mix = 1.0f;
             ms.routing = routing;
             ms.loopMode = px3::MoodLoopMode::tape;      // TAPE
+            // At 1x, so the head keeps a whole loop behind the recording. A
+            // slower head falls behind the write head from the start and
+            // reaches the newest audio at once - correct for a tape, but then
+            // the loop answers promptly too and the routings cannot be told apart.
+            ms.loopModify = 0.69f;
             ms.wetMode = px3::MoodWetMode::delay;       // DELAY
             ms.wetTime = 0.0f;         // 30 ms, so the input's own echo lands inside the window
             ms.wetModify = 0.0f;
