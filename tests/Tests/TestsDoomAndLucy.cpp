@@ -3363,3 +3363,279 @@ void testLucy()
 }
 
 } // namespace px3tests
+
+namespace px3tests
+{
+//==============================================================================
+// LAZY FX ENGINES
+//==============================================================================
+// DOOM and LUCY are built only once the patch can hear them (LazyEffect.h).
+// That is a memory saving only if it changes nothing audible: an instance
+// without the engine must sound exactly like one whose engine is idle, the
+// handover must not click, and nothing may be built on the audio thread
+// (PX3Diag rtsafety counts that).
+void testLazyFxEngines()
+{
+    suite("LAZY FX ENGINES");
+
+    auto setUp = [](PX3SynthAudioProcessor& processor)
+    {
+        makePlainPatch(processor);
+        setChoice(processor, "voice.osc1.mode", 1);   // SAW
+        setParam(processor, "voice.amp.sustain", 1.0f);
+        for (const auto* id : { "sub", "osc1", "osc2", "osc3" })
+            setParam(processor, juce::String("mix.") + id + ".send.fx", 1.0f);
+        setParam(processor, "mix.send.fx.level", 1.0f);
+        setParam(processor, "mix.fx.level", 1.0f);
+        for (const auto* id : { "fx.chorus.enabled", "fx.spread.enabled" })
+            setParam(processor, id, 0.0f);
+    };
+
+    // A block loop that, unlike render(), does not re-prepare and lets the
+    // test act between blocks.
+    auto run = [](PX3SynthAudioProcessor& processor, int blocks, Capture& capture,
+                  const std::function<void(int)>& beforeBlock)
+    {
+        juce::AudioBuffer<float> buffer(2, kBlockSize);
+        for (int block = 0; block < blocks; ++block)
+        {
+            if (beforeBlock) { beforeBlock(block); }
+            buffer.clear();
+            juce::MidiBuffer midi;
+            if (block == 0 && capture.left.empty()) { midi.addEvent(juce::MidiMessage::noteOn(1, 45, 0.9f), 0); }
+            processor.processBlock(buffer, midi);
+            for (int i = 0; i < kBlockSize; ++i)
+            {
+                capture.left.push_back(buffer.getSample(0, i));
+                capture.right.push_back(buffer.getSample(1, i));
+            }
+        }
+    };
+
+    auto prepare = [](PX3SynthAudioProcessor& processor)
+    {
+        processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+        processor.prepareToPlay(kSampleRate, kBlockSize);
+    };
+
+    // ---- defaults build nothing ---------------------------------------------
+    {
+        PX3SynthAudioProcessor processor;   // factory defaults: DOOM on at mix 0, LUCY off
+        prepare(processor);
+        Capture capture;
+        run(processor, 20, capture, {});
+        processor.serviceLazyEffects();
+        check("LazyFx_DefaultPatchBuildsNeitherEngine",
+              ! processor.debugIsDoomEngineBuilt() && ! processor.debugIsLucyEngineBuilt(),
+              "DOOM enabled at zero mix and LUCY off are inaudible, so neither engine exists");
+    }
+
+    // ---- an audible effect is there from the first block ----------------------
+    {
+        PX3SynthAudioProcessor processor;
+        setUp(processor);
+        setParam(processor, "fx.doom.enabled", 1.0f);
+        setParam(processor, "fx.doom.mix", 0.8f);
+        setParam(processor, "fx.lucy.enabled", 1.0f);
+        setParam(processor, "fx.lucy.global", 0.7f);
+        prepare(processor);
+        check("LazyFx_AudibleAtPrepareIsBuiltAtPrepare",
+              processor.debugIsDoomEngineBuilt() && processor.debugIsLucyEngineBuilt(),
+              "built synchronously in prepareToPlay, so the first block is processed");
+
+        // Switched off, it stays until the audio thread is stopped, then goes.
+        setParam(processor, "fx.doom.enabled", 0.0f);
+        setParam(processor, "fx.lucy.enabled", 0.0f);
+        Capture capture;
+        run(processor, 8, capture, {});
+        const auto keptWhileRunning = processor.debugIsDoomEngineBuilt() && processor.debugIsLucyEngineBuilt();
+        processor.releaseResources();
+        const auto freedOnRelease = ! processor.debugIsDoomEngineBuilt() && ! processor.debugIsLucyEngineBuilt();
+        prepare(processor);
+        check("LazyFx_UnusedEngineIsFreedOnlyWhileAudioIsStopped",
+              keptWhileRunning && freedOnRelease
+                  && ! processor.debugIsDoomEngineBuilt() && ! processor.debugIsLucyEngineBuilt(),
+              "kept during playback; freed by releaseResources and not rebuilt by prepareToPlay");
+    }
+
+    // ---- switched on mid-stream: dry until built, then a click-free fade in --
+    for (const auto doomCase : { true, false })
+    {
+        const auto label = juce::String(doomCase ? "Doom" : "Lucy");
+        constexpr int kSwitchBlock = 20;
+        constexpr int kServiceBlock = 24;
+        constexpr int kBlocks = 60;
+
+        auto build = [&](bool switchOn, Capture& capture, bool& builtBeforeService, bool& builtAfterService)
+        {
+            PX3SynthAudioProcessor processor;
+            setUp(processor);
+            setParam(processor, "fx.doom.enabled", 1.0f);
+            setParam(processor, "fx.doom.mix", 0.0f);
+            setParam(processor, "fx.lucy.enabled", 0.0f);
+            setParam(processor, "fx.lucy.global", 0.7f);
+            prepare(processor);
+            run(processor, kBlocks, capture, [&](int block)
+            {
+                if (switchOn && block == kSwitchBlock)
+                {
+                    if (doomCase) { setParam(processor, "fx.doom.mix", 0.8f); }
+                    else          { setParam(processor, "fx.lucy.enabled", 1.0f); }
+                }
+                if (block == kServiceBlock)
+                {
+                    builtBeforeService = doomCase ? processor.debugIsDoomEngineBuilt()
+                                                  : processor.debugIsLucyEngineBuilt();
+                    // What handleAsyncUpdate does on the message thread.
+                    processor.serviceLazyEffects();
+                    builtAfterService = doomCase ? processor.debugIsDoomEngineBuilt()
+                                                 : processor.debugIsLucyEngineBuilt();
+                }
+            });
+        };
+
+        Capture dry, switched;
+        auto ignoreA = false, ignoreB = false, builtBefore = true, builtAfter = false;
+        build(false, dry, ignoreA, ignoreB);
+        build(true, switched, builtBefore, builtAfter);
+
+        // Until the engine exists the stage passes dry - bit for bit what an
+        // idle engine produced.
+        const auto handover = kServiceBlock * kBlockSize;
+        auto identicalUntilHandover = dry.left.size() == switched.left.size();
+        for (int i = 0; identicalUntilHandover && i < handover; ++i)
+        {
+            identicalUntilHandover = dry.left[static_cast<std::size_t>(i)] == switched.left[static_cast<std::size_t>(i)]
+                                     && dry.right[static_cast<std::size_t>(i)] == switched.right[static_cast<std::size_t>(i)];
+        }
+        check(("LazyFx_" + label + "PassesDryUntilItsEngineIsBuilt").toRawUTF8(),
+              ! builtBefore && builtAfter && identicalUntilHandover,
+              "built by the message-thread service, not the audio thread; output identical to the dry render until then");
+
+        // Then it fades in: the difference from dry starts at ~0 and grows,
+        // and the effect is clearly present once the ramp is done.
+        auto deviation = [&](int from, int to)
+        {
+            double worst = 0.0;
+            for (int i = from; i < to; ++i)
+            {
+                const auto d = std::abs(static_cast<double>(switched.left[static_cast<std::size_t>(i)])
+                                        - dry.left[static_cast<std::size_t>(i)]);
+                worst = juce::jmax(worst, d);
+            }
+            return worst;
+        };
+        const auto firstSamples = deviation(handover, handover + 24);         // first 0.5 ms
+        const auto settled = deviation(handover + 4800, static_cast<int>(dry.left.size()));
+        check(("LazyFx_" + label + "FadesInWithoutAStep").toRawUTF8(),
+              firstSamples < 0.05 * settled && settled > 1.0e-3,
+              "deviation from dry over the first 0.5 ms " + fmt(firstSamples, 6)
+                  + " vs " + fmt(settled, 4) + " once in");
+    }
+
+    // ---- COMB delay lines: pooled per filter slot, only while set to COMB ----
+    {
+        auto combType = [](PX3SynthAudioProcessor& processor, int slot, bool comb)
+        {
+            auto& type = processor.getFilterTypeParam(slot);
+            type.setValueNotifyingHost(type.convertTo0to1(static_cast<float>(
+                comb ? px3::FilterMode::comb : px3::FilterMode::allPass)));
+        };
+
+        {
+            PX3SynthAudioProcessor processor;
+            prepare(processor);
+            check("LazyFx_DefaultPatchBuildsNoCombLines",
+                  ! processor.debugIsCombPoolBuilt(0) && ! processor.debugIsCombPoolBuilt(1),
+                  "no filter slot is COMB by default, so no voice carries a comb line");
+        }
+
+        {
+            PX3SynthAudioProcessor processor;
+            setUp(processor);
+            setParam(processor, "voice.filter1.enabled", 1.0f);
+            combType(processor, 0, true);
+            prepare(processor);
+            const auto onlyThatSlot = processor.debugIsCombPoolBuilt(0) && ! processor.debugIsCombPoolBuilt(1);
+            Capture capture;
+            run(processor, 40, capture, {});
+            check("LazyFx_CombLinesExistOnlyForACombSlot", onlyThatSlot && capture.isFinite() && capture.rms() > 1.0e-3,
+                  "built at prepare for filter 1 only; the comb renders");
+
+            combType(processor, 0, false);
+            processor.releaseResources();
+            prepare(processor);
+            check("LazyFx_CombLinesFreedOnceNoSlotIsComb",
+                  ! processor.debugIsCombPoolBuilt(0) && ! processor.debugIsCombPoolBuilt(1),
+                  "freed at the next prepare once filter 1 left COMB");
+        }
+
+        // Switched to COMB mid-note: the filter crossfades out of circuit as
+        // any type change does, stays out (dry) until its lines arrive from
+        // the message thread, then fades in. Sine, so a step is unmissable.
+        //
+        // The reference is the same switch with the lines already there (the
+        // pool kept from an earlier COMB setting, as before pooling every
+        // filter always had one): a comb starting from an empty line mid-note
+        // has an onset of its own (its delayed path starts one period late,
+        // mid-cycle), and the lazy handover must add nothing to it. Bounded
+        // absolutely as well, at twice the dry sine's own largest step.
+        // (Measured 2026-10-05: that reference switch steps ~0.07 here, a
+        // pre-existing allpass->COMB type-change transient that is not part
+        // of the pooling; the lazy path, which fades in later from a held-dry
+        // state, steps ~0.0035.)
+        {
+            constexpr int kSwitchBlock = 20, kServiceBlock = 26, kBlocks = 70;
+            auto renderSwitch = [&](bool linesAlreadyThere, bool& builtBefore, bool& builtAfter)
+            {
+                PX3SynthAudioProcessor processor;
+                makePlainPatch(processor);
+                setParam(processor, "voice.amp.sustain", 1.0f);
+                setParam(processor, "voice.filter2.enabled", 1.0f);
+                combType(processor, 1, linesAlreadyThere);
+                prepare(processor);
+                Capture capture;
+                run(processor, kBlocks, capture, [&](int block)
+                {
+                    if (linesAlreadyThere && block == 2) { combType(processor, 1, false); }
+                    if (block == kSwitchBlock) { combType(processor, 1, true); }
+                    if (block == kServiceBlock)
+                    {
+                        builtBefore = processor.debugIsCombPoolBuilt(1);
+                        processor.serviceLazyEffects();
+                        builtAfter = processor.debugIsCombPoolBuilt(1);
+                    }
+                });
+                return capture;
+            };
+            auto maxStep = [](const Capture& capture, int from, int to)
+            {
+                double worst = 0.0;
+                for (int i = juce::jmax(1, from); i < to; ++i)
+                {
+                    worst = juce::jmax(worst, std::abs(static_cast<double>(capture.left[static_cast<std::size_t>(i)])
+                                                       - capture.left[static_cast<std::size_t>(i - 1)]));
+                }
+                return worst;
+            };
+
+            auto builtBefore = true, builtAfter = false, ignoreA = false, ignoreB = false;
+            const auto lazy = renderSwitch(false, builtBefore, builtAfter);
+            const auto reference = renderSwitch(true, ignoreA, ignoreB);
+            const auto window = 4800;
+            const auto lazyOnset = maxStep(lazy, kServiceBlock * kBlockSize, kServiceBlock * kBlockSize + window);
+            const auto referenceOnset = maxStep(reference, kSwitchBlock * kBlockSize, kSwitchBlock * kBlockSize + window);
+            const auto lazyGap = maxStep(lazy, kSwitchBlock * kBlockSize, kServiceBlock * kBlockSize);
+            const auto dryStep = maxStep(lazy, kBlockSize * 10, kSwitchBlock * kBlockSize);
+            check("LazyFx_CombSwitchedOnMidNoteWaitsForItsLinesThenFadesIn",
+                  ! builtBefore && builtAfter && lazy.isFinite()
+                      && lazyGap <= 1.01 * dryStep
+                      && lazyOnset <= 1.05 * referenceOnset
+                      && lazyOnset <= 2.0 * dryStep,
+                  "largest step while waiting " + fmt(lazyGap, 5) + " (dry " + fmt(dryStep, 5)
+                      + "); comb onset " + fmt(lazyOnset, 5) + " vs " + fmt(referenceOnset, 5)
+                      + " with the lines already there");
+        }
+    }
+}
+} // namespace px3tests

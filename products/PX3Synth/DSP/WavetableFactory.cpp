@@ -1,6 +1,7 @@
 #include "WavetableFactory.h"
 
 #include <cmath>
+#include <mutex>
 
 namespace px3
 {
@@ -275,8 +276,32 @@ std::shared_ptr<const Wavetable> buildFactoryWavetable(int index)
         return nullptr;
     }
 
-    const auto& definition = list[static_cast<std::size_t>(index)];
-    return Wavetable::build(definition.name, definition.category, definition.generate());
+    // Factory tables are immutable and identical everywhere they are used, so
+    // every oscillator of every PX3 instance in the process shares one copy.
+    // Each was ~2.25 MB, and a 3-oscillator instance used to build three.
+    //
+    // The cache holds weak references only: the slots that publish a table own
+    // it, so the last instance to drop a table frees it and the cache never
+    // keeps memory alive on its own. The lock covers hosts that restore state
+    // for several instances on different threads at once; the audio thread
+    // never comes here (it only reads the raw pointer a WavetableSlot hands
+    // out, and a shared table is never written after Wavetable::build).
+    static std::mutex cacheLock;
+    static std::vector<std::weak_ptr<const Wavetable>> cache(list.size());
+
+    const auto slot = static_cast<std::size_t>(index);
+    const std::lock_guard<std::mutex> lock(cacheLock);
+    if (auto existing = cache[slot].lock())
+    {
+        return existing;
+    }
+
+    // Built under the lock so two threads asking for the same table at once
+    // cannot both build it; a build is a one-off message-thread cost.
+    const auto& definition = list[slot];
+    auto table = Wavetable::build(definition.name, definition.category, definition.generate());
+    cache[slot] = table;
+    return table;
 }
 
 std::shared_ptr<const Wavetable> buildFactoryWavetable(const juce::String& name)

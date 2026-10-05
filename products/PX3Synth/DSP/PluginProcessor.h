@@ -18,6 +18,7 @@
 #include "LucyControlModel.h"
 #include "StereoSpread.h"
 #include "Distortion.h"
+#include "LazyEffect.h"
 #include "UniVibe.h"
 #include "VoiceModulation.h"
 #include "Mood.h"
@@ -192,6 +193,14 @@ public:
     // parameter names. The two differing is the whole failure mode this exists
     // to make visible.
     juce::String getLoadedWavetableName(int oscIndex) const;
+
+    // The table object an oscillator is playing. Tests use it to prove factory
+    // tables are shared process-wide rather than copied per instance.
+    const px3::Wavetable* debugGetLoadedWavetable(int oscIndex) const
+    {
+        return wavetableSlots[static_cast<std::size_t>(
+            juce::jlimit(0, kOscillatorSourceCount - 1, oscIndex))].current();
+    }
 
     // The shaped envelopes. Index 0 is AMP ENV; 1..n are ENV 1..n, which are
     // kept in the same array only because they are the same kind of thing - the
@@ -1126,6 +1135,21 @@ private:
 
     void handleAsyncUpdate() override;
 
+public:
+    // Message thread (or any non-audio thread). Builds any DOOM / LUCY engine
+    // the audio thread has asked for. handleAsyncUpdate calls it; tests and
+    // tools without a running message loop call it directly.
+    void serviceLazyEffects();
+    bool debugIsDoomEngineBuilt() const noexcept { return doomEffect.get() != nullptr; }
+    bool debugIsLucyEngineBuilt() const noexcept { return lucyEffect.get() != nullptr; }
+    bool debugIsCombPoolBuilt(int filterIndex) const noexcept
+    {
+        return combPoolLive[static_cast<std::size_t>(juce::jlimit(0, kFilterInstanceCount - 1, filterIndex))]
+                   .load(std::memory_order_acquire) != nullptr;
+    }
+
+private:
+
     std::array<std::atomic<int>, PianoKeyboard::totalKeys> activeNoteCounts {};
     std::array<std::atomic<int>, PianoKeyboard::totalKeys> activeNoteVelocities {};
     std::atomic<int> lastMidiNote { -1 };
@@ -1368,8 +1392,35 @@ private:
     AnalogDrift analogDriftComponent;
     Delay delayComponent;
     Mood moodComponent;
-    px3::Doom doomComponent;
-    px3::Lucy lucyComponent;
+    // Built only once the patch can hear them - see LazyEffect.h. Chorus and
+    // Spread stay members: their storage is a few KB.
+    px3::LazyEffect<px3::Doom> doomEffect;
+    px3::LazyEffect<px3::Lucy> lucyEffect;
+    // Orders building, preparing and releasing those engines across the
+    // non-audio threads (message thread, host's prepare thread). Never taken
+    // on the audio thread.
+    std::mutex lazyEffectLock;
+    double lazyEffectSampleRate { 44100.0 };   // guarded by lazyEffectLock
+    void buildDoomEngine(bool fromSilence);    // lazyEffectLock held
+    void buildLucyEngine(bool fromSilence);    // lazyEffectLock held
+
+    // COMB delay lines, one pool per filter slot, built only while that slot
+    // is set to COMB. Every voice/source filter used to carry its own line -
+    // 512 x ~3.9 KB at 48 kHz - whether or not any filter was a comb. Same
+    // lifecycle as the lazy effects: the audio thread asks, the message thread
+    // builds and publishes, and a pool is freed only in prepareToPlay /
+    // releaseResources, where the audio thread is not running.
+    struct CombLinePool
+    {
+        std::unique_ptr<float[]> data;   // voices x sources x capacity, zeroed
+        int capacity { 0 };              // floats per line
+    };
+    std::array<std::unique_ptr<CombLinePool>, kFilterInstanceCount> combPoolOwner;   // lazyEffectLock
+    std::array<std::atomic<CombLinePool*>, kFilterInstanceCount> combPoolLive {};
+    std::array<std::atomic<bool>, kFilterInstanceCount> combPoolRequested {};
+    void buildCombPool(int filterIndex);       // lazyEffectLock held
+    void releaseCombPool(int filterIndex);     // lazyEffectLock held, audio stopped
+    void attachCombPools() noexcept;           // audio thread, block start
     px3::Chorus chorusComponent;
     px3::StereoSpread stereoSpreadComponent;
     px3::Distortion distortionComponent;

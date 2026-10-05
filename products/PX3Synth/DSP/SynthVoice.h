@@ -86,6 +86,13 @@ public:
                                 const std::array<bool, kModEnvelopeCount>& enabled);
     float getModEnvelopeValue(int envIndex) const;
     void setFilterSettings(const std::array<FilterSettings, kFilterInstanceCount>& settings);
+    // COMB lines come from the processor's pool rather than from each filter
+    // (see VoiceFilter::useExternalCombStorage). Call once, before the voice is
+    // prepared.
+    void useExternalCombStorage() noexcept;
+    // Audio thread, no allocation. `voiceBase` holds one line of
+    // `lineCapacity` floats per source for this filter slot, or is nullptr.
+    void attachCombLines(int filterIndex, float* voiceBase, int lineCapacity) noexcept;
     // SERIES runs filter 1 into filter 2; PARALLEL feeds both the same input
     // and crossfades their outputs by balance (0 = filter 1, 1 = filter 2).
     void setFilterRouting(bool parallel, float balance);

@@ -1170,6 +1170,55 @@ void testReverb()
         check("Reverb_IrLoadsAndRings", error.isEmpty() && engineError.isEmpty() && finite && tail > 1.0e-4,
               "load '" + engineError + "', tail energy after the impulse " + juce::String(tail, 6));
 
+        // The IR engine (a juce::dsp::Convolution, its loader thread and its
+        // prepared state) is built only when an IR is loaded. An instance that
+        // never uses IR mode carries none of it - and IR mode with nothing
+        // loaded is still silent and does not build it from the audio thread.
+        {
+            ::Reverb idle;
+            idle.prepare(48000.0);
+            ReverbSettings irMode;
+            irMode.amount = 1.0f;
+            irMode.algorithmIndex = 4;
+            auto silent = true;
+            for (int block = 0; block < 8; ++block)
+            {
+                idle.updateForBlock(irMode, 512);
+                for (int n = 0; n < 512; ++n)
+                {
+                    float l = 0.25f, r = 0.25f;
+                    idle.processSampleFrame(l, r, l, r);
+                    silent = silent && std::isfinite(l) && std::abs(l) <= 0.25f + 1.0e-6f;
+                }
+            }
+            check("Reverb_NoIrEngineUntilAnIrIsLoaded",
+                  ! idle.hasConvolutionEngine() && silent && engine.hasConvolutionEngine(),
+                  "no Convolution or loader thread before the first IR; built by the load");
+
+            // A host restoring state can load the IR before prepareToPlay: the
+            // engine is built at the default rate and re-prepared at the real one.
+            ::Reverb early;
+            const auto earlyError = early.loadImpulseResponse(irFile);
+            early.prepare(96000.0);
+            for (int block = 0; block < 40; ++block)
+            {
+                early.updateForBlock(settings, 512);
+                for (int n = 0; n < 512; ++n) { float l = 0, r = 0; early.processSampleFrame(0.0f, 0.0f, l, r); }
+                juce::Thread::sleep(5);
+            }
+            double earlyTail = 0.0;
+            for (int n = 0; n < 48000; ++n)
+            {
+                if (n % 512 == 0) early.updateForBlock(settings, 512);
+                const auto x = n < 64 ? 0.5f : 0.0f;
+                float l = x, r = x;
+                early.processSampleFrame(l, r, l, r);
+                if (n > 2000) earlyTail += static_cast<double>(l) * l;
+            }
+            check("Reverb_IrLoadedBeforePrepareStillRings", earlyError.isEmpty() && earlyTail > 1.0e-4,
+                  "tail energy " + juce::String(earlyTail, 6));
+        }
+
         juce::MemoryBlock state;
         processor.getStateInformation(state);
         PX3SynthAudioProcessor restored;

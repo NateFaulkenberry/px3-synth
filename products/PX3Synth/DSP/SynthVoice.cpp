@@ -328,7 +328,10 @@ void SynthVoice::setCurrentPlaybackSampleRate(double newRate)
     // The filters belong here for the same reason the oscillators do, and did
     // not: VoiceFilter::prepare reaches CombResonator::prepare, which sizes a
     // delay line with std::vector::assign. Preparing them from startNote put
-    // that allocation on the audio thread, at note-on.
+    // that allocation on the audio thread, at note-on. (In the synth the comb
+    // lines now come from the processor's pool - useExternalCombStorage - so
+    // this no longer allocates at all; it still must not run at note-on, since
+    // it detaches the lines until the next block re-attaches them.)
     for (auto& sourceRow : sourceFilters)
     {
         for (auto& filter : sourceRow)
@@ -1201,6 +1204,28 @@ float SynthVoice::getModEnvelopeValue(int envIndex) const
     }
 
     return modEnvelopeBlockPeaks[static_cast<std::size_t>(envIndex)];
+}
+
+void SynthVoice::useExternalCombStorage() noexcept
+{
+    for (auto& sourceRow : sourceFilters)
+    {
+        for (auto& filter : sourceRow)
+        {
+            filter.useExternalCombStorage();
+        }
+    }
+}
+
+void SynthVoice::attachCombLines(int filterIndex, float* voiceBase, int lineCapacity) noexcept
+{
+    const auto slot = static_cast<std::size_t>(juce::jlimit(0, kFilterInstanceCount - 1, filterIndex));
+    for (int source = 0; source < kVoiceMixerSourceCount; ++source)
+    {
+        sourceFilters[static_cast<std::size_t>(source)][slot].attachCombLine(
+            voiceBase != nullptr ? voiceBase + static_cast<std::ptrdiff_t>(source) * lineCapacity : nullptr,
+            lineCapacity);
+    }
 }
 
 void SynthVoice::setFilterSettings(const std::array<FilterSettings, kFilterInstanceCount>& settings)

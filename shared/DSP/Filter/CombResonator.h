@@ -62,7 +62,27 @@ public:
     static constexpr float kMinDecaySeconds = 0.02f;
     static constexpr float kMaxDecaySeconds = 12.0f;
 
+    CombResonator() = default;
+    // Copies stay self-contained: a copy of a standalone resonator points at
+    // its own copy of the line, never into the original's storage.
+    CombResonator(const CombResonator& other) : CombResonator() { *this = other; }
+    CombResonator& operator=(const CombResonator& other);
+
+    // Standalone use: the resonator owns its delay line, sized here.
     void prepare(double sampleRate);
+    // Pooled use: everything prepare() does except the allocation. The line is
+    // supplied later with attachLine; until then the resonator passes its
+    // input through. The synth uses this so 512 resonators do not each carry
+    // a line that only a filter set to COMB ever reads.
+    void prepareWithoutStorage(double sampleRate);
+    // Floats a line needs at this rate - what attachLine's capacity must reach.
+    static int lineSizeFor(double sampleRate) noexcept;
+    // Audio-thread safe: no allocation. Points the resonator at `capacity`
+    // floats of caller-owned storage (or detaches with nullptr); the line and
+    // loop state are cleared when the storage changes. The caller keeps the
+    // storage alive for as long as it is attached.
+    void attachLine(float* storage, int capacity) noexcept;
+    bool hasStorage() const noexcept { return lineData != nullptr; }
     void reset();
 
     void setTargetSettings(const CombSettings& settings);
@@ -76,7 +96,10 @@ private:
     float readDelay(float delaySamples) const;
     void updateLoopCoefficients();
 
-    std::vector<float> line;
+    void prepareCoefficients(double sampleRate);
+
+    std::vector<float> ownedLine;        // standalone storage, empty when pooled
+    float* lineData { nullptr };         // whichever storage is in use
     int lineSize { 0 };
     int writePos { 0 };
 

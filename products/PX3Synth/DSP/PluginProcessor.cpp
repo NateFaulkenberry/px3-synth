@@ -1086,6 +1086,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
         synthVoice->setSubtractiveSettings(initialSubtractive);
         synthVoice->setSubOscillatorSettings(initialSubOsc);
         synthVoice->setOscillatorLayerSettings(initialOscillatorLayers);
+        synthVoice->useExternalCombStorage();
         synth.addVoice(synthVoice);
         // The voice pool is fixed for the processor's lifetime, so the concrete
         // type is known here once. processBlock walks the voices four times per
@@ -1376,8 +1377,45 @@ void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
     analogDriftComponent.prepare(sampleRate, synth.getNumVoices(), analogDriftComponent.getSeed());
     delayComponent.prepare(sampleRate);
     moodComponent.prepare(sampleRate);
-    doomComponent.prepare(sampleRate);
-    lucyComponent.prepare(sampleRate);
+    {
+        // DOOM and LUCY exist only while the patch can hear them. The audio
+        // thread is not running here, so this is the one place an engine can
+        // also be freed: one the patch no longer uses goes, one it does is
+        // built (or re-prepared) now so the first block already has it.
+        const std::lock_guard<std::mutex> lock(lazyEffectLock);
+        lazyEffectSampleRate = sampleRate;
+        if (px3::Doom::wouldBeAudible(currentDoomUserParameters()))
+        {
+            if (auto* doom = doomEffect.owned()) { doom->prepare(sampleRate); }
+            else { buildDoomEngine(false); }
+        }
+        else
+        {
+            doomEffect.release();
+        }
+        if (px3::Lucy::wouldBeAudible(currentLucyUserParameters()))
+        {
+            if (auto* lucy = lucyEffect.owned()) { lucy->prepare(sampleRate); }
+            else { buildLucyEngine(false); }
+        }
+        else
+        {
+            lucyEffect.release();
+        }
+
+        // COMB pools: rebuilt at the new rate for a slot set to COMB (the
+        // line length follows the rate), freed for any other. The voices were
+        // just prepared, which detached their old lines; the first block
+        // attaches these.
+        for (int filter = 0; filter < kFilterInstanceCount; ++filter)
+        {
+            releaseCombPool(filter);
+            if (px3::isCombMode(getFilterTypeParam(filter).getIndex()))
+            {
+                buildCombPool(filter);
+            }
+        }
+    }
     chorusComponent.prepare(sampleRate);
     stereoSpreadComponent.prepare(sampleRate);
     distortionComponent.prepare(sampleRate);
@@ -1541,6 +1579,130 @@ void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
 
 void PX3SynthAudioProcessor::releaseResources()
 {
+    // The audio thread is stopped, so the lazily built engines can go; the
+    // next prepareToPlay builds whichever the patch still uses.
+    const std::lock_guard<std::mutex> lock(lazyEffectLock);
+    doomEffect.release();
+    lucyEffect.release();
+    for (int filter = 0; filter < kFilterInstanceCount; ++filter)
+    {
+        releaseCombPool(filter);
+    }
+}
+
+void PX3SynthAudioProcessor::buildCombPool(int filterIndex)
+{
+    const auto slot = static_cast<std::size_t>(filterIndex);
+    combPoolRequested[slot].store(false, std::memory_order_relaxed);
+    if (combPoolOwner[slot] != nullptr)
+    {
+        return;
+    }
+
+    auto pool = std::make_unique<CombLinePool>();
+    pool->capacity = px3::CombResonator::lineSizeFor(lazyEffectSampleRate);
+    const auto floats = static_cast<std::size_t>(kPolyphonyVoiceCount) * kVoiceMixerSourceCount
+                        * static_cast<std::size_t>(pool->capacity);
+    pool->data = std::make_unique<float[]>(floats);   // value-initialised: silent
+    combPoolOwner[slot] = std::move(pool);
+    combPoolLive[slot].store(combPoolOwner[slot].get(), std::memory_order_release);
+}
+
+void PX3SynthAudioProcessor::releaseCombPool(int filterIndex)
+{
+    const auto slot = static_cast<std::size_t>(filterIndex);
+    // Detach first, so no voice is left pointing into freed storage (JUCE only
+    // re-prepares the voices when the rate actually changes).
+    for (auto* voice : typedVoices)
+    {
+        if (voice != nullptr) { voice->attachCombLines(filterIndex, nullptr, 0); }
+    }
+    combPoolLive[slot].store(nullptr, std::memory_order_release);
+    combPoolOwner[slot].reset();
+    combPoolRequested[slot].store(false, std::memory_order_relaxed);
+}
+
+void PX3SynthAudioProcessor::attachCombPools() noexcept
+{
+    auto requested = false;
+    for (int filter = 0; filter < kFilterInstanceCount; ++filter)
+    {
+        auto* const pool = combPoolLive[static_cast<std::size_t>(filter)].load(std::memory_order_acquire);
+        if (pool == nullptr && px3::isCombMode(getFilterTypeParam(filter).getIndex()))
+        {
+            combPoolRequested[static_cast<std::size_t>(filter)].store(true, std::memory_order_relaxed);
+            requested = true;
+        }
+
+        // Every voice, every block: a pointer compare per filter unless the
+        // pool has just arrived. Voices not yet attached (or detached by a
+        // re-prepare) pick their lines up here.
+        const auto stride = pool != nullptr
+                                ? static_cast<std::ptrdiff_t>(kVoiceMixerSourceCount) * pool->capacity
+                                : 0;
+        for (int voice = 0; voice < kPolyphonyVoiceCount; ++voice)
+        {
+            if (auto* const v = typedVoices[static_cast<std::size_t>(voice)])
+            {
+                v->attachCombLines(filter,
+                                   pool != nullptr ? pool->data.get() + stride * voice : nullptr,
+                                   pool != nullptr ? pool->capacity : 0);
+            }
+        }
+    }
+
+    if (requested)
+    {
+        triggerAsyncUpdate();
+    }
+}
+
+void PX3SynthAudioProcessor::buildDoomEngine(bool fromSilence)
+{
+    doomEffect.build([this, fromSilence](px3::Doom& doom)
+    {
+        doom.prepare(lazyEffectSampleRate);
+        if (fromSilence)
+        {
+            // Built mid-stream because the patch just started to want it. Put
+            // it in the state an idle engine is in - every control at its
+            // value, the engine off - so its first block fades it in from
+            // silence over the usual enable ramp rather than switching on.
+            auto settings = currentDoomUserParameters();
+            settings.enabled = false;
+            doom.updateForBlock(settings);
+            doom.reset();
+        }
+    });
+}
+
+void PX3SynthAudioProcessor::buildLucyEngine(bool fromSilence)
+{
+    lucyEffect.build([this, fromSilence](px3::Lucy& lucy)
+    {
+        lucy.prepare(lazyEffectSampleRate);
+        if (fromSilence)
+        {
+            auto settings = currentLucyUserParameters();
+            settings.enabled = false;
+            lucy.updateForBlock(settings);
+            lucy.reset();
+        }
+    });
+}
+
+void PX3SynthAudioProcessor::serviceLazyEffects()
+{
+    const std::lock_guard<std::mutex> lock(lazyEffectLock);
+    if (doomEffect.isRequested()) { buildDoomEngine(true); }
+    if (lucyEffect.isRequested()) { buildLucyEngine(true); }
+    for (int filter = 0; filter < kFilterInstanceCount; ++filter)
+    {
+        if (combPoolRequested[static_cast<std::size_t>(filter)].load(std::memory_order_relaxed))
+        {
+            buildCombPool(filter);
+        }
+    }
 }
 
 bool PX3SynthAudioProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const
@@ -1826,6 +1988,9 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
             triggerAsyncUpdate();
         }
     }
+    // COMB lines for any filter slot set to COMB, before a voice renders.
+    attachCombPools();
+
     const auto ticksPerSecond = juce::Time::getHighResolutionTicksPerSecond();
     const auto blockSamples = buffer.getNumSamples();
 
@@ -2402,8 +2567,34 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
 
     delayComponent.updateForBlock(currentDelaySettings());
     moodComponent.updateForBlock(currentMoodUserParameters());
-    doomComponent.updateForBlock(currentDoomUserParameters());
-    lucyComponent.updateForBlock(currentLucyUserParameters());
+    // Taken once for the block: an engine built on the message thread
+    // mid-block is picked up at the next one. Until one exists the stage
+    // passes dry - exactly what an idle engine does - and asks for it.
+    auto* const doom = doomEffect.get();
+    auto* const lucy = lucyEffect.get();
+    {
+        const auto doomSettings = currentDoomUserParameters();
+        if (doom != nullptr)
+        {
+            doom->updateForBlock(doomSettings);
+        }
+        else if (px3::Doom::wouldBeAudible(doomSettings))
+        {
+            doomEffect.request();
+            triggerAsyncUpdate();
+        }
+
+        const auto lucySettings = currentLucyUserParameters();
+        if (lucy != nullptr)
+        {
+            lucy->updateForBlock(lucySettings);
+        }
+        else if (px3::Lucy::wouldBeAudible(lucySettings))
+        {
+            lucyEffect.request();
+            triggerAsyncUpdate();
+        }
+    }
     chorusComponent.updateForBlock(currentChorusSettings());
     stereoSpreadComponent.updateForBlock(currentStereoSpreadSettings());
     distortionComponent.updateForBlock(currentDistortionSettings());
@@ -2750,11 +2941,11 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
                     break;
 
                 case 4: // Doom
-                    doomComponent.processSampleFrame(stageL, stageR, stageL, stageR);
+                    if (doom != nullptr) { doom->processSampleFrame(stageL, stageR, stageL, stageR); }
                     break;
 
                 case 5: // Lucy
-                    lucyComponent.processSampleFrame(stageL, stageR, stageL, stageR);
+                    if (lucy != nullptr) { lucy->processSampleFrame(stageL, stageR, stageL, stageR); }
                     break;
 
                 case 6: // Chorus

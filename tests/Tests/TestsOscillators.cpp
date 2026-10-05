@@ -1,5 +1,9 @@
 #include "TestSupport.h"
 
+#include <atomic>
+#include <cstring>
+#include <thread>
+
 // testWavetable, testSubOscillator, testOscillators
 
 namespace px3tests
@@ -535,6 +539,174 @@ void testWavetable()
               px3::buildFactoryWavetable(juce::String(definitions[0].name)) != nullptr
                   && px3::buildFactoryWavetable("no such table") == nullptr,
               "lookup by name works and an unknown name returns null");
+    }
+
+    // ---- factory tables are shared, process-wide ---------------------------
+    // Each factory table is ~2.25 MB and immutable, so every oscillator of every
+    // instance plays the same copy. These pin the sharing itself, that it is
+    // safe from several threads, and that it never keeps a table alive by
+    // itself - the instances own the tables, the cache only remembers them.
+    {
+        const auto tableCount = static_cast<int>(px3::factoryWavetables().size());
+        const auto pick = juce::jmin(3, tableCount - 1);
+
+        auto selectTable = [](PX3SynthAudioProcessor& p, int osc, int index)
+        {
+            auto& param = p.getOscillatorWtTableParam(osc);
+            param.setValueNotifyingHost(param.convertTo0to1(static_cast<float>(index)));
+            p.refreshWavetableSelections();
+        };
+
+        // The shared copy is the same data a private build would produce, so
+        // sharing cannot change what any patch sounds like.
+        {
+            const auto shared = px3::buildFactoryWavetable(pick);
+            const auto& definition = px3::factoryWavetables()[static_cast<std::size_t>(pick)];
+            const auto privateCopy = px3::Wavetable::build(definition.name, definition.category,
+                                                           definition.generate());
+            auto identical = shared != nullptr && privateCopy != nullptr
+                             && shared->getLevelCount() == privateCopy->getLevelCount()
+                             && shared->getFrameCount() == privateCopy->getFrameCount();
+            for (int level = 0; identical && level < shared->getLevelCount(); ++level)
+            {
+                const auto length = shared->getLevelLength(level);
+                identical = length == privateCopy->getLevelLength(level);
+                for (int f = 0; identical && f < shared->getFrameCount(); ++f)
+                {
+                    identical = std::memcmp(shared->getFrame(level, f), privateCopy->getFrame(level, f),
+                                            static_cast<std::size_t>(length) * sizeof(float)) == 0;
+                }
+            }
+            check("Wavetable_SharedFactoryTableIsBitIdenticalToAPrivateBuild", identical,
+                  "every level and frame of the cached table matches a fresh Wavetable::build");
+            check("Wavetable_FactoryLookupReturnsTheSameObjectWhileItIsHeld",
+                  shared != nullptr && px3::buildFactoryWavetable(pick).get() == shared.get()
+                      && px3::buildFactoryWavetable(juce::String(definition.name)).get() == shared.get(),
+                  "by index and by name");
+        }
+
+        // One instance, three oscillators on the same table: one copy.
+        {
+            PX3SynthAudioProcessor processor;
+            for (int osc = 0; osc < kOscillatorSourceCount; ++osc) { selectTable(processor, osc, pick); }
+            const auto* first = processor.debugGetLoadedWavetable(0);
+            check("Wavetable_OscillatorsOfOneInstanceShareAFactoryTable",
+                  first != nullptr && processor.debugGetLoadedWavetable(1) == first
+                      && processor.debugGetLoadedWavetable(2) == first,
+                  "osc 1-3 all play one object");
+        }
+
+        // Two instances share it; destroying one leaves the other playing it;
+        // destroying the last frees it.
+        {
+            std::weak_ptr<const px3::Wavetable> observer;
+            const px3::Wavetable* sharedPointer = nullptr;
+            auto survivorPlays = false;
+            auto aliveWithOneInstance = false;
+            {
+                auto a = std::make_unique<PX3SynthAudioProcessor>();
+                auto b = std::make_unique<PX3SynthAudioProcessor>();
+                selectTable(*a, 0, pick);
+                selectTable(*b, 0, pick);
+                sharedPointer = a->debugGetLoadedWavetable(0);
+                observer = px3::buildFactoryWavetable(pick);
+                check("Wavetable_TwoInstancesShareOneFactoryTable",
+                      sharedPointer != nullptr && b->debugGetLoadedWavetable(0) == sharedPointer
+                          && observer.lock().get() == sharedPointer,
+                      "both instances' osc 1 play the same object");
+
+                a.reset();
+                aliveWithOneInstance = ! observer.expired()
+                                       && b->debugGetLoadedWavetable(0) == sharedPointer;
+
+                makePlainPatch(*b);
+                setChoice(*b, "voice.osc1.mode", 8);   // WAVETABLE
+                selectTable(*b, 0, pick);
+                const auto capture = render(*b, 24000, { { 0, true, 57, 0.9f } });
+                survivorPlays = capture.isFinite() && capture.rms() > 0.01
+                                && b->debugGetLoadedWavetable(0) == sharedPointer;
+            }
+            check("Wavetable_DestroyingOneInstanceKeepsTheTableAnotherIsPlaying",
+                  aliveWithOneInstance && survivorPlays,
+                  "the surviving instance still renders from the shared table");
+            check("Wavetable_LastInstanceToGoFreesTheSharedTable", observer.expired(),
+                  "the cache holds weak references only, so nothing keeps the table alive");
+        }
+
+        // Built from several threads at once, as a host restoring a session
+        // can do: one object per table, no crash, no duplicate build kept.
+        {
+            std::vector<std::shared_ptr<const px3::Wavetable>> held;
+            for (int i = 0; i < tableCount; ++i) { held.push_back(px3::buildFactoryWavetable(i)); }
+
+            std::atomic<int> mismatches { 0 };
+            std::vector<std::thread> threads;
+            for (int t = 0; t < 8; ++t)
+            {
+                threads.emplace_back([&mismatches, &held, tableCount, t]
+                {
+                    for (int round = 0; round < 50; ++round)
+                    {
+                        const auto index = (round + t) % tableCount;
+                        if (px3::buildFactoryWavetable(index) != held[static_cast<std::size_t>(index)])
+                        {
+                            mismatches.fetch_add(1);
+                        }
+                    }
+                });
+            }
+            for (auto& thread : threads) { thread.join(); }
+            check("Wavetable_ConcurrentFactoryLookupsAgreeOnOneObject", mismatches.load() == 0,
+                  juce::String(mismatches.load()) + " of 400 lookups returned a different object");
+
+            held.clear();
+
+            // Two processors constructed and prepared concurrently.
+            std::unique_ptr<PX3SynthAudioProcessor> left, right;
+            auto makeOne = [](std::unique_ptr<PX3SynthAudioProcessor>& out)
+            {
+                out = std::make_unique<PX3SynthAudioProcessor>();
+                out->setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+                out->prepareToPlay(kSampleRate, kBlockSize);
+            };
+            std::thread first(makeOne, std::ref(left));
+            std::thread second(makeOne, std::ref(right));
+            first.join();
+            second.join();
+            auto allShared = left != nullptr && right != nullptr;
+            for (int osc = 0; allShared && osc < kOscillatorSourceCount; ++osc)
+            {
+                allShared = left->debugGetLoadedWavetable(osc) != nullptr
+                            && left->debugGetLoadedWavetable(osc) == right->debugGetLoadedWavetable(osc);
+            }
+            check("Wavetable_ProcessorsCreatedConcurrentlyShareTheirTables", allShared,
+                  "two processors built on two threads at once play the same table objects");
+        }
+
+        // User tables are not factory tables: each instance still loads its own
+        // from the library, exactly as before.
+        {
+            const juce::String userName("px3-selftest-shared-check");
+            px3::WavetableLibrary::remove(userName);
+            px3::FrameSpectrum frame;
+            frame.amplitude = { 0.0f, 1.0f, 0.5f, 0.25f };
+            frame.phase = { 0.0f, 0.0f, 0.0f, 0.0f };
+            juce::String error;
+            const auto saved = px3::WavetableLibrary::save(userName, { frame }, error);
+
+            PX3SynthAudioProcessor a, b;
+            a.setUserWavetableName(0, userName);
+            b.setUserWavetableName(0, userName);
+            const auto* tableA = a.debugGetLoadedWavetable(0);
+            const auto factoryCopy = px3::buildFactoryWavetable(a.getOscillatorWtTableParam(0).getIndex());
+            check("Wavetable_UserTablesAreUnaffectedBySharing",
+                  saved && tableA != nullptr && tableA->getName() == userName
+                      && b.debugGetLoadedWavetable(0) != nullptr
+                      && b.debugGetLoadedWavetable(0)->getName() == userName
+                      && tableA != factoryCopy.get(),
+                  saved ? "each instance plays the imported table by name" : error);
+            px3::WavetableLibrary::remove(userName);
+        }
     }
 
     // ---- the real-time handoff --------------------------------------------

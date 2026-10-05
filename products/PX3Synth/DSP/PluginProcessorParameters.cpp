@@ -632,6 +632,7 @@ bool PX3SynthAudioProcessor::importWavetable(int oscIndex,
 void PX3SynthAudioProcessor::handleAsyncUpdate()
 {
     refreshWavetableSelections();
+    serviceLazyEffects();
     collectRetiredWavetables();
     writeOnsetCapture();
 }

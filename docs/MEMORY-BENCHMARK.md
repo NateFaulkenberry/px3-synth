@@ -50,11 +50,68 @@ unoptimised container layouts, so its numbers describe code nobody ships.
 | Scenario | What it does |
 | --- | --- |
 | `default` | Constructs the processor and nothing else |
-| `initialized` | Adds `prepareToPlay` and a few blocks, as a host would |
-| `stress` (default) | Every FX enabled, a chord playing, FX algorithms swept |
+| `initialized` | Adds `prepareToPlay` and a few blocks, as a host would. With the shipping defaults this is the **default patch** figure |
+| `stress` (default) | Every FX enabled **and audible** (DOOM mix, LUCY GLOBAL, Chorus and Spread amounts up), both filter slots on COMB, a chord playing, FX algorithms swept. The **all-FX** worst case |
 
 The gap between `default` and `initialized` is the interesting one: it shows how
 much of the footprint is allocated at prepare time rather than at construction.
+
+Since 0.8.2 some storage exists only while the patch can hear it (see below), so
+`initialized` and `stress` now differ by more than playing notes. Report both:
+
+```bash
+./scripts/memory-benchmark.sh                          # all FX (stress)
+./scripts/memory-benchmark.sh --scenario initialized   # default patch
+./scripts/memory-benchmark.sh --sample-rate 96000      # either, at 96 kHz
+```
+
+## Current figures (0.8.2, Apple silicon, 512-sample blocks)
+
+Average incremental cost per instance, 8 instances:
+
+| | 48 kHz | 96 kHz |
+| --- | --- | --- |
+| 0.8.1, any patch | 24.6 MB | 37.4 MB |
+| 0.8.2, default patch (`initialized`) | 10.4 MB | 17.9 MB |
+| 0.8.2, all FX audible + both filters COMB (`stress`) | 16.6 MB | 29.0 MB |
+
+Where the 0.8.2 reduction came from:
+
+| Change | 48 kHz | 96 kHz | Applies to |
+| --- | --- | --- | --- |
+| Factory wavetables shared process-wide (weak-reference cache in `WavetableFactory.cpp`; was three private ~2.25 MB copies per instance) | −7.0 MB | −7.1 MB | every patch |
+| Reverb IR engine (`juce::dsp::Convolution`, its loader thread and prepared state) built only when an IR is loaded | −1.0 MB | −1.0 MB | patches without an IR |
+| DOOM and LUCY engines built only while audible (`LazyEffect.h`) | −4.2 MB | −7.4 MB | DOOM at zero mix or off; LUCY off or GLOBAL zero (the defaults) |
+| COMB delay lines pooled per filter slot, built only for a slot set to COMB | −2.0 MB | −4.1 MB | no filter on COMB (the default) |
+
+What remains per instance at 48 kHz, default patch: Delay 3.0 MB and Mood 2.8 MB
+(their 8 s and 4 + 3 s lines are a product decision), the reverb algorithms'
+lines 1.5 MB, the 64 voice objects 2.0 MB, and the processor's parameters and
+buffers. `PX3Diag memory [rate]` prints the measured per-stage list.
+
+### On-demand storage and the audio thread
+
+None of the on-demand storage is ever allocated or freed on the audio thread:
+
+- the audio thread notices the patch wants an engine or a COMB line pool, flags
+  it and calls `triggerAsyncUpdate()` (lock-free); until it exists the stage
+  passes dry, exactly as an idle engine does;
+- the message thread builds and prepares it, then publishes the pointer
+  atomically; the engine fades itself in from silence (DOOM/LUCY enable ramp,
+  the filter's bypass crossfade for COMB), so the handover cannot click;
+- anything the patch no longer uses is freed only in `prepareToPlay` /
+  `releaseResources`, where the audio thread is not running. Switching an
+  effect off mid-session keeps its storage until then.
+
+If an engine is audible when `prepareToPlay` runs it is built there, so the
+first block already has it. `PX3Diag rtsafety` covers toggling DOOM, LUCY and
+COMB during playback (0 audio-thread allocations), and `PX3Bench fingerprint`
+has bitwise rows for COMB and DOOM + LUCY that matched 0.8.1 exactly.
+
+The benchmark has no message loop, so the stress scenario sets everything up
+before `prepareToPlay` and services pending builds itself at the end. A
+scenario that turned an effect on mid-run without doing either would measure
+the dry bypass, not the effect.
 
 ## Regression tracking
 
@@ -98,7 +155,8 @@ presented as though they were.
 
 The first instance pays for one-time work that every later instance then shares:
 JUCE's static initialisation, format and font registries, the preset library
-being indexed, and lazily created singletons. Those costs are not repeated, so
+being indexed, lazily created singletons, and (since 0.8.2) the factory
+wavetables in use, ~2.25 MB each, which every instance then shares. Those costs are not repeated, so
 the **incremental** figure is what you multiply when estimating how many
 instances a session will hold - not the first-instance figure.
 
@@ -131,14 +189,16 @@ that contains almost nothing else. Memory in a real DAW will differ because of:
   pooling, or offline bounce modes
 
 It is also a **process-level** measurement, not a per-object allocation count.
-It cannot attribute bytes to individual objects. For that breakdown - static
-struct sizes and per-voice heap estimates - run:
+It cannot attribute bytes to individual objects. For that breakdown - struct
+sizes, plus each DSP stage's prepare-time heap measured from the allocator at a
+given rate, marked always / on demand / shared - run:
 
 ```bash
-build/diag/PX3Diag_artefacts/RelWithDebInfo/PX3Diag memory
+build/diag/PX3Diag_artefacts/RelWithDebInfo/PX3Diag memory          # 48 kHz
+build/diag/PX3Diag_artefacts/RelWithDebInfo/PX3Diag memory 96000
 ```
 
-The two are complementary: `PX3Diag memory` says what the code declares, this
+The two are complementary: `PX3Diag memory` attributes bytes to stages, this
 benchmark says what the process actually consumes, including allocator overhead
 and fragmentation that no `sizeof()` can see.
 

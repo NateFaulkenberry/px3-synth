@@ -16,7 +16,8 @@ void VoiceFilter::prepare(double newSampleRate)
     constexpr float bypassBlendSeconds = 0.008f;
     bypassBlendStep = 1.0f / static_cast<float>(juce::jmax(1.0, sampleRate * bypassBlendSeconds));
 
-    comb.prepare(sampleRate);
+    if (externalCombStorage) { comb.prepareWithoutStorage(sampleRate); }
+    else                     { comb.prepare(sampleRate); }
     const juce::dsp::ProcessSpec spec { sampleRate, 1, 1 };
     stateVariableA.prepare(spec);
     stateVariableB.prepare(spec);
@@ -76,7 +77,7 @@ void VoiceFilter::setCurrentSettingsImmediate(const FilterSettings& settings)
     arp.reset();
     filterUpdateCounter = 0;
     // A note start must not fade its filter in.
-    bypassBlend = targetSettings.enabled ? 1.0f : 0.0f;
+    bypassBlend = (targetSettings.enabled && combReady()) ? 1.0f : 0.0f;
 }
 
 float VoiceFilter::processSampleActive(float inputSample)
@@ -88,7 +89,7 @@ float VoiceFilter::processSampleActive(float inputSample)
 
     // Out of circuit when bypassed, or while a queued type change is being
     // crossfaded through.
-    const auto wantInCircuit = targetSettings.enabled && !modeChangePending;
+    const auto wantInCircuit = targetSettings.enabled && !modeChangePending && combReady();
     bypassBlend = juce::jlimit(0.0f, 1.0f, bypassBlend + (wantInCircuit ? bypassBlendStep : -bypassBlendStep));
 
     if (bypassBlend <= 0.0f)

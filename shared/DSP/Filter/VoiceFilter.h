@@ -15,6 +15,17 @@ public:
     void prepare(double newSampleRate);
     void reset();
 
+    // COMB storage. By default the filter owns its comb line, allocated in
+    // prepare(). The synth instead supplies lines from a pool it builds only
+    // for filter slots actually set to COMB (one line is ~3.9 KB at 48 kHz and
+    // the synth runs 512 filters). Call once, before prepare().
+    void useExternalCombStorage() noexcept { externalCombStorage = true; }
+    // Audio-thread safe, no allocation. nullptr detaches. While a filter in
+    // COMB has no line it stays out of circuit (dry) and fades in through the
+    // usual bypass crossfade once one is attached.
+    void attachCombLine(float* storage, int capacity) noexcept { comb.attachLine(storage, capacity); }
+    bool hasCombStorage() const noexcept { return comb.hasStorage(); }
+
     void setTargetSettings(const FilterSettings& settings);
     void setCurrentSettingsImmediate(const FilterSettings& settings);
 
@@ -83,4 +94,12 @@ private:
     float bypassBlendStep { 1.0f };
     int pendingModeIndex { 0 };
     bool modeChangePending { false };
+    bool externalCombStorage { false };
+
+    // A COMB filter without a line has nothing to run, so it is held out of
+    // circuit until one arrives. Every other type is always ready.
+    bool combReady() const noexcept
+    {
+        return ! px3::isCombMode(currentSettings.modeIndex) || comb.hasStorage();
+    }
 };

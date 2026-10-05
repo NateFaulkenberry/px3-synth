@@ -36,6 +36,15 @@ public:
     // excitation) through this, so a run is reproducible.
     void setSeed(uint32_t seed);
 
+    // Whether these settings can make the engine contribute anything. When
+    // they cannot, processSampleFrame passes dry and holds no state (it goes
+    // idle and clears itself), so a host that has not built an engine at all
+    // sounds identical - which is what lets PX3 build it only on demand.
+    static bool wouldBeAudible(const DoomUserParameters& settings) noexcept
+    {
+        return settings.enabled && settings.mix > 1.0e-6f;
+    }
+
     // The harmonised CLOCK steps, exposed so the ratio table is testable
     // without reaching into the engine.
     static float clockRatioFor(float clockNormalised, bool smooth);

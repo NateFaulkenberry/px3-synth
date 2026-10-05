@@ -1,5 +1,6 @@
 #include "CombResonator.h"
 
+#include <algorithm>
 #include <cmath>
 
 namespace px3
@@ -32,27 +33,99 @@ float sanitize(float x) noexcept
 }
 } // namespace
 
-void CombResonator::prepare(double sampleRate)
+CombResonator& CombResonator::operator=(const CombResonator& other)
 {
-    currentSampleRate = sampleRate > 0.0 ? sampleRate : 44100.0;
+    if (this == &other)
+    {
+        return *this;
+    }
 
+    const auto otherOwnsLine = other.lineData != nullptr && other.lineData == other.ownedLine.data();
+    ownedLine = other.ownedLine;
+    // Pooled storage is shared by pointer, as the pool owner intends; owned
+    // storage is re-pointed at this object's own copy.
+    lineData = otherOwnsLine ? ownedLine.data() : other.lineData;
+    lineSize = other.lineSize;
+    writePos = other.writePos;
+    currentSampleRate = other.currentSampleRate;
+    target = other.target;
+    delaySamples = other.delaySamples;
+    targetDelaySamples = other.targetDelaySamples;
+    feedbackGain = other.feedbackGain;
+    targetFeedbackGain = other.targetFeedbackGain;
+    dampingCoeff = other.dampingCoeff;
+    targetDampingCoeff = other.targetDampingCoeff;
+    dispersionCoeff = other.dispersionCoeff;
+    targetDispersionCoeff = other.targetDispersionCoeff;
+    driveAmount = other.driveAmount;
+    targetDriveAmount = other.targetDriveAmount;
+    mixAmount = other.mixAmount;
+    targetMixAmount = other.targetMixAmount;
+    polaritySign = other.polaritySign;
+    targetPolaritySign = other.targetPolaritySign;
+    smoothingCoeff = other.smoothingCoeff;
+    dampingState = other.dampingState;
+    dispersionStateX = other.dispersionStateX;
+    dispersionStateY = other.dispersionStateY;
+    return *this;
+}
+
+int CombResonator::lineSizeFor(double sampleRate) noexcept
+{
     // Sized from the lowest tuning and the ACTUAL sample rate, not a worst-case
     // one. The synth holds 512 of these, so paying for 96 kHz while running at
     // 48 would double the resonator's whole memory footprint for nothing.
-    const auto longest = static_cast<int>(std::ceil(currentSampleRate / kMinTuneHz));
-    lineSize = juce::jmax(64, longest + kInterpolationMargin);
+    const auto rate = sampleRate > 0.0 ? sampleRate : 44100.0;
+    const auto longest = static_cast<int>(std::ceil(rate / kMinTuneHz));
+    return juce::jmax(64, longest + kInterpolationMargin);
+}
 
-    line.assign(static_cast<std::size_t>(lineSize), 0.0f);
+void CombResonator::prepareCoefficients(double sampleRate)
+{
+    currentSampleRate = sampleRate > 0.0 ? sampleRate : 44100.0;
+    lineSize = lineSizeFor(currentSampleRate);
     writePos = 0;
-
     smoothingCoeff = 1.0f - std::exp(-1.0f / static_cast<float>(kSmoothingSeconds * currentSampleRate));
+}
 
+void CombResonator::prepare(double sampleRate)
+{
+    prepareCoefficients(sampleRate);
+    ownedLine.assign(static_cast<std::size_t>(lineSize), 0.0f);
+    lineData = ownedLine.data();
+    reset();
+}
+
+void CombResonator::prepareWithoutStorage(double sampleRate)
+{
+    prepareCoefficients(sampleRate);
+    // Any storage attached before was sized for the previous rate; the owner
+    // re-attaches storage of the right size.
+    ownedLine.clear();
+    ownedLine.shrink_to_fit();
+    lineData = nullptr;
+    reset();
+}
+
+void CombResonator::attachLine(float* storage, int capacity) noexcept
+{
+    if (storage == lineData)
+    {
+        return;
+    }
+
+    lineData = (storage != nullptr && capacity >= lineSize) ? storage : nullptr;
+    // A fresh line, so a fresh loop: nothing from wherever this storage was
+    // before may be fed back. Bounded work (one line), no allocation.
     reset();
 }
 
 void CombResonator::reset()
 {
-    std::fill(line.begin(), line.end(), 0.0f);
+    if (lineData != nullptr)
+    {
+        std::fill(lineData, lineData + lineSize, 0.0f);
+    }
     writePos = 0;
     dampingState = 0.0f;
     dispersionStateX = { 0.0f, 0.0f };
@@ -150,10 +223,10 @@ float CombResonator::readDelay(float delayInSamples) const
     const auto i2 = (i1 + 1) % lineSize;
     const auto i3 = (i1 + 2) % lineSize;
 
-    const auto y0 = line[static_cast<std::size_t>(i0)];
-    const auto y1 = line[static_cast<std::size_t>(i1)];
-    const auto y2 = line[static_cast<std::size_t>(i2)];
-    const auto y3 = line[static_cast<std::size_t>(i3)];
+    const auto y0 = lineData[static_cast<std::size_t>(i0)];
+    const auto y1 = lineData[static_cast<std::size_t>(i1)];
+    const auto y2 = lineData[static_cast<std::size_t>(i2)];
+    const auto y3 = lineData[static_cast<std::size_t>(i3)];
 
     const auto a0 = -0.5f * y0 + 1.5f * y1 - 1.5f * y2 + 0.5f * y3;
     const auto a1 = y0 - 2.5f * y1 + 2.0f * y2 - 0.5f * y3;
@@ -164,7 +237,7 @@ float CombResonator::readDelay(float delayInSamples) const
 
 float CombResonator::processSample(float inputSample)
 {
-    if (lineSize <= 0)
+    if (lineData == nullptr || lineSize <= 0)
     {
         return inputSample;
     }
@@ -230,7 +303,7 @@ float CombResonator::processSample(float inputSample)
 
     const auto feedback = loop * feedbackGain * polaritySign;
 
-    line[static_cast<std::size_t>(writePos)] = sanitize(in + feedback);
+    lineData[static_cast<std::size_t>(writePos)] = sanitize(in + feedback);
     writePos = (writePos + 1) % lineSize;
 
     return in * (1.0f - mixAmount) + delayed * mixAmount;

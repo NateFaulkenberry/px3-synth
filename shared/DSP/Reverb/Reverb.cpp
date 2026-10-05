@@ -307,13 +307,19 @@ float ::Reverb::processDelay(DelayLine& line, float in, float delaySamples)
 
 void ::Reverb::prepare(double sampleRate)
 {
+    // Held throughout: loadImpulseResponse may build the IR engine from
+    // another thread at the same moment, and reads sampleRateHz to do it.
+    const std::lock_guard<std::mutex> lock(convolutionLock);
     sampleRateHz = juce::jmax(1.0, sampleRate);
 
     constexpr float reverbAmountTauSec = 0.020f;
     const auto sr = static_cast<float>(sampleRateHz);
     amountSmoothingCoeff = 1.0f - std::exp(-1.0f / (sr * reverbAmountTauSec));
 
-    convolution.prepare({ sampleRateHz, static_cast<juce::uint32>(kIrBlock), 2 });
+    if (convolutionOwner != nullptr)
+    {
+        convolutionOwner->prepare({ sampleRateHz, static_cast<juce::uint32>(kIrBlock), 2 });
+    }
     irBlock.setSize(2, kIrBlock);
 
     reset();
@@ -332,11 +338,29 @@ juce::String (::Reverb::loadImpulseResponse)(const juce::File& file)
         return "Impulse responses are limited to 12 seconds.";
     }
     reader.reset();
-    convolution.loadImpulseResponse(file, juce::dsp::Convolution::Stereo::yes, juce::dsp::Convolution::Trim::yes, 0,
-                                    juce::dsp::Convolution::Normalise::yes);
+    {
+        const std::lock_guard<std::mutex> lock(convolutionLock);
+        ensureConvolution().loadImpulseResponse(file, juce::dsp::Convolution::Stereo::yes,
+                                                juce::dsp::Convolution::Trim::yes, 0,
+                                                juce::dsp::Convolution::Normalise::yes);
+    }
     irName = file.getFileNameWithoutExtension();
     irLoaded.store(true);
     return {};
+}
+
+juce::dsp::Convolution& (::Reverb::ensureConvolution)()
+{
+    if (convolutionOwner == nullptr)
+    {
+        auto engine = std::make_unique<juce::dsp::Convolution>(juce::dsp::Convolution::NonUniform { 512 });
+        // Prepared before it is published, so the audio thread's first sight of
+        // it is a ready engine. A later prepare() re-prepares it at the host rate.
+        engine->prepare({ sampleRateHz, static_cast<juce::uint32>(kIrBlock), 2 });
+        convolutionOwner = std::move(engine);
+        convolution.store(convolutionOwner.get(), std::memory_order_release);
+    }
+    return *convolutionOwner;
 }
 
 void (::Reverb::clearImpulseResponse)()
@@ -352,7 +376,7 @@ void ::Reverb::reset()
 {
     irFill = 0;
     irBlock.clear();
-    convolution.reset();
+    if (auto* engine = convolution.load(std::memory_order_acquire)) { engine->reset(); }
     outputCompGain = 1.0f;
     compGainCurrent = 1.0f;
     compGainStep = 0.0f;
@@ -729,9 +753,14 @@ void ::Reverb::processCore(float inL,
             if (++irFill >= kIrBlock)
             {
                 irFill = 0;
-                if (irResetRequested.exchange(false, std::memory_order_acq_rel)) { convolution.reset(); }
-                juce::dsp::AudioBlock<float> block(irBlock);
-                convolution.process(juce::dsp::ProcessContextReplacing<float>(block));
+                // No engine means no IR has ever been loaded, and the wet is
+                // gated on irLoaded above, so skipping is exactly what it did.
+                if (auto* engine = convolution.load(std::memory_order_acquire))
+                {
+                    if (irResetRequested.exchange(false, std::memory_order_acq_rel)) { engine->reset(); }
+                    juce::dsp::AudioBlock<float> block(irBlock);
+                    engine->process(juce::dsp::ProcessContextReplacing<float>(block));
+                }
             }
         }
     }

@@ -3002,6 +3002,7 @@ int main(int argc, char* argv[])
     if (wants("fxchain")) testFxChain();
     if (wants("doom")) testDoom();
     if (wants("lucy")) testLucy();
+    if (wants("lazyfx")) testLazyFxEngines();
     if (wants("chorus")) testChorus();
     if (wants("spread")) testStereoSpread();
     if (wants("delay")) testDelay();

@@ -6,6 +6,8 @@
 
 #include <array>
 #include <atomic>
+#include <memory>
+#include <mutex>
 #include <vector>
 
 class Reverb
@@ -18,6 +20,8 @@ public:
     void clearImpulseResponse();
     bool hasImpulseResponse() const noexcept { return irLoaded.load(); }
     juce::String impulseResponseName() const { return irName; }
+    // Whether the IR engine (and its loader thread) has been built yet.
+    bool hasConvolutionEngine() const noexcept { return convolution.load() != nullptr; }
     static constexpr int kIrBlock = 256;   // the IR path's block, and its extra latency
 
     void prepare(double sampleRate);
@@ -129,7 +133,26 @@ private:
     float shimmerDcX1 { 0.0f }, shimmerDcY1 { 0.0f };
     float processShimmer(float input) noexcept;
 
-    juce::dsp::Convolution convolution { juce::dsp::Convolution::NonUniform { 512 } };
+    // The IR engine exists only once an impulse response has been loaded.
+    // A juce::dsp::Convolution owns a background loader thread and ~0.4 MB of
+    // prepared state, and most instances never use IR mode, so building it
+    // up front cost every instance a thread and ~0.8 MB for nothing.
+    //
+    // Built on the loading thread (never the audio thread), prepared there,
+    // then published through the atomic; the audio thread only reads the raw
+    // pointer. Once built it lives as long as the Reverb, so the audio thread
+    // can never see it freed. The mutex orders creation against prepare(), the
+    // only other non-audio-thread user.
+    //
+    // Why not one ConvolutionMessageQueue shared by every instance instead:
+    // JUCE's queue is single-producer (an AbstractFifo), and each Convolution
+    // pushes to it from its own audio thread whenever it installs a new IR.
+    // Hosts that process tracks in parallel would then push from several audio
+    // threads at once - a data race on the queue's storage.
+    std::unique_ptr<juce::dsp::Convolution> convolutionOwner;
+    std::atomic<juce::dsp::Convolution*> convolution { nullptr };
+    std::mutex convolutionLock;
+    juce::dsp::Convolution& ensureConvolution();   // loading thread, lock held
     juce::AudioBuffer<float> irBlock;   // kIrBlock frames, allocated in prepare
     int irFill { 0 };
     std::atomic<bool> irLoaded { false };

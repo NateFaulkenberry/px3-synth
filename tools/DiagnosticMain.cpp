@@ -15,6 +15,7 @@
 #include "OscillatorUnit.h"
 #include "SubOscillator.h"
 #include "SynthVoice.h"
+#include "WavetableFactory.h"
 #include "EnvelopeGenerator.h"
 #include "AmpEnvelope.h"
 #include "PX3Diagnostics.h"
@@ -27,6 +28,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <mach/mach.h>
+#include <malloc/malloc.h>
 #include <string>
 #include <thread>
 #include <vector>
@@ -2830,6 +2832,111 @@ int main(int argc, char* argv[])
         if (measure("16 voices Ladder24 + cutoff sweep", true, true, 16, false, false,
                 static_cast<int>(px3::FilterMode::ladder24)) != 0) ++failures;
 
+        // DOOM and LUCY are built only once the patch can hear them, by the
+        // message thread (LazyEffect.h). Switching them on and off during
+        // playback must therefore never allocate on the audio thread: the
+        // audio thread only flags the request and passes dry until the engine
+        // is published. The message thread's part (serviceLazyEffects) runs
+        // between blocks with counting paused, exactly as it would on its own
+        // thread.
+        auto measureToggling = [](const char* label)
+        {
+            px3::diag::resetNoteStartSequence();
+            PX3SynthAudioProcessor processor;
+            setParameter(processor, "voice.amp.sustain", 1.0f);
+            for (const auto* id : { "sub", "osc1", "osc2", "osc3" })
+            {
+                setParameter(processor, juce::String("mix.") + id + ".send.fx", 1.0f);
+            }
+            setParameter(processor, "fx.doom.enabled", 1.0f);
+            setParameter(processor, "fx.doom.mix", 0.0f);     // inaudible: no engine yet
+            setParameter(processor, "fx.lucy.enabled", 0.0f);
+            setParameter(processor, "fx.lucy.global", 0.6f);
+            setParameter(processor, "voice.filter1.enabled", 1.0f);
+            setParameter(processor, "voice.filter2.enabled", 1.0f);
+            auto setFilterType = [&processor](int slot, px3::FilterMode mode)
+            {
+                auto& type = processor.getFilterTypeParam(slot);
+                type.setValueNotifyingHost(type.convertTo0to1(static_cast<float>(mode)));
+            };
+            processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
+            processor.prepareToPlay(kSampleRate, kBlockSize);
+
+            juce::AudioBuffer<float> buffer(2, kBlockSize);
+            for (int i = 0; i < 20; ++i)
+            {
+                buffer.clear();
+                juce::MidiBuffer midi;
+                if (i < 8) { midi.addEvent(juce::MidiMessage::noteOn(1, 40 + i * 3, 0.9f), 0); }
+                processor.processBlock(buffer, midi);
+            }
+
+            constexpr int measuredBlocks = 400;
+            auto built = 0;
+            px3rt::allocationCount.store(0, std::memory_order_relaxed);
+            px3rt::traceDepth.store(0, std::memory_order_relaxed);
+            px3rt::captureTrace.store(true, std::memory_order_relaxed);
+            for (int i = 0; i < measuredBlocks; ++i)
+            {
+                px3rt::counting.store(false, std::memory_order_relaxed);
+                // Host automation: on, off, on again, with the message thread
+                // getting round to the build a few blocks after each request.
+                const auto phase = i % 100;
+                if (phase == 10) { setParameter(processor, "fx.doom.mix", 0.6f); }
+                if (phase == 30) { setParameter(processor, "fx.lucy.enabled", 1.0f); }
+                if (phase == 60) { setParameter(processor, "fx.doom.enabled", 0.0f); }
+                if (phase == 70) { setParameter(processor, "fx.lucy.enabled", 0.0f); }
+                if (phase == 85) { setParameter(processor, "fx.doom.enabled", 1.0f); }
+                // COMB lines are pooled per filter slot the same way.
+                if (phase == 20) { setFilterType(0, px3::FilterMode::comb); }
+                if (phase == 40) { setFilterType(1, px3::FilterMode::comb); }
+                if (phase == 75) { setFilterType(0, px3::FilterMode::lp24); }
+                if (phase == 95) { setFilterType(1, px3::FilterMode::allPass); }
+                if (i % 7 == 3)
+                {
+                    processor.serviceLazyEffects();
+                }
+                if (i == measuredBlocks / 2)
+                {
+                    // A transport stop/start between the cycles: the engines
+                    // nobody is using are freed and rebuilt on demand.
+                    processor.releaseResources();
+                    processor.prepareToPlay(kSampleRate, kBlockSize);
+                }
+                built += (processor.debugIsDoomEngineBuilt() ? 1 : 0)
+                         + (processor.debugIsCombPoolBuilt(0) ? 1 : 0);
+                px3rt::counting.store(true, std::memory_order_relaxed);
+
+                buffer.clear();
+                juce::MidiBuffer midi;
+                processor.processBlock(buffer, midi);
+            }
+            px3rt::counting.store(false, std::memory_order_relaxed);
+            px3rt::captureTrace.store(false, std::memory_order_relaxed);
+            const auto total = px3rt::allocationCount.load(std::memory_order_relaxed);
+            if (const auto depth = px3rt::traceDepth.load(std::memory_order_relaxed); depth > 0)
+            {
+                std::printf("    first allocation was %zu bytes, from:\n",
+                            px3rt::traceSize.load(std::memory_order_relaxed));
+                auto** symbols = backtrace_symbols(px3rt::traceFrames.data(), depth);
+                for (int f = 0; f < depth && f < 14; ++f)
+                {
+                    std::printf("      %s\n", symbols != nullptr ? symbols[f] : "?");
+                }
+                std::free(symbols);
+                px3rt::traceDepth.store(0, std::memory_order_relaxed);
+            }
+            // The toggling has to have actually built the engine, or the zero
+            // only measured a bypass.
+            const auto exercised = built > 0;
+            std::printf("  %-42s %8lld allocations over %d blocks (%.1f per block)  %s\n",
+                        label, total, measuredBlocks, (double) total / measuredBlocks,
+                        ! exercised ? "*** ENGINE NEVER BUILT - NOT MEASURED ***"
+                        : total == 0 ? "ok" : "*** ALLOCATING ON THE AUDIO THREAD ***");
+            return exercised ? total : 1;
+        };
+        if (measureToggling("DOOM/LUCY/COMB switched on+off, playing") != 0) ++failures;
+
         std::printf("\n  %lld failure(s)\n", failures);
         return static_cast<int>(failures);
     }
@@ -2991,8 +3098,17 @@ int main(int argc, char* argv[])
     }
     else if (arg == "memory")
     {
-        std::printf("\nMEMORY FOOTPRINT MAP\n\n");
-        constexpr int kVoices = 64;
+        // PX3Diag memory [sampleRate]. The sizeof map below is exact for object
+        // storage; the heap section measures what each DSP stage's prepare()
+        // actually allocates, at the given rate, from the allocator's own
+        // accounting - so it cannot drift from the code the way hand-written
+        // figures did. scripts/memory-benchmark.sh remains the end-to-end
+        // per-instance number (allocator overhead, JUCE, everything).
+        const auto rate = (argc > 2 && juce::String(argv[2]).getDoubleValue() > 0.0)
+                              ? juce::String(argv[2]).getDoubleValue()
+                              : kSampleRate;
+        std::printf("\nMEMORY FOOTPRINT MAP  (%.0f Hz)\n\n", rate);
+        constexpr int kVoices = PX3SynthAudioProcessor::kPolyphonyVoiceCount;
 
         auto row = [](const char* label, std::size_t bytes, int count)
         {
@@ -3002,22 +3118,17 @@ int main(int argc, char* argv[])
             return total;
         };
 
-        std::printf("  PER-VOICE COMPONENTS\n");
-        const auto oscUnit  = sizeof(OscillatorUnit);
-        const auto vfilter  = sizeof(VoiceFilter);
-        const auto subosc   = sizeof(SubOscillator);
-        const auto ampenv   = sizeof(AmpEnvelope);
-        const auto modenv   = sizeof(EnvelopeGenerator);
-        row("OscillatorUnit", oscUnit, 3);
-        row("VoiceFilter", vfilter, 4 * 2);
-        row("SubOscillator", subosc, 1);
-        row("AmpEnvelope", ampenv, 1);
-        row("EnvelopeGenerator (mod env)", modenv, 3);
+        std::printf("  PER-VOICE COMPONENTS (object storage)\n");
+        row("OscillatorUnit", sizeof(OscillatorUnit), kOscillatorSourceCount);
+        row("VoiceFilter", sizeof(VoiceFilter), kVoiceMixerSourceCount * kFilterInstanceCount);
+        row("SubOscillator", sizeof(SubOscillator), 1);
+        row("AmpEnvelope", sizeof(AmpEnvelope), 1);
+        row("EnvelopeGenerator (mod env)", sizeof(EnvelopeGenerator), SynthVoice::kModEnvelopeCount);
 
         const auto voice = sizeof(SynthVoice);
         std::printf("\n  SynthVoice total                   %10zu B  = %8.2f KB\n", voice, voice / 1024.0);
-        std::printf("  x %d voices                         %10.2f MB\n\n", kVoices, voice * (double) kVoices / (1024.0 * 1024.0));
-        std::printf("  voice pool: %.2f MB, no sample-rate dependent heap\n\n", voice * (double) kVoices / (1024.0 * 1024.0));
+        std::printf("  x %d voices                         %10.2f MB  (voice objects)\n\n",
+                    kVoices, voice * (double) kVoices / (1024.0 * 1024.0));
 
         std::printf("  PROCESSOR\n");
         std::printf("  %-34s %10zu B  = %8.2f KB\n", "PX3SynthAudioProcessor object",
@@ -3025,8 +3136,69 @@ int main(int argc, char* argv[])
         const auto busSamples = 512;
         const auto busChannels = 4;
         const auto oneBus = (std::size_t) busSamples * busChannels * sizeof(float);
-        std::printf("  %-34s %10zu B  x4 buses = %7.2f KB  (at %d-sample blocks)\n",
+        std::printf("  %-34s %10zu B  x4 buses = %7.2f KB  (at %d-sample blocks)\n\n",
                     "audio bus buffer", oneBus, oneBus * 4 / 1024.0, busSamples);
+
+        // ---- sample-rate-dependent heap, measured -------------------------
+        auto heapInUse = []
+        {
+            malloc_statistics_t stats {};
+            malloc_zone_statistics(nullptr, &stats);
+            return static_cast<double>(stats.size_in_use);
+        };
+        auto measurePrepare = [&heapInUse](auto makeAndPrepare)
+        {
+            const auto before = heapInUse();
+            auto object = makeAndPrepare();
+            const auto after = heapInUse();
+            object.reset();
+            return (after - before) / (1024.0 * 1024.0);
+        };
+        auto line = [](const char* label, double mb, const char* when)
+        {
+            std::printf("  %-26s %8.2f MB  %s\n", label, mb, when);
+            return mb;
+        };
+
+        std::printf("  HEAP, PER INSTANCE (object + its prepare(), measured)\n");
+        auto always = 0.0, onDemand = 0.0;
+        always += line("Delay", measurePrepare([rate] { auto d = std::make_unique<Delay>(); d->prepare(rate); return d; }),
+                       "always (8 s lines)");
+        always += line("Mood", measurePrepare([rate] { auto m = std::make_unique<Mood>(); m->prepare(rate); return m; }),
+                       "always");
+        always += line("Reverb (algorithms)", measurePrepare([rate] { auto r = std::make_unique<::Reverb>(); r->prepare(rate); return r; }),
+                       "always; the IR engine (~0.8 MB + a thread) only once an IR is loaded");
+        always += line("Chorus", measurePrepare([rate] { auto c = std::make_unique<px3::Chorus>(); c->prepare(rate); return c; }),
+                       "always");
+        always += line("Stereo Spread", measurePrepare([rate] { auto c = std::make_unique<px3::StereoSpread>(); c->prepare(rate); return c; }),
+                       "always");
+        always += line("VIBE", measurePrepare([rate] { auto c = std::make_unique<px3::UniVibe>(); c->prepare(rate); return c; }),
+                       "always");
+        always += line("DRIVE", measurePrepare([rate] { auto c = std::make_unique<px3::Distortion>(); c->prepare(rate); return c; }),
+                       "always");
+        onDemand += line("DOOM", measurePrepare([rate] { auto c = std::make_unique<px3::Doom>(); c->prepare(rate); return c; }),
+                         "only while enabled at a mix above zero");
+        onDemand += line("LUCY", measurePrepare([rate] { auto c = std::make_unique<px3::Lucy>(); c->prepare(rate); return c; }),
+                         "only while enabled at a GLOBAL above zero");
+        const auto combSlot = static_cast<double>(kVoices) * kVoiceMixerSourceCount
+                              * px3::CombResonator::lineSizeFor(rate) * sizeof(float) / (1024.0 * 1024.0);
+        onDemand += line("COMB lines, per slot", combSlot,
+                         "only for a filter slot set to COMB (x2 if both)");
+        std::printf("  %-26s %8.2f MB\n", "always, total", always);
+        std::printf("  %-26s %8.2f MB  (one COMB slot counted)\n\n", "on demand, total", onDemand);
+
+        std::printf("  HEAP, SHARED BY EVERY INSTANCE IN THE PROCESS\n");
+        auto shared = 0.0;
+        for (int i = 0; i < static_cast<int>(px3::factoryWavetables().size()); ++i)
+        {
+            if (const auto table = px3::buildFactoryWavetable(i))
+            {
+                shared = juce::jmax(shared, static_cast<double>(table->getSizeInBytes()) / (1024.0 * 1024.0));
+            }
+        }
+        std::printf("  %-26s %8.2f MB  each, built once per process for whichever tables are in use\n",
+                    "factory wavetable", shared);
+        std::printf("  %-26s %8s     a user-imported table is loaded per instance\n\n", "", "");
         return 0;
     }
     else if (arg == "subosc")

@@ -127,6 +127,7 @@ struct Scenario
     bool eqFx { false };
     bool compFx { false };
     bool insertsBypassed { false };  // parameters loaded, enables off
+    bool combFilters { false };      // both filter slots set to COMB
 };
 
 struct Timing
@@ -194,6 +195,14 @@ void configure(PX3SynthAudioProcessor& processor, const Scenario& scenario)
     }
     setParameter(processor, "voice.filter1.cutoff", 1200.0f);
     setParameter(processor, "voice.filter2.cutoff", 3000.0f);
+    if (scenario.combFilters)
+    {
+        for (int index = 0; index < kFilterInstanceCount; ++index)
+        {
+            auto& type = processor.getFilterTypeParam(index);
+            type.setValueNotifyingHost(type.convertTo0to1(static_cast<float>(px3::FilterMode::comb)));
+        }
+    }
 
     setParameter(processor, "fx.analog.enabled", scenario.vibe ? 1.0f : 0.0f);
     setParameter(processor, "fx.analog.amount", scenario.vibe ? 0.85f : 0.0f);
@@ -660,6 +669,19 @@ int runFingerprints()
     for (const auto& variant : variants)
     {
         report(variant.label, variant.scenario);
+    }
+
+    // Exact twins for the engines that are built on demand (DOOM, LUCY, the
+    // COMB line pools): the same audio whether storage is per-instance or
+    // pooled is a bitwise claim, so it gets a bitwise check.
+    {
+        Scenario comb { "", 8, false, true, true };
+        comb.combFilters = true;
+        report("COMB filters", comb);
+
+        Scenario newFx { "", 8, false, true };
+        newFx.newFx = true;
+        report("DOOM + LUCY + chorus + spread", newFx);
     }
 
     std::printf("\n");

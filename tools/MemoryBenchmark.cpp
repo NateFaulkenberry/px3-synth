@@ -202,6 +202,38 @@ void exerciseInstance(Instance& instance, Scenario scenario, double sampleRate, 
         return;
 
     auto& processor = *instance.processor;
+
+    if (scenario == Scenario::stress)
+    {
+        // Every effect on AND audible, before prepareToPlay. DOOM and LUCY are
+        // built only once the patch can hear them (LazyEffect.h), and the
+        // shipping defaults leave DOOM at zero mix and LUCY off - so a stress
+        // run that left them at their defaults would report the default
+        // patch's cost and call it the worst case.
+        for (const auto& id : { "fx.vibe.enabled", "fx.delay.enabled", "fx.reverb.enabled",
+                                "fx.mood.enabled", "fx.doom.enabled", "fx.lucy.enabled",
+                                "fx.chorus.enabled", "fx.spread.enabled",
+                                "voice.sub.enabled", "voice.amp.enabled" })
+        {
+            setParameterById(processor, id, 1.0f);
+        }
+        for (const auto& id : { "fx.analog.amount", "fx.delay.amount", "fx.reverb.amount", "fx.mood.mix",
+                                "fx.delay.feedback", "fx.mood.feedback", "fx.mood.spread", "fx.mood.degrade",
+                                "fx.doom.mix", "fx.lucy.global", "fx.chorus.amount", "fx.spread.amount" })
+        {
+            setParameterById(processor, id, 0.75f);
+        }
+
+        // Both filter slots on COMB: their delay lines are pooled and built
+        // only for a slot set to COMB, so this is the filters' worst case.
+        for (int index = 0; index < kFilterInstanceCount; ++index)
+        {
+            auto& type = processor.getFilterTypeParam(index);
+            type.setValueNotifyingHost(type.convertTo0to1(static_cast<float>(px3::FilterMode::comb)));
+            setParameterById(processor, "voice.filter" + juce::String(index + 1) + ".enabled", 1.0f);
+        }
+    }
+
     processor.setPlayConfigDetails(0, 2, sampleRate, blockSize);
     processor.prepareToPlay(sampleRate, blockSize);
     instance.buffer.setSize(2, blockSize);
@@ -223,19 +255,10 @@ void exerciseInstance(Instance& instance, Scenario scenario, double sampleRate, 
         return;
     }
 
-    // stress: bring up every module that owns a buffer, then play through them.
-    // Nothing here reaches into the DSP - it only sets the parameters a user
-    // would set, so the allocations are the ones the plugin really makes.
-    for (const auto& id : { "fx.vibe.enabled", "fx.delay.enabled", "fx.reverb.enabled",
-                            "fx.mood.enabled", "voice.sub.enabled", "voice.amp.enabled" })
-    {
-        setParameterById(processor, id, 1.0f);
-    }
-    for (const auto& id : { "fx.analog.amount", "fx.delay.amount", "fx.reverb.amount", "fx.mood.mix",
-                            "fx.delay.feedback", "fx.mood.feedback", "fx.mood.spread", "fx.mood.degrade" })
-    {
-        setParameterById(processor, id, 0.75f);
-    }
+    // stress: every module that owns a buffer was brought up above; now play
+    // through them. Nothing here reaches into the DSP - it only sets the
+    // parameters a user would set, so the allocations are the ones the plugin
+    // really makes.
 
     // A chord, so a useful number of voices allocate their per-voice storage.
     juce::MidiBuffer notes;
@@ -259,6 +282,10 @@ void exerciseInstance(Instance& instance, Scenario scenario, double sampleRate, 
     for (int note = 36; note <= 84; note += 4)
         offs.addEvent(juce::MidiMessage::noteOff(1, note), 0);
     runBlocks(48, offs);
+
+    // No message loop runs here, so do the message thread's part by hand:
+    // anything the audio thread asked to have built gets built and counted.
+    processor.serviceLazyEffects();
 }
 
 // ---------------------------------------------------------------------------

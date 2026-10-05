@@ -32,7 +32,9 @@ struct FactoryWavetable
 
 const std::vector<FactoryWavetable>& factoryWavetables();
 
-// Builds one by index. Null if the index is out of range.
+// The shared, immutable table at this index - built on first use and reused by
+// every oscillator of every instance in the process while any of them holds it.
+// Null if the index is out of range. Message thread (or any non-audio thread).
 std::shared_ptr<const Wavetable> buildFactoryWavetable(int index);
 
 // Builds one by name, so a preset can name what it wants rather than pointing at

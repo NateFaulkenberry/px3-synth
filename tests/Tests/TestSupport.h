@@ -1552,6 +1552,7 @@ void testIntegration();
 void testFxChain();
 void testDoom();
 void testLucy();
+void testLazyFxEngines();
 void testChorus();
 void testStereoSpread();
 void testEnvelopeModes();

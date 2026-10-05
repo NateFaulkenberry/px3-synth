@@ -51,6 +51,13 @@ float Lucy::onePoleCoeff(float hz, float rate)
     return 1.0f - std::exp(-juce::MathConstants<float>::twoPi * hz / rate);
 }
 
+bool Lucy::wouldBeAudible(const LucyUserParameters& settings) noexcept
+{
+    // The engine's idle test is blend * enabled, and the blend is a function
+    // of GLOBAL alone.
+    return settings.enabled && lucy_control::globalOutputBlend(settings.global) > 1.0e-6f;
+}
+
 void Lucy::setSeed(uint32_t seed)
 {
     const auto base = seed != 0u ? seed : 0x9E3779B9u;
