@@ -159,6 +159,8 @@ private:
     float envSliceOrigin { 0.0f };
     float envSliceReadPos { 0.0f };
     float envSliceBlend { 0.0f };
+    float envSliceBlendProgress { 0.0f };   // the fade's linear position; envSliceBlend is its smoothstep
+    int envSliceContiguous { 0 };            // unbroken samples recorded since the last stop
     int stretchSpawnCounter { 0 };
     float stretchPanPhase { 0.0f };
 

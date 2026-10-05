@@ -157,6 +157,8 @@ void Mood::reset()
     envSliceOrigin = 0.0f;
     envSliceReadPos = 0.0f;
     envSliceBlend = 0.0f;
+    envSliceBlendProgress = 0.0f;
+    envSliceContiguous = 0;
     for (auto& line : envSliceBuffer) std::fill(line.begin(), line.end(), 0.0f);
     stretchSpawnCounter = 0;
     stretchPanPhase = 0.0f;
@@ -472,34 +474,71 @@ Mood::Frame Mood::renderLoopEnv(float inL, float inR, float spread)
     // noon - means the detector simply never fires, and the mode does nothing
     // at any setting a player would use.
     const auto threshold = derived.envThreshold;
-    envGateOpen = envFollower > threshold;
+    const auto capacity = static_cast<int>(envSliceBuffer[0].size());
+    const auto captureLength = juce::jlimit(32, juce::jmax(32, capacity - 4), sliceSamples);
+
+    // The gate, debounced. A bare comparator chattered: |x| ripples at twice
+    // the note frequency, so while the follower crossed the threshold - every
+    // attack and release of a fast run - the gate toggled hundreds of times a
+    // second, and each toggle punched a hole in the slice being recorded (see
+    // below). So it closes lower than it opens, and stays open for a minimum
+    // hold once it has. It opens only on a slice of unbroken audio: with less,
+    // there is nothing to hold that is not stitched together across a gap.
+    // The splice at the slice's wrap reads up to a fade's length from before
+    // its start, so that has to be unbroken too, with the interpolator's reach.
+    const auto unbrokenNeeded = captureLength + static_cast<int>(std::ceil(spliceFadeFor(static_cast<float>(captureLength)))) + 4;
+    if (envGateOpen)
+    {
+        if (envSliceHoldSamples > 0) { --envSliceHoldSamples; }
+        else if (envFollower < threshold * 0.6f) { envGateOpen = false; }
+    }
+    else if (envFollower > threshold && capacity > 0 && envSliceContiguous >= unbrokenNeeded)
+    {
+        envGateOpen = true;
+        envSliceHoldSamples = static_cast<int>(0.02 * internalSampleRate);
+        // Captured on the opening, unless the previous slice is still fading
+        // out: then it is the one picked back up, and the recording - stopped
+        // since it was captured - has nothing newer to offer.
+        if (envSliceBlendProgress <= 0.0f)
+        {
+            envSliceLength = captureLength;
+            envSliceOrigin = static_cast<float>(envSliceWritePos - envSliceLength);
+            envSliceReadPos = 0.0f;
+        }
+    }
 
     // A rolling copy of the most recent audio, written one sample per step and
-    // simply STOPPED while the gate is open. The slice is then frozen without
-    // anything being copied at the moment it is captured.
+    // simply STOPPED while a slice is engaged - gate open or still fading out.
+    // The slice is then frozen without anything being copied at the moment it
+    // is captured. Capturing on the rising edge instead means memcpy-ing up to
+    // twenty thousand frames inside one sample's worth of processing, which is
+    // a dropout on the audio thread however cheap it looks written down.
     //
-    // Capturing on the rising edge instead means memcpy-ing up to twenty
-    // thousand frames inside one sample's worth of processing, which is a
-    // dropout on the audio thread however cheap it looks written down.
-    const auto capacity = static_cast<int>(envSliceBuffer[0].size());
-    if (capacity > 0 && ! envGateOpen)
+    // Stopping leaves a seam where recording resumes, so the run of unbroken
+    // audio since then is counted, and only a slice inside it is captured.
+    const auto engaged = envGateOpen || envSliceBlendProgress > 0.0f;
+    if (capacity > 0 && ! engaged)
     {
         envSliceBuffer[0][static_cast<std::size_t>(envSliceWritePos)] = inL;
         envSliceBuffer[1][static_cast<std::size_t>(envSliceWritePos)] = inR;
         envSliceWritePos = (envSliceWritePos + 1) % capacity;
+        envSliceContiguous = juce::jmin(capacity, envSliceContiguous + 1);
     }
-
-    if (envGateOpen && envSliceBlend <= 0.001f && capacity > 0)
+    else
     {
-        envSliceLength = juce::jlimit(32, capacity - 4, sliceSamples);
-        envSliceOrigin = static_cast<float>(envSliceWritePos - envSliceLength);
-        envSliceReadPos = 0.0f;
+        envSliceContiguous = 0;
     }
 
-    // Blend between live playback and the captured slice rather than switching,
-    // so the gate opening and closing is not itself a step.
-    const auto blendRate = onePoleCoeff(90.0f, static_cast<float>(internalSampleRate));
-    envSliceBlend += ((envGateOpen ? 1.0f : 0.0f) - envSliceBlend) * blendRate;
+    // Live playback and the captured slice crossfade rather than switch, so
+    // the gate opening and closing is not itself a step: a 10 ms smoothstep,
+    // which lands with zero slope at both ends. A reversal mid-fade carries on
+    // from where the fade had got to.
+    {
+        const auto fadeSteps = juce::jmax(1.0f, 0.010f * static_cast<float>(internalSampleRate));
+        envSliceBlendProgress = juce::jlimit(0.0f, 1.0f, envSliceBlendProgress + (envGateOpen ? 1.0f : -1.0f) / fadeSteps);
+        const auto p = envSliceBlendProgress;
+        envSliceBlend = p * p * (3.0f - 2.0f * p);
+    }
 
     const auto loopStart = static_cast<float>(historyWritePos) - static_cast<float>(sliceSamples * 2);
     const auto sliceLength = static_cast<float>(sliceSamples);
@@ -537,7 +576,7 @@ Mood::Frame Mood::renderLoopEnv(float inL, float inR, float spread)
         loopReadPos = 0.0f;
     }
 
-    // The pan only moves while the gate is open; below the threshold the
+    // The pan only moves while a slice is playing; below the threshold the
     // incoming image is left exactly as it arrived.
     //
     // Each opening drives one full traverse across the field rather than
@@ -546,7 +585,7 @@ Mood::Frame Mood::renderLoopEnv(float inL, float inR, float spread)
     // a short slice might only move a few degrees and the control reads as
     // doing almost nothing however far it is turned up. The direction
     // alternates, so successive stutters throw to opposite sides.
-    if (envGateOpen)
+    if (envSliceBlend > 0.0f)
     {
         const auto traverseSamples = static_cast<float>(juce::jmax(1, sliceSamples));
         envPanPhase += 1.0f / traverseSamples;
@@ -562,7 +601,7 @@ Mood::Frame Mood::renderLoopEnv(float inL, float inR, float spread)
     }
 
     Frame plain { l, r };
-    if (spread <= 0.0001f || !envGateOpen)
+    if (spread <= 0.0001f || envSliceBlend <= 0.0f)
     {
         return plain;
     }
@@ -578,8 +617,11 @@ Mood::Frame Mood::renderLoopEnv(float inL, float inR, float spread)
     const auto compensation = 1.0f / (1.0f + spread * 0.30f);
     const auto wideL = (panned.l + side * sideGain) * compensation;
     const auto wideR = (panned.r - side * sideGain) * compensation;
-    return { plain.l + (wideL - plain.l) * spread,
-             plain.r + (wideR - plain.r) * spread };
+    // Faded in and out with the slice itself. Switched on the gate, the pan
+    // was a step in both channels at every opening and closing.
+    const auto depth = spread * envSliceBlend;
+    return { plain.l + (wideL - plain.l) * depth,
+             plain.r + (wideR - plain.r) * depth };
 }
 
 void Mood::maybeSpawnStretchGrain(float spread)

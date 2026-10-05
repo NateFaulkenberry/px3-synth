@@ -1410,6 +1410,88 @@ void testMood()
                     : ("discontinuities: " + detail));
     }
 
+    // ENV under a fast run of notes - a finger dragged up and down the
+    // keyboard. The sine test above never moves the detector, so it could not
+    // see what this did: the gate chattered at twice the note frequency while
+    // the follower crossed the threshold, every toggle stopped the slice
+    // recording, and recaptured slices were stitched across those gaps - a
+    // 0.4 jump in the loop output hundreds of times a second. The stereo pan
+    // also switched in and out on the raw gate, a step on one channel or the
+    // other at every edge.
+    //
+    // At full clock (so the zero-order hold is not counted) and on BOTH
+    // channels, the output's second difference stays within what the input's
+    // own does - a seam is a spike there however it is smoothed elsewhere.
+    {
+        double worst = 0.0;
+        juce::String detail;
+        for (const auto sens : { 0.0f, 0.5f, 1.0f })
+        {
+            for (const auto spread : { 0.0f, 0.5f, 1.0f })
+            {
+                Mood mood;
+                mood.prepare(kSampleRate);
+                mood.reset();
+                px3::MoodUserParameters s;
+                s.enabled = true;
+                s.mix = 1.0f;
+                s.loopMode = px3::MoodLoopMode::env;
+                s.wetMode = px3::MoodWetMode::reverb;
+                s.routing = px3::MoodRouting::dryToWet;
+                s.clock = 1.0f;
+                s.degrade = 0.0f;
+                s.spread = spread;
+                s.feedback = 0.35f;
+                s.loopLength = 0.25f;
+                s.loopModify = sens;
+                mood.updateForBlock(s);
+
+                const auto fs = static_cast<double>(kSampleRate);
+                const auto total = static_cast<int>(fs * 5.0);
+                const auto noteLength = static_cast<int>(fs * 0.045);
+                std::array<float, 2> previous {}, previousDelta {};
+                double localWorst = 0.0;
+                for (int i = 0; i < total; ++i)
+                {
+                    // Overlapping notes, C3 to C6 and back, 2 ms attack, 15 ms release.
+                    double x = 0.0;
+                    const auto n = i / noteLength;
+                    for (int k = juce::jmax(0, n - 1); k <= n; ++k)
+                    {
+                        const auto t = i - k * noteLength;
+                        const auto step = k % 72;
+                        const auto semis = step < 36 ? step : 72 - step;
+                        const auto f = 130.81 * std::pow(2.0, semis / 12.0);
+                        const auto attack = juce::jmin(1.0, t / (0.002 * fs));
+                        const auto release = t < noteLength ? 1.0 : juce::jmax(0.0, 1.0 - (t - noteLength) / (0.015 * fs));
+                        x += 0.3 * attack * release * std::sin(juce::MathConstants<double>::twoPi * f * t / fs);
+                    }
+                    std::array<float, 2> out {};
+                    mood.processSampleFrame(static_cast<float>(x), static_cast<float>(x), out[0], out[1]);
+                    for (std::size_t c = 0; c < 2; ++c)
+                    {
+                        const auto delta = out[c] - previous[c];
+                        if (i > static_cast<int>(fs))
+                        {
+                            localWorst = juce::jmax(localWorst, static_cast<double>(std::abs(delta - previousDelta[c])));
+                        }
+                        previousDelta[c] = delta;
+                        previous[c] = out[c];
+                    }
+                }
+                worst = juce::jmax(worst, localWorst);
+                if (localWorst > 0.02)
+                {
+                    detail += "sens " + fmt(sens, 1) + " spread " + fmt(spread, 1) + ": " + fmt(localWorst, 4) + " ";
+                }
+            }
+        }
+        check("Mood_EnvHasNoSeamsUnderAFastRun",
+              detail.isEmpty(),
+              detail.isEmpty() ? ("worst second difference " + fmt(worst, 4) + " (the input's own peaks at 0.0106)")
+                               : detail);
+    }
+
     // Every mode pairing with FEEDBACK, SPREAD and DEGRADE all at maximum. The
     // widening controls raise the peak if they are not level-compensated - a
     // mid/side widener that is not compensated pushed this to 1.14 - and a
