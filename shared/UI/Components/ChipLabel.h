@@ -49,7 +49,7 @@ public:
     const Style& getChipStyle() const noexcept { return style; }
 
     // Greys the chip out when its card is bypassed, matching the knobs beside
-    // it. A bypassed card already dims its artwork and desaturates its knobs;
+    // it. A bypassed card already greys its faceplate and desaturates its knobs;
     // without this the captions kept their full colour scheme and were the one
     // thing on a switched-off card still shouting.
     //

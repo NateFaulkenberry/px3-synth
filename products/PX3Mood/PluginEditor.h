@@ -49,8 +49,8 @@ private:
     juce::Slider spreadKnob { juce::Slider::RotaryVerticalDrag, juce::Slider::NoTextBox };
     juce::Slider degradeKnob { juce::Slider::RotaryVerticalDrag, juce::Slider::NoTextBox };
     // ChipLabel, the same type the Synth passes this component: a plain
-    // juce::Label draws bare text with no chip behind it, which over artwork is
-    // not a caption so much as a rumour of one.
+    // juce::Label draws bare text with no chip behind it, which over the card
+    // face is not a caption so much as a rumour of one.
     px3::ui::ChipLabel mixLabel, clockLabel, wetTimeLabel, wetModifyLabel, loopLengthLabel,
                        loopModifyLabel, feedbackLabel, spreadLabel, degradeLabel,
                        routingLabel, wetModeLabel, loopModeLabel;

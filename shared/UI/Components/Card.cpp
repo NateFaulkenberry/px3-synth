@@ -34,53 +34,6 @@ static float titleBandHeightFor(const CardStyle& style, juce::Rectangle<float> c
 namespace
 {
 
-// Named in config rather than numbered, because "contain" says what it does
-// and "1" does not. An unrecognised name keeps the fallback rather than
-// silently picking one, so a typo shows up as "my change did nothing" rather
-// than as artwork mysteriously cropped.
-ArtworkFit parseArtworkFit(const juce::String& name, ArtworkFit fallback)
-{
-    const auto text = name.trim().toLowerCase();
-    if (text == "cover") { return ArtworkFit::cover; }
-    if (text == "contain" || text == "fit") { return ArtworkFit::contain; }
-    if (text == "stretch") { return ArtworkFit::stretch; }
-    return fallback;
-}
-
-ArtworkAlign parseArtworkAlign(const juce::String& name, ArtworkAlign fallback)
-{
-    const auto text = name.trim().toLowerCase().removeCharacters(" -_");
-    if (text == "centre" || text == "center") { return ArtworkAlign::centre; }
-    if (text == "topleft") { return ArtworkAlign::topLeft; }
-    if (text == "topright") { return ArtworkAlign::topRight; }
-    if (text == "bottomleft") { return ArtworkAlign::bottomLeft; }
-    if (text == "bottomright") { return ArtworkAlign::bottomRight; }
-    if (text == "top") { return ArtworkAlign::top; }
-    if (text == "bottom") { return ArtworkAlign::bottom; }
-    if (text == "left") { return ArtworkAlign::left; }
-    if (text == "right") { return ArtworkAlign::right; }
-    return fallback;
-}
-
-// The x and y halves of JUCE's placement flags. Split into two so an alignment
-// names one of each rather than nine separate constants.
-[[maybe_unused]] int alignmentFlags(ArtworkAlign align)
-{
-    switch (align)
-    {
-        case ArtworkAlign::topLeft:     return juce::RectanglePlacement::xLeft  | juce::RectanglePlacement::yTop;
-        case ArtworkAlign::topRight:    return juce::RectanglePlacement::xRight | juce::RectanglePlacement::yTop;
-        case ArtworkAlign::bottomLeft:  return juce::RectanglePlacement::xLeft  | juce::RectanglePlacement::yBottom;
-        case ArtworkAlign::bottomRight: return juce::RectanglePlacement::xRight | juce::RectanglePlacement::yBottom;
-        case ArtworkAlign::top:         return juce::RectanglePlacement::xMid   | juce::RectanglePlacement::yTop;
-        case ArtworkAlign::bottom:      return juce::RectanglePlacement::xMid   | juce::RectanglePlacement::yBottom;
-        case ArtworkAlign::left:        return juce::RectanglePlacement::xLeft  | juce::RectanglePlacement::yMid;
-        case ArtworkAlign::right:       return juce::RectanglePlacement::xRight | juce::RectanglePlacement::yMid;
-        case ArtworkAlign::centre:
-        default:                        return juce::RectanglePlacement::centred;
-    }
-}
-
 // Reads a property from the defaults object, then lets the per-card object
 // override it. Every getter below follows this shape, so a card's JSON only has
 // to declare what differs.
@@ -300,12 +253,6 @@ CardStyle CardStyle::fromConfig(const UIConfig* config,
 
     style.background = reader.fill("background", fallback.background);
 
-    style.artwork.image = reader.text("artwork.image", fallback.artwork.image);
-    style.artwork.opacity = juce::jlimit(0.0f, 1.0f,
-                                         reader.number("artwork.opacity", fallback.artwork.opacity));
-    style.artwork.fit = parseArtworkFit(reader.text("artwork.fit", {}), fallback.artwork.fit);
-    style.artwork.align = parseArtworkAlign(reader.text("artwork.align", {}), fallback.artwork.align);
-
     style.shadow.colour = reader.colour("shadow.color", fallback.shadow.colour);
     style.shadow.opacity = juce::jlimit(0.0f, 1.0f, reader.number("shadow.opacity", fallback.shadow.opacity));
     style.shadow.radius = juce::jmax(0.0f, reader.number("shadow.radius", fallback.shadow.radius));
@@ -428,14 +375,6 @@ CardStyle CardStyle::disabledVariant() const
     result.border.opacity *= dim;
     result.background.colour = grey(result.background.colour);
     result.background.opacity *= dim;
-    // Artwork greys with everything else. A bypassed card that keeps a full
-    // colour picture behind grey controls does not read as bypassed - and on a
-    // card whose whole face is a photograph, the picture is what the eye reads
-    // first, so dimming it alone was not enough.
-    result.artwork.opacity *= dim;
-    result.artwork.saturation = saturation;
-    result.artwork.brightness = 1.0f - darken;
-
     result.gloss.topFill.colour = grey(result.gloss.topFill.colour);
     result.gloss.topFill.opacity *= dim;
     result.gloss.bottomFill.colour = grey(result.gloss.bottomFill.colour);
@@ -576,8 +515,6 @@ CardStyle CardHost::paintStyle() const
     style.border.opacity = 0.42f;
     style.border.radius = 0.0f;
     style.background.opacity = 0.0f;
-    style.artwork.image.clear();
-    style.artwork.opacity = 0.0f;
     style.shadow.opacity = 0.0f;
     style.shadow.radius = 0.0f;
     style.gloss.topFill.opacity = 0.0f;
@@ -636,7 +573,8 @@ void drawCard(juce::Graphics& g,
     //
     //    The old per-card layers - translucent tinted backgrounds, two-tone
     //    gloss and full-bleed artwork pictures - are no longer drawn: they were
-    //    what made every card a different style. Their config keys still parse.
+    //    what made every card a different style. The background and gloss
+    //    config keys still parse; the artwork keys and the images are gone.
     const auto band = titleBandHeightFor(style, cardBounds);
     const auto accent = style.border.colour;
     theme::drawModulePanel(g, cardBounds, title, accent, ! style.inactive,

@@ -48,7 +48,7 @@ private:
     px3::ui::BypassButton enabledButton;
     juce::Slider amountKnob { juce::Slider::RotaryVerticalDrag, juce::Slider::NoTextBox };
     // ChipLabel, as the Synth uses: a plain juce::Label is bare text with
-    // no chip behind it, which over artwork barely reads at all.
+    // no chip behind it, which over the card face barely reads at all.
     px3::ui::ChipLabel amountLabel;
     juce::ComboBox algorithmBox;
     px3::ui::ChipLabel algorithmLabel;

@@ -272,11 +272,11 @@ jobs:
           # silently matched nothing would be a green run asserting nothing at
           # all, which is worse than a red one.
           #
-          # 17 = the Synth's three formats + seven effects at two formats each.
+          # 19 = the Synth's three formats + eight effects at two formats each.
           # Adding a product only ever raises this, so the floor stays valid;
           # losing one is something worth failing over.
           echo "checked $found bundles"
-          [ "$found" -ge 17 ] || { echo "::error::expected at least 17 plug-in bundles, found $found"; fail=1; }
+          [ "$found" -ge 19 ] || { echo "::error::expected at least 19 plug-in bundles, found $found"; fail=1; }
           exit $fail
 
       # auval is deliberately NOT run here. It requires the component to be

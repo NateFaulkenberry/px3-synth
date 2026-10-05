@@ -51,7 +51,7 @@ main (green, PX3_VERSION already 0.7.1)
 | Job | Runner | Feature branch | PR | main | Notes |
 |---|---|---|---|---|---|
 | `static` | ubuntu | ✅ | ✅ | ✅ | shell parse, shellcheck, version helper, manifest |
-| `macos` | macos-14 | ✅ | ✅ | ✅ | build all 8 products, full test estate, bundle check |
+| `macos` | macos-14 | ✅ | ✅ | ✅ | build all 9 products, full test estate, bundle check |
 | `benchmarks` | macos-14 | ❌ | ❌ | ✅ | reported only, never gating |
 | `windows` | windows | disabled | disabled | disabled | see *Windows* below |
 | `ci` | ubuntu | ✅ | ✅ | ✅ | the single required status check |
@@ -85,7 +85,7 @@ main (green, PX3_VERSION already 0.7.1)
 - `PX3Diag regress` — 29 audio-artifact cases.
 - `PX3Diag rtsafety` — 0 allocations per audio block.
 - `PX3SmokeTest` — factory defaults are audible at every rate and block size.
-- All 17 plug-in bundles carry an arm64 executable. A bundle skeleton with no
+- All 19 plug-in bundles carry an arm64 executable. A bundle skeleton with no
   binary in it is a real failure mode, and this is what catches it.
 
 ### What CI deliberately does not do
@@ -99,7 +99,7 @@ is the exact binary being signed, packaged and published. That is the only copy
 a user will ever have.
 
 The cost turned out not to be minutes either: about a second per plug-in,
-measured, so under ten seconds for all eight.
+measured, so about ten seconds for all nine.
 
 So CI still asserts only the bundle check, and the release job installs each
 built component, drives `AudioComponentRegistrar`, and validates it before any
@@ -399,7 +399,7 @@ so a failure is diagnosable without rebuilding locally.
 Fixed at its source, but worth knowing about. `build-release.sh` used to pass no
 `-G`, so CMake picked Unix Makefiles on macOS, where `--parallel` with no number
 hands make a bare `-j` — which to GNU make means *no limit*, not *one job per
-core*. Across eight products that is hundreds of concurrent clang processes, and
+core*. Across nine products that is hundreds of concurrent clang processes, and
 a 3-core runner runs out of them.
 
 Every build in this project now asks for **Ninja**, which ignores a bare

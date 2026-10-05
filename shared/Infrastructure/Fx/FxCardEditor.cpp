@@ -111,8 +111,8 @@ void FxCardEditor::finishSetup()
     // that point the card has no knobs, boxes or toggles to style, and every
     // per-control key silently did nothing. Chip colours, caption colours,
     // fonts, dropdown colours: all of them read from UIConfig and none of them
-    // reaching a control. The card itself looked right because its border,
-    // background and artwork are read while painting rather than applied here.
+    // reaching a control. The card itself looked right because its border and
+    // background are read while painting rather than applied here.
     //
     // finishSetup is where this belongs because it is the one call every
     // product makes last, after everything exists.

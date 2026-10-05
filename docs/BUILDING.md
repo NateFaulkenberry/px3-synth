@@ -27,7 +27,7 @@ re-makes it; elsewhere, delete the directory and configure again.
 
 ## Development Build
 
-The full build compiles **eight products**. Working on one should not, so build
+The full build compiles **nine products**. Working on one should not, so build
 one:
 
 ```bash

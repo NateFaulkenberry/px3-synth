@@ -375,7 +375,6 @@ px3_add_product(
     BUNDLE_ID    "com.px3.delay"
     PLUGIN_CODE  DlP1
     FORMATS      AU VST3
-    ARTWORK      Delay-artwork.png
     SOURCES      ${PX3_DELAY_PLUGIN_SOURCES})
 
 px3_add_product(
@@ -384,7 +383,6 @@ px3_add_product(
     BUNDLE_ID    "com.px3.mood"
     PLUGIN_CODE  MdP1
     FORMATS      AU VST3
-    ARTWORK      Mood-artwork.png
     SOURCES      ${PX3_MOOD_PLUGIN_SOURCES})
 
 px3_add_product(
@@ -393,7 +391,6 @@ px3_add_product(
     BUNDLE_ID    "com.px3.chorus"
     PLUGIN_CODE  ChP1
     FORMATS      AU VST3
-    ARTWORK      Chorus-artwork.png
     SOURCES      ${PX3_CHORUS_PLUGIN_SOURCES})
 
 px3_add_product(
@@ -402,7 +399,6 @@ px3_add_product(
     BUNDLE_ID    "com.px3.spread"
     PLUGIN_CODE  SpP1
     FORMATS      AU VST3
-    ARTWORK      Spread-artwork.png
     SOURCES      ${PX3_SPREAD_PLUGIN_SOURCES})
 
 px3_add_product(
@@ -411,7 +407,6 @@ px3_add_product(
     BUNDLE_ID    "com.px3.reverb"
     PLUGIN_CODE  RvP1
     FORMATS      AU VST3
-    ARTWORK      Reverb-artwork.png
     SOURCES      ${PX3_REVERB_PLUGIN_SOURCES})
 
 px3_add_product(
@@ -420,7 +415,6 @@ px3_add_product(
     BUNDLE_ID    "com.px3.doom"
     PLUGIN_CODE  DmP1
     FORMATS      AU VST3
-    ARTWORK      Doom-artwork.png
     SOURCES      ${PX3_DOOM_PLUGIN_SOURCES})
 
 px3_add_product(
@@ -429,7 +423,6 @@ px3_add_product(
     BUNDLE_ID    "com.px3.lucy"
     PLUGIN_CODE  LcP1
     FORMATS      AU VST3
-    ARTWORK      Lucy-artwork.png
     SOURCES      ${PX3_LUCY_PLUGIN_SOURCES})
 
 px3_add_product(
@@ -438,7 +431,6 @@ px3_add_product(
     BUNDLE_ID    "com.px3.vibe"
     PLUGIN_CODE  VbP1
     FORMATS      AU VST3
-    ARTWORK      Vibe-artwork.png
     SOURCES      ${PX3_VIBE_PLUGIN_SOURCES})
 
 juce_add_binary_data(PX3Assets
@@ -500,40 +492,6 @@ if (PX3_BUILD_DIAGNOSTIC)
             JucePlugin_Name="PX3 Synth"
     )
     target_link_libraries(PX3SmokeTest
-        PRIVATE PX3Assets juce::juce_audio_utils juce::juce_dsp juce::juce_cryptography juce::juce_opengl
-        PUBLIC juce::juce_recommended_config_flags)
-endif()
-
-# Card backgrounds as PNGs, for designing artwork that layers into them.
-#
-# Diagnostic-only: it is a design aid, not something a release needs, and it
-# links the whole UI to render one component.
-if (PX3_BUILD_DIAGNOSTIC)
-    juce_add_console_app(PX3CardBackgrounds PRODUCT_NAME "PX3CardBackgrounds")
-    juce_generate_juce_header(PX3CardBackgrounds)
-    target_sources(PX3CardBackgrounds PRIVATE ${PX3_ALL_SOURCES}
-        shared/Infrastructure/Fx/FxPluginProcessor.cpp
-        shared/Infrastructure/Fx/FxCardEditor.cpp
-        products/PX3Reverb/PluginProcessor.cpp products/PX3Reverb/PluginEditor.cpp
-        products/PX3Doom/PluginProcessor.cpp products/PX3Doom/PluginEditor.cpp
-        products/PX3Lucy/PluginProcessor.cpp products/PX3Lucy/PluginEditor.cpp
-        products/PX3Chorus/PluginProcessor.cpp products/PX3Chorus/PluginEditor.cpp
-        products/PX3Spread/PluginProcessor.cpp products/PX3Spread/PluginEditor.cpp
-        products/PX3Delay/PluginProcessor.cpp products/PX3Delay/PluginEditor.cpp
-        products/PX3Mood/PluginProcessor.cpp products/PX3Mood/PluginEditor.cpp
-        products/PX3Vibe/PluginProcessor.cpp products/PX3Vibe/PluginEditor.cpp
-        tools/CardBackgroundExport.cpp)
-    target_include_directories(PX3CardBackgrounds PRIVATE ${PX3_INCLUDE_DIRS})
-    target_compile_definitions(PX3CardBackgrounds
-        PRIVATE
-            JUCE_WEB_BROWSER=0
-            JUCE_USE_CURL=0
-            JUCE_STANDALONE_APPLICATION=1
-            PX3_DEBUG_PANEL=0
-            PX3_DIAGNOSTICS=0
-            JucePlugin_Name="PX3 Synth"
-    )
-    target_link_libraries(PX3CardBackgrounds
         PRIVATE PX3Assets juce::juce_audio_utils juce::juce_dsp juce::juce_cryptography juce::juce_opengl
         PUBLIC juce::juce_recommended_config_flags)
 endif()
@@ -662,44 +620,5 @@ foreach(px3ConsoleTarget IN ITEMS
         PX3Bench)
     if (TARGET ${px3ConsoleTarget} AND PX3_WARNING_OPTIONS)
         target_compile_options(${px3ConsoleTarget} PRIVATE ${PX3_WARNING_OPTIONS})
-    endif()
-endforeach()
-
-# Ship external UI config alongside built bundles for runtime hot-reloadable styling.
-set(PX3_UI_CONFIG_FILE "${CMAKE_SOURCE_DIR}/shared/UI/Style/UIConfig.json")
-# The same dependency the products declare: a POST_BUILD copy runs only when the
-# target is built, so without this an edited config or a replaced PNG stays out
-# of the bundle until something else forces a relink.
-file(GLOB PX3_ARTWORK_FILES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/shared/UI/Artwork/*.png"
-             "${CMAKE_SOURCE_DIR}/shared/UI/Artwork/*.jpg")
-
-foreach(px3BundleTarget IN ITEMS PX3Synth_Standalone PX3Synth_AU PX3Synth_VST3)
-    if (TARGET ${px3BundleTarget})
-        set_property(TARGET ${px3BundleTarget} APPEND PROPERTY
-            LINK_DEPENDS "${PX3_UI_CONFIG_FILE}" ${PX3_ARTWORK_FILES})
-        add_custom_command(TARGET ${px3BundleTarget} PRE_LINK
-            COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:${px3BundleTarget}>/../Resources"
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                "${PX3_UI_CONFIG_FILE}"
-                "$<TARGET_FILE_DIR:${px3BundleTarget}>/../Resources/UIConfig.json"
-            # The image files, named rather than the whole directory: a
-            # directory copy also ships whatever Finder leaves lying in
-            # it, and a .DS_Store inside a signed bundle is nobody's
-            # idea of a resource. CONFIGURE_DEPENDS on the glob means a
-            # new PNG still needs no edit here.
-            # The directory FIRST.
-            # 
-            # copy_if_different treats its last argument as a file when
-            # that path does not exist, so copying one PNG into a missing
-            # Artwork folder wrote a file called Artwork with the PNG's
-            # bytes in it. copy_directory used to create the folder; this
-            # does not, and nothing said so.
-            COMMAND ${CMAKE_COMMAND} -E make_directory
-                "$<TARGET_FILE_DIR:${px3BundleTarget}>/../Resources/Artwork"
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                ${PX3_ARTWORK_FILES}
-                "$<TARGET_FILE_DIR:${px3BundleTarget}>/../Resources/Artwork"
-            VERBATIM
-        )
     endif()
 endforeach()
