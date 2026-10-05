@@ -41,6 +41,7 @@ public:
     // The parent panel content box: reference for percentage dimensions.
     void setPanelContentBounds(juce::Rectangle<int> panelContent);
     void refreshFromParameters(bool enabled, float rateHz, float amount, int waveformIndex);
+    std::uint64_t debugGraphFrameRequests() const noexcept { return graphView.getFrameRequestCount(); }
     void advanceAnimation(float deltaPhase);
 
     // RAMP TIME and KEY SYNC. Unlike the controls above these are owned here, so

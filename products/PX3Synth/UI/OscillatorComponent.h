@@ -67,6 +67,7 @@ public:
     }
     bool isWavetableMode() const noexcept;
     void refreshFromParameters(bool enabled, int modeIndex, int vowelIndex);
+    std::uint64_t debugGraphFrameRequests() const noexcept { return graphView.getFrameRequestCount(); }
     void advanceAnimation(float deltaPhase);
     // The animation clock. Exposed so a test can assert it only ever moves
     // forwards: the drawn shape is a continuous function of it, so a phase that
@@ -138,6 +139,7 @@ private:
     // beat against each other over time.
     double phase { 0.0 };
     int lastModeIndex { -1 };
+    std::array<double, 3> lastGraphMacros {};
     // The enabled state applyEnabledUi last drew; -1 (as int) forces the first.
     int lastAppliedEnabled { -1 };
 };

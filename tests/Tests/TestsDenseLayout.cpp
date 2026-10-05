@@ -16,6 +16,7 @@
 #include "../../shared/UI/Style/Theme.h"
 #include "../../shared/UI/Components/BypassButton.h"
 
+#include <array>
 #include <cmath>
 #include <functional>
 #include <typeinfo>
@@ -732,6 +733,66 @@ void testDenseLayout()
               juce::String(tinted) + " tinted against " + juce::String(grey) + " grey bright pixels");
         processor.getSubOscEnabledParam().setValueNotifyingHost(0.0f);
         editor->debugTimerTick();
+    }
+
+    // ---- with animations off, a wave display still shows a new shape ----------
+    // The animation tick is what normally redraws OSC, SUB and LFO waves. With
+    // "Enable animations" off there is no tick, so a new wave choice - or a
+    // macro the drawing reads - has to ask for its own redraw. And nothing
+    // else should: an unchanged patch requests no frames.
+    {
+        const ScopedAnimationPreference stillDisplays(false);
+        editor->debugSelectSection(0);
+        setChoice(processor, "voice.osc1.mode", 6);   // DETUNE: a shape drawn from macro A
+        for (int i = 0; i < 3; ++i) { editor->debugTimerTick(); }
+
+        OscillatorComponent* osc = nullptr;
+        SubOscComponent* sub = nullptr;
+        LfoComponent* lfo = nullptr;
+        walkAll(*editor, [&](juce::Component& c)
+        {
+            if (auto* o = dynamic_cast<OscillatorComponent*>(&c)) { if (osc == nullptr) { osc = o; } }
+            if (auto* s = dynamic_cast<SubOscComponent*>(&c)) { sub = s; }
+            if (auto* l = dynamic_cast<LfoComponent*>(&c)) { if (lfo == nullptr) { lfo = l; } }
+        });
+
+        if (osc != nullptr && sub != nullptr && lfo != nullptr)
+        {
+            const auto frames = [&] { return std::array<std::uint64_t, 3> { osc->debugGraphFrameRequests(),
+                                                                            sub->debugGraphFrameRequests(),
+                                                                            lfo->debugGraphFrameRequests() }; };
+            const auto idleBefore = frames();
+            for (int i = 0; i < 5; ++i) { editor->debugTimerTick(); }
+            const auto idleAfter = frames();
+            check("Dense_WaveDisplaysIdleWithAnimationsOff", idleBefore == idleAfter,
+                  "OSC " + juce::String(static_cast<juce::int64>(idleAfter[0] - idleBefore[0]))
+                      + ", SUB " + juce::String(static_cast<juce::int64>(idleAfter[1] - idleBefore[1]))
+                      + ", LFO " + juce::String(static_cast<juce::int64>(idleAfter[2] - idleBefore[2]))
+                      + " frames over five ticks with nothing changed");
+
+            const auto redrawsOn = [&](int which, std::function<void()> change)
+            {
+                const auto before = frames()[static_cast<std::size_t>(which)];
+                change();
+                editor->debugTimerTick();
+                return frames()[static_cast<std::size_t>(which)] > before;
+            };
+            const auto lfoWave = redrawsOn(2, [&] { setChoice(processor, "mod.lfo1.waveform", 3); });
+            const auto subWave = redrawsOn(1, [&] { setChoice(processor, "voice.sub.waveform", 2); });
+            const auto oscMode = redrawsOn(0, [&] { setChoice(processor, "voice.osc1.mode", 2); });
+            setChoice(processor, "voice.osc1.mode", 6);
+            editor->debugTimerTick();
+            const auto oscMacro = redrawsOn(0, [&] { setParam(processor, "voice.osc1.macro.a", 0.9f); });
+            check("Dense_WaveDisplaysRedrawOnChangeWithAnimationsOff", lfoWave && subWave && oscMode && oscMacro,
+                  juce::String("LFO wave ") + (lfoWave ? "redrew" : "DID NOT REDRAW")
+                      + ", SUB wave " + (subWave ? "redrew" : "DID NOT REDRAW")
+                      + ", OSC mode " + (oscMode ? "redrew" : "DID NOT REDRAW")
+                      + ", OSC macro " + (oscMacro ? "redrew" : "DID NOT REDRAW"));
+        }
+        else
+        {
+            check("Dense_WaveDisplaysRedrawOnChangeWithAnimationsOff", false, "a wave card was not found");
+        }
     }
 }
 } // namespace px3tests

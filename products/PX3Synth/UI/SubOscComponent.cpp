@@ -108,7 +108,7 @@ void SubOscComponent::advanceAnimation(float deltaPhase)
         visualPhase -= juce::MathConstants<float>::twoPi;
     }
 
-    graphView.repaint();
+    graphView.requestFrame();
 }
 
 void SubOscComponent::resized()

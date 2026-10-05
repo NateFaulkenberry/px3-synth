@@ -244,6 +244,9 @@ void LfoComponent::refreshFromParameters(bool enabled, float rateHz, float amoun
     amountValueLabel.setText(amountPrefix + juce::String(amountPercent) + "%", juce::dontSendNotification);
 
     const auto clamped = px3::clampLfoWaveformIndex(waveformIndex);
+    // The animation tick is not there to show a new shape when animations
+    // are off.
+    if (clamped != currentWaveformIndex) { graphView.requestFrame(); }
     currentWaveformIndex = clamped;
     px3::ui::syncComboItemIndex(waveformBox, clamped);
 
@@ -294,7 +297,7 @@ void LfoComponent::advanceAnimation(float deltaSeconds)
 
     // Only the wave display moves; the rest of the card (knobs, boxes, title)
     // stays cached.
-    graphView.repaint();
+    graphView.requestFrame();
 }
 
 void LfoComponent::resized()
@@ -442,9 +445,36 @@ void LfoComponent::layoutCompact()
     auto area = card.contentBelowTitle().reduced(c::pad, c::pad - 1);
     const auto rowH = c::captionHeight + c::boxHeight;
 
+    // The display on top, the controls under it - WAVE | KEY SYNC, CLOCK |
+    // DIVISION, RATE | AMOUNT - placed from the bottom up so the display takes
+    // what they leave.
+    const auto boxRows = clockControlsAttached ? 2 : 1;
+    const auto knob = juce::jlimit(26, 50, (area.getHeight() - boxRows * (rowH + c::gap) - c::gap - 40) / 2);
+
+    // RATE | AMOUNT
+    {
+        const auto knobs = c::cells(area.removeFromBottom(c::knobRowHeight(knob)), 2);
+        const auto showRampTime = rampControlsAttached && laidOutForRamp;
+        rateKnob.setVisible(! showRampTime);
+        rampTimeKnob.setVisible(showRampTime);
+        juce::Slider& timeKnob = showRampTime ? rampTimeKnob : rateKnob;
+        c::knobCell(knobs[0], &rateLabel, timeKnob, &rateValueLabel, knob);
+        c::knobCell(knobs[1], &amountLabel, amountKnob, &amountValueLabel, knob);
+    }
+    area.removeFromBottom(c::gap);
+
+    // CLOCK | DIVISION
+    if (clockControlsAttached)
+    {
+        const auto boxes = c::cells(area.removeFromBottom(rowH), 2);
+        c::boxCell(boxes[0], &clockModeLabel, clockModeBox);
+        c::boxCell(boxes[1], &clockDivisionLabel, clockDivisionBox);
+        area.removeFromBottom(c::gap);
+    }
+
     // WAVE | KEY SYNC
     {
-        auto row = area.removeFromTop(rowH);
+        auto row = area.removeFromBottom(rowH);
         if (rampControlsAttached)
         {
             auto chip = row.removeFromRight(juce::jlimit(54, 66, row.getWidth() / 4));
@@ -454,29 +484,7 @@ void LfoComponent::layoutCompact()
         }
         c::boxCell(row, &waveformLabel, waveformBox);
     }
-    area.removeFromTop(c::gap);
-
-    // CLOCK | DIVISION
-    if (clockControlsAttached)
-    {
-        const auto boxes = c::cells(area.removeFromTop(rowH), 2);
-        c::boxCell(boxes[0], &clockModeLabel, clockModeBox);
-        c::boxCell(boxes[1], &clockDivisionLabel, clockDivisionBox);
-        area.removeFromTop(c::gap);
-    }
-
-    // RATE | AMOUNT: the knobs take what the display can spare.
-    {
-        const auto knob = juce::jlimit(26, 50, (area.getHeight() - 40) / 2);
-        const auto knobs = c::cells(area.removeFromTop(c::knobRowHeight(knob)), 2);
-        const auto showRampTime = rampControlsAttached && laidOutForRamp;
-        rateKnob.setVisible(! showRampTime);
-        rampTimeKnob.setVisible(showRampTime);
-        juce::Slider& timeKnob = showRampTime ? rampTimeKnob : rateKnob;
-        c::knobCell(knobs[0], &rateLabel, timeKnob, &rateValueLabel, knob);
-        c::knobCell(knobs[1], &amountLabel, amountKnob, &amountValueLabel, knob);
-    }
-    area.removeFromTop(c::gap);
+    area.removeFromBottom(c::gap + 2);
 
     compactGraph = area;
     // The "NO HOST CLOCK" status sits in the display's top-left corner.

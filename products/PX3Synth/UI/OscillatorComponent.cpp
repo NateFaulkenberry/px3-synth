@@ -164,6 +164,15 @@ void OscillatorComponent::refreshFromParameters(bool enabled, int modeIndex, int
         lastAppliedEnabled = static_cast<int>(enabled);
         applyEnabledUi();
     }
+
+    // The wave is drawn from the mode and the macro knobs. With animations on
+    // the next frame shows a change; with them off nothing else would.
+    const std::array<double, 3> macros { macroA.getValue(), macroB.getValue(), macroC.getValue() };
+    if (modeChanged || macros != lastGraphMacros)
+    {
+        lastGraphMacros = macros;
+        if (graphView.isVisible()) { graphView.requestFrame(); }
+    }
 }
 
 void OscillatorComponent::advanceAnimation(float deltaPhase)
@@ -184,7 +193,7 @@ void OscillatorComponent::advanceAnimation(float deltaPhase)
 
     // Only the mode visual moves; the wavetable panel animates itself.
     syncGraphView();
-    if (graphView.isVisible()) { graphView.repaint(); }
+    if (graphView.isVisible()) { graphView.requestFrame(); }
 }
 
 void OscillatorComponent::resized()

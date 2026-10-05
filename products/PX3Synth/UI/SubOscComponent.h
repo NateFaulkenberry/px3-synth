@@ -28,6 +28,7 @@ public:
     // this and nothing else, so the component has to be told what it is.
     void setPanelContentBounds(juce::Rectangle<int> panelContent);
     void refreshFromParameters(bool enabled, int waveformIndex);
+    std::uint64_t debugGraphFrameRequests() const noexcept { return graphView.getFrameRequestCount(); }
     void advanceAnimation(float deltaPhase);
 
     void resized() override;

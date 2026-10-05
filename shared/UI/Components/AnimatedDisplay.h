@@ -2,6 +2,7 @@
 
 #include <JuceHeader.h>
 
+#include <cstdint>
 #include <functional>
 
 namespace px3::ui
@@ -38,8 +39,21 @@ public:
     void invalidateStill()
     {
         stillValid = false;
+        requestFrame();
+    }
+
+    // Redraw the moving part. The animation tick calls this every frame, but
+    // with "Enable animations" off there is no tick, so the owner must also
+    // call it whenever anything the drawing depends on changes - or a new
+    // wave choice shows the old wave until something else repaints.
+    void requestFrame()
+    {
+        ++frameRequests;
         repaint();
     }
+
+    // How many redraws have been asked for; for tests.
+    std::uint64_t getFrameRequestCount() const noexcept { return frameRequests; }
 
     // The same, without asking for a repaint - for the owner's own paint(),
     // where a repaint request would loop.
@@ -75,5 +89,6 @@ public:
 private:
     juce::Image still;
     bool stillValid { false };
+    std::uint64_t frameRequests { 0 };
 };
 } // namespace px3::ui
