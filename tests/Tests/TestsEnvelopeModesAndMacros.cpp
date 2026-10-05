@@ -704,20 +704,20 @@ void testEnvelopeModes()
                 // And the mod cards are NOT changed by this: theirs still stop
                 // short, because the TYPE selector is still there.
                 // 0.8.0 dense layout: in the compact module the TYPE selector
-                // moved under the knobs, so a mod envelope's four knobs span
-                // their row too, and the selector shares none of it.
+                // left the knobs' row, so a mod envelope's four knobs span it.
+                // Since 0.8.2 TYPE sits in the top row, where ASSIGN was.
                 auto typeApart = false;
                 if (modCard != nullptr)
                 {
                     const auto group = modCard->debugAdsrGroupBounds();
                     const auto box = modCard->debugModeBox().getBounds();
-                    typeApart = ! box.isEmpty() && ! group.isEmpty() && box.getY() >= group.getBottom();
+                    typeApart = ! box.isEmpty() && ! group.isEmpty() && box.getBottom() <= group.getY();
                     const auto content = modCard->getLocalBounds().reduced(8, 0).getWidth();
                     juce::ignoreUnused(modSpan);
                     check("EnvKnobs_ModEnvKnobsTakeTheirOwnRowInTheCompactModule",
                           typeApart && group.getWidth() > content * 0.85,
                           "ENV 1's knobs span " + juce::String(group.getWidth()) + " of " + juce::String(content)
-                              + " px, TYPE " + (typeApart ? "below them" : "beside them"));
+                              + " px, TYPE " + (typeApart ? "in the top row, above them" : "NOT ABOVE THEM"));
                 }
                 else
                 {
@@ -726,7 +726,7 @@ void testEnvelopeModes()
             }
 
             check("EnvMode_TheModeSelectorAppearsOnlyWhereBothModesExist",
-                  shownSelectors == 3 && hiddenSelectors == 1,
+                  shownSelectors == PX3SynthAudioProcessor::kEnvelopeSourceCount && hiddenSelectors == 1,
                   juce::String(shownSelectors) + " cards show a TYPE selector and "
                       + juce::String(hiddenSelectors) + " ADSR-only card hides it");
 

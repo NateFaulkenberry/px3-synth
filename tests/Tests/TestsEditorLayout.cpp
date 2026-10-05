@@ -301,7 +301,7 @@ void testEditorLayout()
             std::tie(knobs, boxes) = collect(*editor);
             check("NewControls_EnvelopeKeyKnobs",
                   visibleWithArea("mod.env1.keytrack") && visibleWithArea("mod.env2.keytrack")
-                      && visibleWithArea("mod.env3.keytrack"));
+                      && visibleWithArea("mod.env3.keytrack") && visibleWithArea("mod.env4.keytrack"));
             auto* loop = editor->debugModPanel()->getEnvelopeLoopButton(1);
             if (loop != nullptr) { loop->setToggleState(true, juce::sendNotificationSync); }
             const auto* loopParam = dynamic_cast<juce::AudioParameterBool*>(processor.findRangedParameterById("mod.env2.loop"));
@@ -314,7 +314,7 @@ void testEditorLayout()
                 for (int i = 0; i < box->getNumItems(); ++i) { items.add(box->getItemText(i)); }
                 lfoWaves += (items.contains("S&H") && items.contains("SMOOTH RND")) ? 1 : 0;
             }
-            check("NewControls_EveryLfoOffersSampleAndHoldAndSmoothRandom", lfoWaves == 3, juce::String(lfoWaves));
+            check("NewControls_EveryLfoOffersSampleAndHoldAndSmoothRandom", lfoWaves == PX3SynthAudioProcessor::kLfoSourceCount, juce::String(lfoWaves));
         }
     }
 

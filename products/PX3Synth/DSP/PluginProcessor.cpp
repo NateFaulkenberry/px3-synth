@@ -1,4 +1,7 @@
 #include "PluginProcessor.h"
+
+static_assert(PX3SynthAudioProcessor::kEnvelopeSourceCount == SynthVoice::kModEnvelopeCount,
+              "the voices run one modulation envelope per ENV source");
 #include "OscillatorTuning.h"
 #include "WavetableFactory.h"
 

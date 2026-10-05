@@ -1227,7 +1227,7 @@ int main(int argc, char* argv[])
             setParam(processor, "fx.reverb.enabled", 0.0f);
             setParam(processor, "fx.mood.enabled", 0.0f);
             setParam(processor, "fx.vibe.enabled", 0.0f);
-            for (int i = 0; i < 3; ++i)
+            for (int i = 0; i < juce::jmax(PX3SynthAudioProcessor::kLfoSourceCount, PX3SynthAudioProcessor::kEnvelopeSourceCount); ++i)
             {
                 const auto slot = juce::String(i + 1);
                 setParam(processor, juce::String("mod.env") + slot + ".enabled", 0.0f);

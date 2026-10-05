@@ -44,13 +44,13 @@ void testReleaseQa()
               "largest block-to-block step " + fmt(worst, 3) + " over 4000 blocks at 2 Hz");
     }
 
-    // ---- the three LFOs' random shapes are independent ---------------------------
+    // ---- the LFOs' random shapes are independent -----------------------------------
     // The random series was a hash of the cycle number alone: LFO 1, 2 and 3 on
-    // S&H at the same rate stepped through the very same values.
+    // S&H at the same rate stepped through the very same values. LFO 4 too.
     {
         Processor processor;
         makePlainPatch(processor);
-        for (int i = 1; i <= 3; ++i)
+        for (int i = 1; i <= Processor::kLfoSourceCount; ++i)
         {
             const auto prefix = "mod.lfo" + juce::String(i) + ".";
             setParam(processor, prefix + "enabled", 1.0f);
@@ -61,7 +61,7 @@ void testReleaseQa()
         processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
         processor.prepareToPlay(kSampleRate, kBlockSize);
         juce::AudioBuffer<float> buffer(2, kBlockSize);
-        auto same12 = 0, same23 = 0, blocks = 0;
+        auto same12 = 0, same23 = 0, same34 = 0, blocks = 0;
         for (int block = 0; block < 400; ++block)
         {
             buffer.clear();
@@ -70,12 +70,15 @@ void testReleaseQa()
             const auto a = processor.debugGetLfoCurrentValue(0);
             const auto b = processor.debugGetLfoCurrentValue(1);
             const auto c = processor.debugGetLfoCurrentValue(2);
+            const auto d = processor.debugGetLfoCurrentValue(3);
             same12 += std::abs(a - b) < 1.0e-6f ? 1 : 0;
             same23 += std::abs(b - c) < 1.0e-6f ? 1 : 0;
+            same34 += std::abs(c - d) < 1.0e-6f ? 1 : 0;
             ++blocks;
         }
-        check("Qa_EachLfosRandomSeriesIsItsOwn", same12 < blocks / 10 && same23 < blocks / 10,
-              "LFO1=LFO2 on " + juce::String(same12) + " and LFO2=LFO3 on " + juce::String(same23) + " of "
+        check("Qa_EachLfosRandomSeriesIsItsOwn", same12 < blocks / 10 && same23 < blocks / 10 && same34 < blocks / 10,
+              "LFO1=LFO2 on " + juce::String(same12) + ", LFO2=LFO3 on " + juce::String(same23)
+                  + " and LFO3=LFO4 on " + juce::String(same34) + " of "
                   + juce::String(blocks) + " blocks");
     }
 
@@ -1160,6 +1163,165 @@ void testReleaseQa()
                   + "; M1 -> SUSTAIN at -75%: " + fmt(dropDb, 1) + " dB held level"
                   + "; square LFO -> SUSTAIN swings " + fmt(moving.second, 1) + " dB with worst curvature "
                   + fmt(moving.first, 5) + " against " + fmt(still.first, 5) + " unmodulated");
+    }
+
+    // ---- state saved by 0.8.0 / 0.8.1 loads in 0.8.2 -------------------------------
+    // 0.8.2 added LFO 4 and ENV 4, which changes the parameter schema. A real
+    // 0.8.0 preset (tests/Fixtures) must still load - strictly: through a
+    // migration that checks it against version 1's own schema - and anything
+    // that is not exactly a version-1 state must still be refused.
+    {
+        juce::ValueTree fixtureState;
+        juce::String fixtureFingerprint;
+        {
+            const auto file = juce::File::getCurrentWorkingDirectory().getChildFile("tests/Fixtures/v0.8.1-Glass-Filament.px3preset");
+            juce::ZipFile zip(file);
+            if (const auto* entry = zip.getEntry("patch.xml"))
+            {
+                std::unique_ptr<juce::InputStream> stream(zip.createStreamForEntry(*entry));
+                if (stream != nullptr)
+                {
+                    if (auto xml = juce::XmlDocument::parse(stream->readEntireStreamAsString()))
+                    {
+                        fixtureState = juce::ValueTree::fromXml(*xml).getChildWithName("PX3_STATE");
+                        fixtureFingerprint = fixtureState.getChildWithName("PARAMETERS").getProperty("schemaFingerprint").toString();
+                    }
+                }
+            }
+        }
+
+        Processor processor;
+        const auto& catalog = processor.getParameterCatalog();
+        check("Qa_Version1SchemaIsTheShippedOne",
+              fixtureState.isValid() && fixtureFingerprint == catalog.getVersion1SchemaFingerprint()
+                  && catalog.getVersion1SchemaFingerprint() != catalog.getSchemaFingerprint(),
+              fixtureState.isValid() ? "0.8.0 preset " + fixtureFingerprint.substring(0, 12) + ", computed version 1 "
+                                           + catalog.getVersion1SchemaFingerprint().substring(0, 12)
+                                     : juce::String("FIXTURE NOT READ"));
+
+        // Loads, keeps its own values, and the new modulators come up at their defaults.
+        juce::String error;
+        const auto applied = fixtureState.isValid() && processor.applyParameterStateTree(fixtureState, &error, false);
+        const auto storedCutoff = [&]
+        {
+            const auto node = catalog.findStateEntry(fixtureState.getChildWithName("PARAMETERS"), "voice.filter1.cutoff");
+            return static_cast<float>(static_cast<double>(node.getProperty("value", -1.0)));
+        }();
+        auto* cutoff = findParameter(processor, "voice.filter1.cutoff");
+        auto* lfo4Rate = findParameter(processor, "mod.lfo4.frequency");
+        auto* env4Attack = findParameter(processor, "mod.env4.attack");
+        const auto valuesKept = cutoff != nullptr && std::abs(cutoff->getValue() - storedCutoff) < 1.0e-6f;
+        const auto newAtDefaults = lfo4Rate != nullptr && env4Attack != nullptr
+                                   && std::abs(lfo4Rate->getValue() - lfo4Rate->getDefaultValue()) < 1.0e-6f
+                                   && std::abs(env4Attack->getValue() - env4Attack->getDefaultValue()) < 1.0e-6f;
+        juce::MemoryBlock saved;
+        processor.getStateInformation(saved);
+        const auto savedXml = Processor::getXmlFromBinary(saved.getData(), static_cast<int>(saved.getSize()));
+        const auto savedVersion = savedXml != nullptr ? savedXml->getIntAttribute("stateVersion") : -1;
+        check("Qa_A080PresetLoadsInto082",
+              applied && valuesKept && newAtDefaults && savedVersion == 2,
+              juce::String(applied ? "loaded" : "REFUSED: " + error)
+                  + "; its values " + (valuesKept ? "kept" : "NOT KEPT")
+                  + "; LFO 4 / ENV 4 " + (newAtDefaults ? "at defaults" : "NOT AT DEFAULTS")
+                  + "; saves as version " + juce::String(savedVersion));
+
+        // The preset manager reads it too (listing, loading).
+        PresetManager manager(processor);
+        juce::String managerError;
+        juce::ValueTree presetTree;
+        {
+            const auto file = juce::File::getCurrentWorkingDirectory().getChildFile("tests/Fixtures/v0.8.1-Glass-Filament.px3preset");
+            juce::ZipFile zip(file);
+            if (const auto* entry = zip.getEntry("patch.xml"))
+            {
+                std::unique_ptr<juce::InputStream> stream(zip.createStreamForEntry(*entry));
+                if (auto xml = stream != nullptr ? juce::XmlDocument::parse(stream->readEntireStreamAsString()) : nullptr)
+                {
+                    presetTree = juce::ValueTree::fromXml(*xml);
+                }
+            }
+        }
+        const auto migrated = manager.debugMigratePresetTree(presetTree, managerError);
+        check("Qa_ThePresetManagerAccepts080Presets",
+              migrated.isValid() && static_cast<int>(migrated.getChildWithName("PX3_STATE").getProperty("stateVersion")) == 2,
+              migrated.isValid() ? juce::String("migrated to version 2") : "REFUSED: " + managerError);
+
+        // Still strict: a version-1 state that is not exactly version 1 is refused.
+        const auto refused = [&processor](juce::ValueTree state)
+        {
+            juce::String e;
+            return ! processor.upgradeStateTree(state, e).isValid();
+        };
+        auto tamperedFingerprint = fixtureState.createCopy();
+        tamperedFingerprint.getChildWithName("PARAMETERS").setProperty("schemaFingerprint", "0000", nullptr);
+        auto missingOne = fixtureState.createCopy();
+        {
+            auto params = missingOne.getChildWithName("PARAMETERS");
+            auto node = catalog.findStateEntry(params, "voice.filter1.cutoff");
+            node.getParent().removeChild(node, nullptr);
+        }
+        auto alreadyHasNew = fixtureState.createCopy();
+        {
+            auto params = alreadyHasNew.getChildWithName("PARAMETERS");
+            juce::ValueTree extra("PARAMETER");
+            extra.setProperty("id", "mod.lfo4.frequency", nullptr);
+            extra.setProperty("value", 0.5, nullptr);
+            params.addChild(extra, -1, nullptr);
+        }
+        auto unknownVersion = fixtureState.createCopy();
+        unknownVersion.setProperty("stateVersion", 7, nullptr);
+        check("Qa_StateMigrationStaysStrict",
+              refused(tamperedFingerprint) && refused(missingOne) && refused(alreadyHasNew) && refused(unknownVersion),
+              juce::String("wrong fingerprint ") + (refused(tamperedFingerprint) ? "refused" : "ACCEPTED")
+                  + "; a parameter missing " + (refused(missingOne) ? "refused" : "ACCEPTED")
+                  + "; a version-2 parameter in a version-1 state " + (refused(alreadyHasNew) ? "refused" : "ACCEPTED")
+                  + "; version 7 " + (refused(unknownVersion) ? "refused" : "ACCEPTED"));
+    }
+
+    // ---- ENV 4 drives a per-voice destination as itself ------------------------------
+    // The voice clamped a route's envelope to ENV 1-3, so ENV 4 on a per-voice
+    // destination (filter cutoff, oscillator macros) silently ran from ENV 3.
+    // ENV 3 is switched off here: the old code read its silence instead.
+    {
+        const auto levelWithRoute = [](bool routed)
+        {
+            Processor processor;
+            makePlainPatch(processor);
+            setChoice(processor, "voice.osc1.mode", 1);                 // SAW
+            setParam(processor, "voice.filter1.enabled", 1.0f);
+            setChoice(processor, "voice.filter1.type", 1);              // LP24
+            setParam(processor, "voice.filter1.cutoff", 120.0f);
+            setParam(processor, "mod.env3.enabled", 0.0f);
+            setParam(processor, "mod.env4.enabled", 1.0f);
+            setParam(processor, "mod.env4.attack", 0.001f);
+            setParam(processor, "mod.env4.sustain", 1.0f);
+            if (routed)
+            {
+                juce::String error;
+                processor.setGraphRoute(0, { Processor::kLfoSourceCount + 3, "voice.filter1.cutoff",
+                                             px3::synth::ModulationPolarity::native,
+                                             px3::synth::ModulationCurve::linear }, error);
+                auto& depth = processor.getGraphRouteDepthParam(0);
+                depth.setValueNotifyingHost(depth.convertTo0to1(1.0f));
+            }
+            constexpr auto sr = static_cast<int>(kSampleRate);
+            const auto c = render(processor, sr / 2, { { 0, true, 45, 0.9f } });
+            // Brightness, not level: the RMS of the first difference weighs
+            // each harmonic by its frequency, so an opened filter reads clearly
+            // where the overall level barely moves.
+            double e = 0.0;
+            for (int i = sr / 4 + 1; i < sr / 4 + sr / 8; ++i)
+            {
+                const auto d = static_cast<double>(c.left[static_cast<std::size_t>(i)] - c.left[static_cast<std::size_t>(i - 1)]);
+                e += d * d;
+            }
+            return std::sqrt(e / static_cast<double>(sr / 8));
+        };
+        const auto closed = levelWithRoute(false);
+        const auto opened = levelWithRoute(true);
+        const auto gainDb = 20.0 * std::log10(juce::jmax(1.0e-9, opened) / juce::jmax(1.0e-9, closed));
+        check("Qa_Env4DrivesPerVoiceDestinationsAsItself", gainDb > 6.0,
+              "ENV 4 -> cutoff (ENV 3 off) brightens by " + fmt(gainDb, 1) + " dB of high-frequency energy");
     }
 }
 } // namespace px3tests

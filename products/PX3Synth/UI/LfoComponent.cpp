@@ -73,8 +73,11 @@ LfoComponent::LfoComponent(juce::ToggleButton& enabledButtonIn,
     addAndMakeVisible(amountLabel);
     addAndMakeVisible(amountValueLabel);
     assignBox.setLookAndFeel(&waveformComboLookAndFeel);
-    addAndMakeVisible(assignLabel);
-    addAndMakeVisible(assignBox);
+    // ASSIGN is no longer shown: routing is the patch cables' job. The pair
+    // stays a (hidden) child so its parameter wiring and refresh are unchanged
+    // and a legacy assignment in a saved state still loads and still sounds.
+    addChildComponent(assignLabel);
+    addChildComponent(assignBox);
     waveformBox.setLookAndFeel(&waveformComboLookAndFeel);
     addAndMakeVisible(waveformBox);
     addAndMakeVisible(waveformLabel);
@@ -439,7 +442,7 @@ void LfoComponent::layoutCompact()
     auto area = card.contentBelowTitle().reduced(c::pad, c::pad - 1);
     const auto rowH = c::captionHeight + c::boxHeight;
 
-    // WAVE | ASSIGN | KEY SYNC
+    // WAVE | KEY SYNC
     {
         auto row = area.removeFromTop(rowH);
         if (rampControlsAttached)
@@ -449,9 +452,7 @@ void LfoComponent::layoutCompact()
             c::boxCell(chip, &keySyncCaptionSpacer, keySyncButton);
             keySyncButton.setAccentColour(card.style().border.colour);
         }
-        const auto boxes = c::cells(row, 2);
-        c::boxCell(boxes[0], &waveformLabel, waveformBox);
-        c::boxCell(boxes[1], &assignLabel, assignBox);
+        c::boxCell(row, &waveformLabel, waveformBox);
     }
     area.removeFromTop(c::gap);
 

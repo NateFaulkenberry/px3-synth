@@ -303,13 +303,11 @@ void PX3SynthAudioProcessorEditor::bindSceneComponents()
     b.bind("primary.osc", oscPanelViewport);
     if (modPanel != nullptr)
     {
-        // VOICE's second row: the six modulators, each its own scene card.
+        // VOICE's second row: LFO 1-4 and ENV 1-4, each set under a strip
+        // of tabs. The tab panels own their cards and lay them out.
         b.bind("voice.mods", *modPanel);
-        const char* modCards[] { "lfo.1", "lfo.2", "lfo.3", "env.1", "env.2", "env.3" };
-        for (int i = 0; i < 6; ++i)
-        {
-            if (auto* card = modPanel->getCard(i)) { b.bind(modCards[i], *card); }
-        }
+        b.bind("mods.lfo", modPanel->getLfoTabs());
+        b.bind("mods.env", modPanel->getEnvTabs());
     }
     if (modRoutingPanel != nullptr)
     {
@@ -324,7 +322,10 @@ void PX3SynthAudioProcessorEditor::bindSceneComponents()
     {
         b.bind("patchbar", *modPatchBar);
         b.bind("patchbar.title", modPatchBar->getTitle());
-        const char* jacks[] { "lfo1", "lfo2", "lfo3", "env1", "env2", "env3", "m1", "m2", "m3", "m4", "m5", "m6" };
+        const char* jacks[] { "lfo1", "lfo2", "lfo3", "lfo4", "env1", "env2", "env3", "env4",
+                              "m1", "m2", "m3", "m4", "m5", "m6" };
+        static_assert(std::size(jacks) == static_cast<std::size_t>(px3::ui::modrouting::kSourceCount),
+                      "a patch-bar jack per modulation source");
         for (int source = 0; source < px3::ui::modrouting::kSourceCount; ++source)
         {
             b.bind(juce::String("patchbar.") + jacks[source], modPatchBar->getSocket(source));

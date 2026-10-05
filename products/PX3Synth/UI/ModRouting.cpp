@@ -67,7 +67,9 @@ juce::Colour sourceColour(int source)
     // with a dark jack and no text colour.
     static const juce::Colour colours[] {
         juce::Colour(0xff4fd1c5), juce::Colour(0xff63b3ed), juce::Colour(0xff9f8cf0),   // LFO 1-3
+        juce::Colour(0xff667eea),                                                       // LFO 4
         juce::Colour(0xfff6ad55), juce::Colour(0xfff26d6d), juce::Colour(0xffed64a6),   // ENV 1-3
+        juce::Colour(0xffecc94b),                                                       // ENV 4
         juce::Colour(0xff7ddc8a), juce::Colour(0xffd6e05a), juce::Colour(0xff5fd3f3),   // MACRO 1-3
         juce::Colour(0xffe0a8ff), juce::Colour(0xffc9d1d3), juce::Colour(0xffe8c99a) }; // MACRO 4-6
     static_assert(std::size(colours) == static_cast<std::size_t>(kSourceCount),

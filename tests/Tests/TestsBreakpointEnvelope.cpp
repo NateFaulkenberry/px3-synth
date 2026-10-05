@@ -3091,7 +3091,7 @@ void testBreakpointEnvelope()
         setParam(processor, "voice.amp.sustain", 0.120f);
         setParam(processor, "voice.amp.release", 0.130f);
 
-        for (int env = 1; env <= 3; ++env)
+        for (int env = 1; env <= PX3SynthAudioProcessor::kEnvelopeSourceCount; ++env)
         {
             const auto prefix = juce::String("mod.env") + juce::String(env) + ".";
             const auto base = 0.200f * static_cast<float>(env);
@@ -3108,7 +3108,7 @@ void testBreakpointEnvelope()
             values.add(fmt(p.getDecayParam().get(), 3));
             values.add(fmt(p.getSustainParam().get(), 3));
             values.add(fmt(p.getReleaseParam().get(), 3));
-            for (int env = 0; env < 3; ++env)
+            for (int env = 0; env < PX3SynthAudioProcessor::kEnvelopeSourceCount; ++env)
             {
                 values.add(fmt(p.getEnvelopeAttackParam(env).get(), 3));
                 values.add(fmt(p.getEnvelopeDecayParam(env).get(), 3));
@@ -3124,13 +3124,14 @@ void testBreakpointEnvelope()
             "0.201", "0.203", "0.100", "0.205",
             "0.401", "0.403", "0.200", "0.405",
             "0.601", "0.603", "0.300", "0.605",
+            "0.801", "0.803", "0.400", "0.805",
         };
 
         check("Envelopes_EveryParameterIsItsOwn",
               written == expected,
               written == expected
-                  ? "16 values written and read back unchanged - four for each of "
-                    "AMP ENV and ENV 1-3"
+                  ? "20 values written and read back unchanged - four for each of "
+                    "AMP ENV and ENV 1-4"
                   : "read back " + written.joinIntoString(", "));
 
         // And they survive a save/load round trip without crossing over.
@@ -3145,7 +3146,7 @@ void testBreakpointEnvelope()
         check("Envelopes_EveryParameterSurvivesASaveAndLoad",
               readBack(restored) == expected,
               readBack(restored) == expected
-                  ? "all 16 restored exactly, none overwritten by another envelope"
+                  ? "all 20 restored exactly, none overwritten by another envelope"
                   : "restored " + readBack(restored).joinIntoString(", "));
 
         // The shapes the DSP is handed reflect those parameters, and differ
@@ -3153,13 +3154,13 @@ void testBreakpointEnvelope()
         const auto amp = processor.currentAmpEnvelope();
         juce::StringArray attacks;
         attacks.add(fmt(amp.getPoint(1).timeSeconds, 3));
-        for (int env = 0; env < 3; ++env)
+        for (int env = 0; env < PX3SynthAudioProcessor::kEnvelopeSourceCount; ++env)
         {
             attacks.add(fmt(processor.currentModEnvelope(env).getPoint(1).timeSeconds, 3));
         }
         check("Envelopes_TheShapesHandedToTheDspAreAllDifferent",
-              attacks == juce::StringArray({ "0.100", "0.201", "0.401", "0.601" }),
-              "attack times in the four built shapes: " + attacks.joinIntoString(", "));
+              attacks == juce::StringArray({ "0.100", "0.201", "0.401", "0.601", "0.801" }),
+              "attack times in the five built shapes: " + attacks.joinIntoString(", "));
     }
 
     // ---- the graph and the DSP are the same numbers -------------------------
@@ -3455,9 +3456,10 @@ void testBreakpointEnvelope()
         setParam(processor, "voice.amp.attack", 1.000f);
         setParam(processor, "voice.amp.decay", 1.000f);   // AMP sustains at 2.0 s
 
-        const float attacks[3] = { 0.200f, 0.400f, 0.800f };
-        const float decays[3] = { 0.100f, 0.200f, 0.400f };
-        for (int env = 0; env < 3; ++env)
+        const float attacks[4] = { 0.200f, 0.400f, 0.800f, 1.600f };
+        const float decays[4] = { 0.100f, 0.200f, 0.400f, 0.800f };
+        static_assert(PX3SynthAudioProcessor::kEnvelopeSourceCount == 4, "one timing per ENV");
+        for (int env = 0; env < PX3SynthAudioProcessor::kEnvelopeSourceCount; ++env)
         {
             const auto name = juce::String("mod.env") + juce::String(env + 1) + ".";
             setParam(processor, name + "attack", attacks[static_cast<std::size_t>(env)]);
@@ -3484,11 +3486,11 @@ void testBreakpointEnvelope()
             processor.processBlock(buffer, empty);
         }
 
-        const double expected[4] = { 2.0, 0.300, 0.600, 1.200 };
+        const double expected[5] = { 2.0, 0.300, 0.600, 1.200, 2.400 };   // AMP, then ENV 1-4
         auto worst = 0.0;
         auto allActive = true;
         juce::String reported;
-        for (int slot = 0; slot < 4; ++slot)
+        for (int slot = 0; slot < 5; ++slot)
         {
             const auto position = processor.getEnvelopeProgress(slot);
             allActive = allActive && position.active;
@@ -3499,7 +3501,7 @@ void testBreakpointEnvelope()
 
         check("ModProgress_EachEnvelopeSlotReportsItsOwnEnvelope",
               allActive && worst < 1.0e-3,
-              "slots 0-3 sustain at " + reported + " s (want 2.000, 0.300, 0.600, 1.200)");
+              "slots 0-4 sustain at " + reported + " s (want 2.000, 0.300, 0.600, 1.200, 2.400)");
 
         // Once the note has finished, every slot goes idle - so the graphs
         // clear rather than keeping the last note's fill on screen forever.

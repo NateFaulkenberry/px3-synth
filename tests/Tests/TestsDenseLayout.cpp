@@ -140,9 +140,7 @@ void testDenseLayout()
             seam("filter.1", "filter.2", true);
             seam("primary.filter", "primary.amp", true);
             seam("voice.top", "voice.mods", false);
-            seam("lfo.1", "lfo.2", true);
-            seam("lfo.3", "env.1", true);
-            seam("env.2", "env.3", true);
+            seam("mods.lfo", "mods.env", true);
             seam("mod.routing.patch", "mod.routing.list", true);
             seam("mod.routing.list", "mod.routing.dest", true);
         }
@@ -185,34 +183,53 @@ void testDenseLayout()
         check("Dense_SceneFlagRetiresThePerformanceRow", gone && keyboard.isVisible(), error);
     }
 
-    // ---- six modulators, one row, on VOICE --------------------------------------
+    // ---- LFO 1-4 and ENV 1-4: two tabbed panels, one row, on VOICE ---------------
     {
         auto* mods = editor->debugModPanel();
         auto ok = mods != nullptr && shownIn(*mods, *editor);
         juce::String detail;
-        int previousRight = -1;
-        for (int i = 0; ok && i < 6; ++i)
+        if (ok)
         {
-            auto* card = mods->getCard(i);
-            if (card == nullptr || ! shownIn(*card, *editor)) { ok = false; detail = "card " + juce::String(i); break; }
-            const auto r = editor->getLocalArea(card, card->getLocalBounds());
-            const auto first = editor->getLocalArea(mods->getCard(0), mods->getCard(0)->getLocalBounds());
-            ok = r.getY() == first.getY() && r.getHeight() == first.getHeight() && r.getX() > previousRight
-                 && r.getWidth() > 150 && static_cast<float>(r.getY()) > doc.rectOf("voice.top").getBottom() - 1.0f;
-            previousRight = r.getRight() - 1;
-            if (! ok) { detail = "card " + juce::String(i) + " at " + r.toString(); }
-        }
-        check("Dense_SixModulatorsShareOneRowOnVoice", ok, detail);
+            auto& lfoTabs = mods->getLfoTabs();
+            auto& envTabs = mods->getEnvTabs();
+            const auto lfoArea = editor->getLocalArea(&lfoTabs, lfoTabs.getLocalBounds());
+            const auto envArea = editor->getLocalArea(&envTabs, envTabs.getLocalBounds());
+            // Side by side, the same height, below the first row.
+            ok = shownIn(lfoTabs, *editor) && shownIn(envTabs, *editor)
+                 && lfoArea.getY() == envArea.getY() && lfoArea.getHeight() == envArea.getHeight()
+                 && lfoArea.getRight() < envArea.getX() && lfoArea.getWidth() > 300 && envArea.getWidth() > 300
+                 && static_cast<float>(lfoArea.getY()) > doc.rectOf("voice.top").getBottom() - 1.0f;
+            if (! ok) { detail = "panels " + lfoArea.toString() + " / " + envArea.toString(); }
 
-        // Each modulator carries its source jack, mirroring its power button.
-        auto jacks = true;
-        for (int s = 0; s < 6 && mods != nullptr; ++s)
+            // Four pages each; exactly the selected one shows, filling the area
+            // under the tabs; selecting another tab swaps it.
+            for (auto* tabs : { &lfoTabs, &envTabs })
+            {
+                const auto before = tabs->getSelected();
+                for (int page = 0; ok && page < tabs->getNumPages(); ++page)
+                {
+                    tabs->setSelected(page);
+                    auto shownCount = 0;
+                    for (int i = 0; i < tabs->getNumPages(); ++i) { shownCount += tabs->getPage(i)->isVisible() ? 1 : 0; }
+                    ok = tabs->getNumPages() == 4 && shownCount == 1 && tabs->getPage(page)->isVisible()
+                         && tabs->getPage(page)->getBounds() == tabs->pageArea();
+                    if (! ok) { detail = tabs->getName() + " page " + juce::String(page); }
+                }
+                tabs->setSelected(before);
+            }
+        }
+        check("Dense_ModulatorsAreTwoTabbedPanelsOnVoice", ok, detail);
+
+        // Every source carries its jack on its tab, visible whichever tab is
+        // selected, so any modulator can be patched without switching to it.
+        auto jacks = mods != nullptr;
+        for (int s = 0; jacks && s < PX3SynthAudioProcessor::kLfoSourceCount + PX3SynthAudioProcessor::kEnvelopeSourceCount; ++s)
         {
             auto* jack = mods->getCardSocket(s);
-            auto* card = mods->getCard(s);
-            jacks = jacks && jack != nullptr && card != nullptr && jack->isVisible()
-                    && card->getBounds().contains(jack->getBounds())
-                    && jack->getWidth() == static_cast<int>(px3::ui::theme::space::powerButton);
+            auto& tabs = s < PX3SynthAudioProcessor::kLfoSourceCount ? mods->getLfoTabs() : mods->getEnvTabs();
+            const auto tab = s < PX3SynthAudioProcessor::kLfoSourceCount ? s : s - PX3SynthAudioProcessor::kLfoSourceCount;
+            jacks = jack != nullptr && jack->isVisible() && jack->getParentComponent() == &tabs
+                    && tabs.tabBounds(tab).contains(jack->getBounds());
         }
         check("Dense_EveryModulatorHasItsSourceJack", jacks);
     }
@@ -367,7 +384,7 @@ void testDenseLayout()
         editor->debugSelectSection(0);
         const auto root = editor->getLocalBounds().toFloat();
         juce::StringArray failed;
-        for (const auto* id : { "view.osc", "voice.mods", "osc.1", "filter.1", "lfo.1", "env.1", "amp.envelope",
+        for (const auto* id : { "view.osc", "voice.mods", "osc.1", "filter.1", "mods.lfo", "mods.env", "amp.envelope",
                                 "osc.1.coarse.knob", "mod.routing", "mod.routing.dest" })
         {
             editor->debugSelectSection(juce::String(id).startsWith("mod.") ? 1 : 0);
@@ -578,8 +595,8 @@ void testDenseLayout()
     {
         editor->debugSelectSection(0);
         const char* switches[] { "voice.osc1.enabled", "voice.osc2.enabled", "voice.osc3.enabled", "voice.sub.enabled",
-                                 "mod.lfo1.enabled", "mod.lfo2.enabled", "mod.lfo3.enabled",
-                                 "mod.env1.enabled", "mod.env2.enabled", "mod.env3.enabled" };
+                                 "mod.lfo1.enabled", "mod.lfo2.enabled", "mod.lfo3.enabled", "mod.lfo4.enabled",
+                                 "mod.env1.enabled", "mod.env2.enabled", "mod.env3.enabled", "mod.env4.enabled" };
         std::vector<std::pair<juce::RangedAudioParameter*, float>> restore;
         for (const auto* id : switches)
         {

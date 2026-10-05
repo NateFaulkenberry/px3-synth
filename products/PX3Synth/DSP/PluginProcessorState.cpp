@@ -324,11 +324,45 @@ juce::ValueTree PX3SynthAudioProcessor::createPresetStateTree() const
     return state;
 }
 
-bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& state,
+juce::ValueTree PX3SynthAudioProcessor::upgradeStateTree(const juce::ValueTree& state, juce::String& error) const
+{
+    if (! state.isValid() || state.getType() != kStateTypeId)
+    {
+        error = "State tree is invalid or has unexpected type.";
+        return {};
+    }
+    const auto version = static_cast<int>(state.getProperty(kStateVersionId, 0));
+    if (version == kCurrentStateVersion)
+    {
+        return state.createCopy();
+    }
+    if (version == 1)
+    {
+        auto upgraded = state.createCopy();
+        auto parameters = upgraded.getChildWithName("PARAMETERS");
+        if (! parameterCatalog.migrateParametersFromVersion1(parameters, error))
+        {
+            return {};
+        }
+        upgraded.setProperty(kStateVersionId, kCurrentStateVersion, nullptr);
+        return upgraded;
+    }
+    error = "Unsupported PX3 0.8 state schema version.";
+    return {};
+}
+
+bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& storedState,
                                                      juce::String* error,
                                                      bool restoreUiSessionState)
 {
     const std::lock_guard<std::recursive_mutex> lock(graphAuthoringMutex);
+    juce::String upgradeError;
+    const auto state = upgradeStateTree(storedState, upgradeError);
+    if (! state.isValid())
+    {
+        if (error != nullptr) { *error = upgradeError; }
+        return false;
+    }
     if (!state.isValid() || state.getType() != kStateTypeId)
     {
         if (error != nullptr)

@@ -701,6 +701,9 @@
           "strokeThickness": 1
         }
       }
+    },
+    "tabs": {
+      "height": 28
     }
   },
   "amp": {
@@ -2143,7 +2146,53 @@
         "color": "#EEDCFF"
       }
     },
+    "lfo4": {
+      "border": {
+        "color": "#BA70FF",
+        "opacity": 0.35
+      },
+      "background": {
+        "color": "#BA70FF",
+        "opacity": 0.1
+      },
+      "gloss": {
+        "topFill": {
+          "color": "#BA70FF",
+          "opacity": 0
+        },
+        "bottomFill": {
+          "color": "#000000",
+          "opacity": 0
+        }
+      },
+      "title": {
+        "color": "#EEDCFF"
+      }
+    },
     "env3": {
+      "border": {
+        "color": "#F2C14E",
+        "opacity": 0.35
+      },
+      "background": {
+        "color": "#F2C14E",
+        "opacity": 0.1
+      },
+      "gloss": {
+        "topFill": {
+          "color": "#F2C14E",
+          "opacity": 0
+        },
+        "bottomFill": {
+          "color": "#000000",
+          "opacity": 0
+        }
+      },
+      "title": {
+        "color": "#FFF1C9"
+      }
+    },
+    "env4": {
       "border": {
         "color": "#F2C14E",
         "opacity": 0.35

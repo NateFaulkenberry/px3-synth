@@ -87,8 +87,10 @@ EnvelopeComponent::EnvelopeComponent(juce::AudioParameterFloat& attackIn,
         cardTitle = cardStyleKey.toUpperCase().replace("ENV", "ENV ");
 
         addAndMakeVisible(enabledButton);
-        addAndMakeVisible(assignLabel);
-        addAndMakeVisible(assignBox);
+        // ASSIGN is no longer shown: routing is the patch cables' job. The
+        // pair stays a (hidden) child so its wiring and refresh are unchanged.
+        addChildComponent(assignLabel);
+        addChildComponent(assignBox);
         if (amountKnob != nullptr)
         {
             addAndMakeVisible(*amountKnob);
@@ -634,7 +636,7 @@ void EnvelopeComponent::layoutCompact()
     auto area = card.contentBelowTitle().reduced(c::pad, c::pad - 1);
     const auto rowH = c::captionHeight + c::boxHeight;
 
-    // ASSIGN | LOOP | SYNC
+    // TYPE | LOOP | SYNC: TYPE (ADSR / BREAKPOINT) where ASSIGN used to be.
     {
         auto row = area.removeFromTop(rowH);
         const auto chipW = juce::jlimit(36, 52, row.getWidth() / 5);
@@ -648,22 +650,6 @@ void EnvelopeComponent::layoutCompact()
             c::boxCell(row.removeFromRight(chipW), nullptr, *loopButton);
             row.removeFromRight(c::gap);
         }
-        c::boxCell(row, &assignLabel, assignBox);
-    }
-    area.removeFromTop(c::gap);
-
-    // Two knob rows under the display; the knobs give way before the display does.
-    const auto knob = juce::jlimit(20, 40, (area.getHeight() - 56 - 2 * (c::captionHeight + c::readoutHeight + 2) - c::gap * 2) / 2);
-    const auto knobRow = c::knobRowHeight(knob);
-
-    // MODE | AMOUNT | KEY
-    {
-        auto row = area.removeFromBottom(knobRow);
-        // TYPE gets the wider share so "BREAKPOINT" / "ADSR" read in full.
-        auto typeCell = row.removeFromLeft(row.getWidth() * 2 / 5);
-        row.removeFromLeft(c::gap);
-        auto knobs = c::cells(row, 2);
-        const std::array<juce::Rectangle<int>, 3> cell { typeCell, knobs[0], knobs[1] };
         if (adsrOnly)
         {
             modeBox.setVisible(false);
@@ -673,10 +659,20 @@ void EnvelopeComponent::layoutCompact()
         {
             modeBox.setVisible(true);
             modeLabel.setVisible(true);
-            c::boxCell(cell[0].withSizeKeepingCentre(cell[0].getWidth(), c::captionHeight + c::boxHeight), &modeLabel, modeBox);
+            c::boxCell(row, &modeLabel, modeBox);
         }
-        if (amountKnob != nullptr) { c::knobCell(cell[1], amountLabel, *amountKnob, amountValueLabel, knob); }
-        if (keyKnob != nullptr) { c::knobCell(cell[2], keyLabel, *keyKnob, keyValueLabel, knob); }
+    }
+    area.removeFromTop(c::gap);
+
+    // Two knob rows under the display; the knobs give way before the display does.
+    const auto knob = juce::jlimit(20, 40, (area.getHeight() - 56 - 2 * (c::captionHeight + c::readoutHeight + 2) - c::gap * 2) / 2);
+    const auto knobRow = c::knobRowHeight(knob);
+
+    // AMOUNT | KEY
+    {
+        const auto cell = c::cells(area.removeFromBottom(knobRow), 2);
+        if (amountKnob != nullptr) { c::knobCell(cell[0], amountLabel, *amountKnob, amountValueLabel, knob); }
+        if (keyKnob != nullptr) { c::knobCell(cell[1], keyLabel, *keyKnob, keyValueLabel, knob); }
     }
     area.removeFromBottom(c::gap);
 

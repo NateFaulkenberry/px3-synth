@@ -32,6 +32,10 @@ struct SubtractiveSettings
 class SynthVoice final : public juce::SynthesiserVoice
 {
 public:
+    // ENV 1..4, the per-voice modulation envelopes. The processor's
+    // kEnvelopeSourceCount must match (checked where both are visible).
+    static constexpr int kModEnvelopeCount = 4;
+
     bool canPlaySound(juce::SynthesiserSound* sound) override;
 
     void startNote(int midiNoteNumber, float velocity, juce::SynthesiserSound*, int pitchWheel) override;
@@ -65,7 +69,7 @@ public:
 
     EnvelopePosition currentModEnvelopePosition(int envIndex) const noexcept
     {
-        return juce::isPositiveAndBelow(envIndex, 3)
+        return juce::isPositiveAndBelow(envIndex, kModEnvelopeCount)
                    ? modEnvelopeGenerators[static_cast<std::size_t>(envIndex)].currentPosition()
                    : EnvelopePosition {};
     }
@@ -76,10 +80,10 @@ public:
     // that is still plain ADSR is driven by its parameters, so most of the time
     // these are never called.
     void setAmpEnvelopeShape(const px3::BreakpointEnvelope& envelope);
-    void setModEnvelopeShapes(const std::array<px3::BreakpointEnvelope, 3>& envelopes);
+    void setModEnvelopeShapes(const std::array<px3::BreakpointEnvelope, kModEnvelopeCount>& envelopes);
 
-    void setModEnvelopeSettings(const std::array<EnvelopeSettings, 3>& settings,
-                                const std::array<bool, 3>& enabled);
+    void setModEnvelopeSettings(const std::array<EnvelopeSettings, kModEnvelopeCount>& settings,
+                                const std::array<bool, kModEnvelopeCount>& enabled);
     float getModEnvelopeValue(int envIndex) const;
     void setFilterSettings(const std::array<FilterSettings, kFilterInstanceCount>& settings);
     // SERIES runs filter 1 into filter 2; PARALLEL feeds both the same input
@@ -166,18 +170,18 @@ private:
     std::array<bool, kOscillatorSourceCount> oscillatorModulatedByPlan { { false, false, false } };
 
     AmpEnvelope ampEnvelope;
-    std::array<EnvelopeGenerator, 3> modEnvelopeGenerators;
-    std::array<EnvelopeSettings, 3> modEnvelopeSettings;
-    std::array<bool, 3> modEnvelopeEnabled { { true, true, true } };
+    std::array<EnvelopeGenerator, kModEnvelopeCount> modEnvelopeGenerators;
+    std::array<EnvelopeSettings, kModEnvelopeCount> modEnvelopeSettings;
+    std::array<bool, kModEnvelopeCount> modEnvelopeEnabled { { true, true, true, true } };
     // The envelopes' live values, sample by sample: what in-voice modulation reads.
-    std::array<float, 3> modEnvelopeValues { { 0.0f, 0.0f, 0.0f } };
+    std::array<float, kModEnvelopeCount> modEnvelopeValues {};
     // Each envelope's peak over the last block: what the processor's global
     // (cross-voice) read takes, so a short envelope is still seen at block
     // rate. Kept apart from the live values: written over them, every block
     // began its in-voice modulation from the last block's PEAK - a decaying
     // pluck restarted near the top of each block, by an amount set by the
     // host's buffer size.
-    std::array<float, 3> modEnvelopeBlockPeaks { { 0.0f, 0.0f, 0.0f } };
+    std::array<float, kModEnvelopeCount> modEnvelopeBlockPeaks {};
     std::array<std::array<VoiceFilter, kFilterInstanceCount>, kVoiceMixerSourceCount> sourceFilters;
 
     double currentAngle { 0.0 };
@@ -300,7 +304,7 @@ private:
     // from them starts the note on a different envelope entirely.
     px3::BreakpointEnvelope shapedAmpEnvelope;
     bool hasShapedAmpEnvelope { false };
-    std::array<px3::BreakpointEnvelope, 3> shapedModEnvelopes;
+    std::array<px3::BreakpointEnvelope, kModEnvelopeCount> shapedModEnvelopes;
     bool hasShapedModEnvelopes { false };
     bool ampEnvelopeEnabled { true };
 

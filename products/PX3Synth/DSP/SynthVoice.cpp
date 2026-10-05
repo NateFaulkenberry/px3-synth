@@ -468,7 +468,7 @@ void SynthVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int sta
 
     pushFilterTargets(vibeActive, vibeDepth);
 
-    std::array<float, 3> modEnvelopePeakValues { { 0.0f, 0.0f, 0.0f } };
+    std::array<float, kModEnvelopeCount> modEnvelopePeakValues {};
     auto blockPeak = 0.0f;
     std::array<float, kVoiceMixerSourceCount> blockSourcePeaks { { 0.0f, 0.0f, 0.0f, 0.0f } };
 
@@ -1245,7 +1245,7 @@ void SynthVoice::setAmpEnvelopeShape(const px3::BreakpointEnvelope& envelope)
     }
 }
 
-void SynthVoice::setModEnvelopeShapes(const std::array<px3::BreakpointEnvelope, 3>& envelopes)
+void SynthVoice::setModEnvelopeShapes(const std::array<px3::BreakpointEnvelope, kModEnvelopeCount>& envelopes)
 {
     shapedModEnvelopes = envelopes;
     hasShapedModEnvelopes = true;
@@ -1272,8 +1272,8 @@ void SynthVoice::setAmpEnvelopeEnabled(bool shouldEnable)
     }
 }
 
-void SynthVoice::setModEnvelopeSettings(const std::array<EnvelopeSettings, 3>& settings,
-                                        const std::array<bool, 3>& enabled)
+void SynthVoice::setModEnvelopeSettings(const std::array<EnvelopeSettings, kModEnvelopeCount>& settings,
+                                        const std::array<bool, kModEnvelopeCount>& enabled)
 {
     modEnvelopeSettings = settings;
     modEnvelopeEnabled = enabled;
@@ -1419,7 +1419,7 @@ float SynthVoice::envelopePlanValue(const px3::synth::VoiceModDestination& d) co
     for (int r = 0; r < d.routeCount; ++r)
     {
         const auto& route = d.routes[static_cast<std::size_t>(r)];
-        const auto envelope = static_cast<std::size_t>(juce::jlimit(0, 2, route.envelope));
+        const auto envelope = static_cast<std::size_t>(juce::jlimit(0, kModEnvelopeCount - 1, route.envelope));
         delta += px3::synth::routeContribution(route.sourceBipolar, modEnvelopeValues[envelope],
                                                route.polarity, route.curve, route.depth, d.base);
     }
@@ -1489,7 +1489,7 @@ void SynthVoice::setVoiceModulationPlan(const px3::synth::VoiceModulationPlan& p
         for (int r = 0; r < d.routeCount; ++r)
         {
             const auto& route = d.routes[static_cast<std::size_t>(r)];
-            const auto envelope = static_cast<std::size_t>(juce::jlimit(0, 2, route.envelope));
+            const auto envelope = static_cast<std::size_t>(juce::jlimit(0, kModEnvelopeCount - 1, route.envelope));
             delta += px3::synth::routeContribution(route.sourceBipolar, modEnvelopeValues[envelope],
                                                    route.polarity, route.curve, route.depth, d.base);
         }

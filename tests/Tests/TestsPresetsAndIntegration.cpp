@@ -81,7 +81,7 @@ void applyUnusualConfiguration(PX3SynthAudioProcessor& processor)
     // Comb, so the mode itself is part of what the round trip has to restore.
     setChoice(processor, "voice.filter2.type", static_cast<int>(px3::FilterMode::comb));
 
-    for (int envIndex = 0; envIndex < 3; ++envIndex)
+    for (int envIndex = 0; envIndex < PX3SynthAudioProcessor::kEnvelopeSourceCount; ++envIndex)
     {
         const auto slot = juce::String(envIndex + 1);
         setParam(processor, juce::String("mod.env") + slot + ".enabled", 1.0f);
@@ -96,7 +96,7 @@ void applyUnusualConfiguration(PX3SynthAudioProcessor& processor)
     processor.setEnvelopeAssignmentByParameterId(1, "mix.osc1.level", false);
     processor.setEnvelopeAssignmentByParameterId(2, "voice.filter2.resonance", false);
 
-    for (int lfoIndex = 0; lfoIndex < 3; ++lfoIndex)
+    for (int lfoIndex = 0; lfoIndex < PX3SynthAudioProcessor::kLfoSourceCount; ++lfoIndex)
     {
         const auto slot = juce::String(lfoIndex + 1);
         const auto prefix = juce::String("mod.lfo") + slot + ".";
@@ -1067,7 +1067,7 @@ void testIntegration()
             { "MaximumModulationEverywhere", [](PX3SynthAudioProcessor& p)
               {
                   setParam(p, "voice.filter1.enabled", 1.0f);
-                  for (int i = 0; i < 3; ++i)
+                  for (int i = 0; i < PX3SynthAudioProcessor::kEnvelopeSourceCount; ++i)
                   {
                       const auto slot = juce::String(i + 1);
                       setParam(p, juce::String("mod.env") + slot + ".enabled", 1.0f);

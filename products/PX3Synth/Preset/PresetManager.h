@@ -95,6 +95,12 @@ public:
     juce::File getUserPresetRootDir() const;
     juce::File getSettingsDir() const;
 
+
+    // For the tests: the validation and migration every preset read goes through.
+    juce::ValueTree debugMigratePresetTree(const juce::ValueTree& presetTree, juce::String& error) const
+    {
+        return migratePresetTreeIfNeeded(presetTree, error);
+    }
 private:
     PX3SynthAudioProcessor& processor;
 

@@ -2,6 +2,14 @@
 #include "ModulationGraph.h"
 #include <thread>
 
+namespace
+{
+// Graph source numbers: LFO 1..n, then ENV 1..n, then the macros. Named, so a
+// source added to either group does not silently retarget these tests.
+constexpr int kEnv1Source = PX3SynthAudioProcessor::kLfoSourceCount;
+constexpr int kMacro1Source = PX3SynthAudioProcessor::kLfoSourceCount + PX3SynthAudioProcessor::kEnvelopeSourceCount;
+}
+
 // testModulationUpgrade - current 0.8 modulation/routing behavior and state schema.
 
 namespace px3tests
@@ -69,7 +77,7 @@ void testEnvelopeTimesUpgrade()
         juce::StringArray tooShort;
         auto shortest = 1.0e9f;
 
-        for (const auto* prefix : { "voice.amp.", "mod.env1.", "mod.env2.", "mod.env3." })
+        for (const auto* prefix : { "voice.amp.", "mod.env1.", "mod.env2.", "mod.env3.", "mod.env4." })
         {
             for (const auto* stage : { "Attack", "Decay", "Release" })
             {
@@ -367,7 +375,7 @@ void testRampsAndKeySyncUpgrade()
     {
         PX3SynthAudioProcessor processor;
         auto ceilingOk = px3::lfoMaxRampSeconds >= 30.0f;
-        for (const auto* id : { "mod.lfo1.ramp.time", "mod.lfo2.ramp.time", "mod.lfo3.ramp.time" })
+        for (const auto* id : { "mod.lfo1.ramp.time", "mod.lfo2.ramp.time", "mod.lfo3.ramp.time", "mod.lfo4.ramp.time" })
         {
             auto* parameter = findParameter(processor, id);
             ceilingOk = ceilingOk && parameter != nullptr && parameter->getNormalisableRange().end >= 30.0f;
@@ -938,8 +946,8 @@ void testModulationUpgrade()
     {
         PX3SynthAudioProcessor processor;
         juce::String error;
-        const auto first = processor.setGraphRoute(0, { 6, "voice.filter1.cutoff" }, error);
-        const auto second = processor.setGraphRoute(1, { 6, "mix.osc1.pan" }, error);
+        const auto first = processor.setGraphRoute(0, { kMacro1Source, "voice.filter1.cutoff" }, error);
+        const auto second = processor.setGraphRoute(1, { kMacro1Source, "mix.osc1.pan" }, error);
         processor.getMacroParam(0).setValueNotifyingHost(1.0f);
         auto& firstDepth = processor.getGraphRouteDepthParam(0);
         auto& secondDepth = processor.getGraphRouteDepthParam(1);
@@ -955,7 +963,7 @@ void testModulationUpgrade()
         PX3SynthAudioProcessor restored;
         const auto loaded = restored.applyParameterStateTree(state, &error);
         check("ModGraph_EndpointsAndDepthsSurviveStateRoundTrip",
-              loaded && restored.getGraphRoute(0).source == 6
+              loaded && restored.getGraphRoute(0).source == kMacro1Source
                   && restored.getGraphRoute(1).destination == "mix.osc1.pan"
                   && std::abs(restored.getGraphRouteDepthParam(0).get() - 0.5f) < 1.0e-5f, error);
         auto malformed = state.createCopy();
@@ -965,13 +973,13 @@ void testModulationUpgrade()
               ! restored.applyParameterStateTree(malformed, &error)
                   && restored.createParameterStateTree().toXmlString() == before);
         check("ModGraph_InvalidRouteEditLeavesEndpointsIntact",
-              ! restored.setGraphRoute(0, { 6, "missing" }, error)
+              ! restored.setGraphRoute(0, { kMacro1Source, "missing" }, error)
                   && restored.getGraphRoute(0).destination == "voice.filter1.cutoff");
           check("ModGraph_SourceControlsAcceptAcyclicRoutes",
-              restored.setGraphRoute(2, { 6, "mod.lfo1.frequency" }, error)
+              restored.setGraphRoute(2, { kMacro1Source, "mod.lfo1.frequency" }, error)
                 && restored.setGraphRoute(3, { 0, "mod.env1.attack" }, error), error);
           check("ModGraph_ProcessorRejectsSourceControlCyclesAtomically",
-              ! restored.setGraphRoute(4, { 3, "mod.lfo1.frequency" }, error)
+              ! restored.setGraphRoute(4, { kEnv1Source, "mod.lfo1.frequency" }, error)
                 && restored.getGraphRoute(4).source == -1);
           auto& rateDepth = restored.getGraphRouteDepthParam(2);
           rateDepth.setValueNotifyingHost(rateDepth.convertTo0to1(0.5f));
@@ -1051,7 +1059,7 @@ void testModulationUpgrade()
             {
                 juce::String error;
                 const auto destination = edit % 2 == 0 ? "voice.filter1.cutoff" : "mix.osc1.pan";
-                if (! processor.setGraphRoute(0, { 6, destination }, error)) { writerOk.store(false); }
+                if (! processor.setGraphRoute(0, { kMacro1Source, destination }, error)) { writerOk.store(false); }
                 processor.createParameterStateTree();
             }
             done.store(true, std::memory_order_release);

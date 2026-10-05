@@ -80,6 +80,18 @@ public:
 
     const juce::String& getSchemaFingerprint() const noexcept { return schemaFingerprint; }
 
+    // ---- state version 1 (0.8.0, 0.8.1) -> 2 (0.8.2: LFO 4, ENV 4) ----------
+    //
+    // Version 2 added LFO 4 and ENV 4 and nothing else, so version 1's schema
+    // is this one without their parameters - and its fingerprint is computed
+    // from exactly that, not stored as a constant that could drift from the
+    // code. A version-1 parameter tree is checked strictly against it (its
+    // own fingerprint, every version-1 parameter present, nothing else), and
+    // only then given the new parameters at their defaults.
+    static bool introducedInStateVersion2(const juce::String& id);
+    const juce::String& getVersion1SchemaFingerprint() const noexcept { return version1Fingerprint; }
+    bool migrateParametersFromVersion1(juce::ValueTree& parameters, juce::String& error) const;
+
     // A loaded value, as read and as the parameter then reported it. A skewed
     // float range does not round-trip exactly through a parameter (normalised
     // -> real -> normalised in float), so state saved straight from
@@ -113,6 +125,7 @@ private:
     std::vector<ParameterCatalogEntry> catalogEntries;
     std::vector<std::unique_ptr<ParameterDefinition>> definitions;
     juce::String schemaFingerprint;
+    juce::String version1Fingerprint;
     bool attached { false };
 };
 }

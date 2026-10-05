@@ -73,8 +73,10 @@ class PX3SynthAudioProcessor final : public juce::AudioProcessor,
                                      private juce::AsyncUpdater
 {
 public:
-    static constexpr int kLfoSourceCount = 3;
-    static constexpr int kEnvelopeSourceCount = 3;
+    // LFO 1..4 and ENV 1..4. Adding one is a parameter-schema change: see
+    // kCurrentStateVersion and the migration in PluginProcessorState.cpp.
+    static constexpr int kLfoSourceCount = 4;
+    static constexpr int kEnvelopeSourceCount = 4;
     static constexpr int kMixerSourceCount = 4;
     static constexpr int kPolyphonyVoiceCount = 64;
 
@@ -191,13 +193,13 @@ public:
     // to make visible.
     juce::String getLoadedWavetableName(int oscIndex) const;
 
-    // The shaped envelopes. Index 0 is AMP ENV; 1..3 are ENV 1..3, which are
+    // The shaped envelopes. Index 0 is AMP ENV; 1..n are ENV 1..n, which are
     // kept in the same array only because they are the same kind of thing - the
     // two systems stay separate everywhere it matters.
     //
     // Public because the editor owns the editing: it reads a shape, changes it,
     // and hands it back. Message thread.
-    static constexpr int kShapedEnvelopeCount = 4;
+    static constexpr int kShapedEnvelopeCount = 1 + kEnvelopeSourceCount;
     void setShapedEnvelope(int index, const px3::BreakpointEnvelope& envelope);
     px3::BreakpointEnvelope getShapedEnvelope(int index) const;
 
@@ -769,6 +771,13 @@ public:
     static constexpr int kTopMenuViewCount = 7;
 
     int getTopMenuViewIndex() const;
+    // Which LFO and which ENV the VOICE page's tab strips show. UI state for
+    // the session - kept here so a window opened later comes back to the same
+    // tabs - and never saved with a preset or project.
+    int getSelectedLfoTab() const noexcept { return selectedLfoTab; }
+    int getSelectedEnvTab() const noexcept { return selectedEnvTab; }
+    void setSelectedLfoTab(int tab) noexcept { selectedLfoTab = juce::jlimit(0, kLfoSourceCount - 1, tab); }
+    void setSelectedEnvTab(int tab) noexcept { selectedEnvTab = juce::jlimit(0, kEnvelopeSourceCount - 1, tab); }
     void setTopMenuViewIndex(int index, bool notifyHost = true);
 
 
@@ -790,6 +799,12 @@ public:
     juce::ValueTree createParameterStateTree() const;
     juce::ValueTree createPresetStateTree() const;
     const px3::synth::ParameterCatalog& getParameterCatalog() const noexcept { return parameterCatalog; }
+    // Any state this build can read, brought to kCurrentStateVersion: a copy,
+    // or an invalid tree with `error` set. Version 1 (0.8.0/0.8.1) is migrated
+    // strictly - see ParameterCatalog::migrateParametersFromVersion1. Every
+    // path that loads state - host recall, preset load, the preset index -
+    // goes through here, so they cannot disagree about what loads.
+    juce::ValueTree upgradeStateTree(const juce::ValueTree& state, juce::String& error) const;
     bool applyParameterStateTree(const juce::ValueTree& state,
                                  juce::String* error = nullptr,
                                  bool restoreUiSessionState = true);
@@ -1163,7 +1178,7 @@ private:
     // this been initialised" cannot be answered by looking at the points.
     std::array<px3::BreakpointEnvelope, kShapedEnvelopeCount> adsrShapes;
     std::array<px3::BreakpointEnvelope, kShapedEnvelopeCount> breakpointShapes;
-    std::array<bool, kShapedEnvelopeCount> breakpointInitialised { { false, false, false, false } };
+    std::array<bool, kShapedEnvelopeCount> breakpointInitialised {};
 
     void handleAsyncUpdate() override;
 
@@ -1223,7 +1238,7 @@ public:
     // Where the newest sounding voice's envelopes are, for the graphs that draw
     // them. Slot 0 is AMP ENV and 1-3 are ENV 1-3, the same numbering the
     // shaped-envelope accessors use.
-    static constexpr int kEnvelopeSlots = 4;
+    static constexpr int kEnvelopeSlots = 1 + kEnvelopeSourceCount;   // AMP, then ENV 1..n
     EnvelopePosition getEnvelopeProgress(int slot) const;
 
 private:
@@ -1443,6 +1458,9 @@ public:
     void clearReverbImpulseResponse();
     juce::String getReverbImpulseResponseName() const { return reverb.impulseResponseName(); }
 private:
+    int selectedLfoTab { 0 };
+    int selectedEnvTab { 0 };
+
 
     // Internal routing buses (prepared once, reused per block).
     juce::AudioBuffer<float> oscillatorBusBuffer;

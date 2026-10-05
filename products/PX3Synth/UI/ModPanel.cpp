@@ -47,31 +47,41 @@ ModPanel::ModPanel(PX3SynthAudioProcessor& processorIn,
     // blank the text to match the other LFO cards, which had no rate label at
     // the time; they do now, so blanking it made LFO 1 the odd one out.
 
-    addAndMakeVisible(*lfoComponent);
+    addAndMakeVisible(lfoTabs);
+    addAndMakeVisible(envTabs);
+    lfoTabs.addPage(*lfoComponent);
 
     for (int lfoIndex = 1; lfoIndex < PX3SynthAudioProcessor::kLfoSourceCount; ++lfoIndex)
     {
         auto& bundle = extraLfos[static_cast<std::size_t>(lfoIndex - 1)];
         configureOwnedLfoBundle(lfoIndex, bundle);
-        addAndMakeVisible(*bundle.component);
+        lfoTabs.addPage(*bundle.component);
     }
 
     for (int envIndex = 0; envIndex < PX3SynthAudioProcessor::kEnvelopeSourceCount; ++envIndex)
     {
         auto& bundle = envelopes[static_cast<std::size_t>(envIndex)];
         configureOwnedEnvBundle(envIndex, bundle);
-        addAndMakeVisible(*bundle.component);
+        envTabs.addPage(*bundle.component);
     }
+
+    // The tab each strip shows is the processor's, not this window's: a window
+    // opened later in the session comes back to the same modulators.
+    lfoTabs.setSelected(processor.getSelectedLfoTab(), false);
+    envTabs.setSelected(processor.getSelectedEnvTab(), false);
+    lfoTabs.onSelectionChanged = [this](int tab) { processor.setSelectedLfoTab(tab); };
+    envTabs.onSelectionChanged = [this](int tab) { processor.setSelectedEnvTab(tab); };
 }
 
 void ModPanel::attachModSources(px3::ui::modrouting::ModDragController& controller)
 {
-    // A jack on every LFO and ENV card: drag it onto any knob to patch it.
+    // A jack on every LFO and ENV tab: drag it onto any knob to patch it.
     for (int i = 0; i < static_cast<int>(cardSockets.size()); ++i)
     {
         auto& socket = cardSockets[static_cast<std::size_t>(i)];
         socket = std::make_unique<px3::ui::modrouting::ModSourceSocket>(controller, i, false);
-        addAndMakeVisible(*socket);
+        if (i < kLfos) { lfoTabs.setSocket(i, socket.get()); }
+        else           { envTabs.setSocket(i - kLfos, socket.get()); }
     }
     resized();
 }
@@ -396,41 +406,22 @@ void ModPanel::setSceneManaged(bool managed)
 juce::Component* ModPanel::getCard(int index)
 {
     if (index == 0) { return lfoComponent.get(); }
-    if (index == 1 || index == 2) { return extraLfos[static_cast<std::size_t>(index - 1)].component.get(); }
-    if (juce::isPositiveAndBelow(index - 3, static_cast<int>(envelopes.size())))
+    if (juce::isPositiveAndBelow(index, kLfos)) { return extraLfos[static_cast<std::size_t>(index - 1)].component.get(); }
+    if (juce::isPositiveAndBelow(index - kLfos, kEnvs))
     {
-        return envelopes[static_cast<std::size_t>(index - 3)].component.get();
+        return envelopes[static_cast<std::size_t>(index - kLfos)].component.get();
     }
     return nullptr;
 }
 
 void ModPanel::layoutSockets()
 {
-    // Each card's jack sits at the right end of its title band, across from
-    // the power button (CardHost::powerBounds, left end of the same band).
-    const juce::ScopedValueSetter<bool> guard(placingSockets, true);
-    for (int i = 0; i < static_cast<int>(cardSockets.size()); ++i)
-    {
-        auto* socket = cardSockets[static_cast<std::size_t>(i)].get();
-        auto* card = getCard(i);
-        if (socket == nullptr || card == nullptr) { continue; }
-        // The power button's own rectangle mirrored to the right edge, so the
-        // two are the same size and sit level in the title band.
-        const auto power = i < 3 ? static_cast<const LfoComponent*>(card)->powerBoundsInParent()
-                                 : static_cast<const EnvelopeComponent*>(card)->powerBoundsInParent();
-        const auto inset = power.getX() - card->getX();
-        socket->setBounds(card->getRight() - inset - power.getWidth(), power.getY(), power.getWidth(), power.getHeight());
-        socket->toFront(false);
-    }
+    lfoTabs.resized();
+    envTabs.resized();
 }
 
-void ModPanel::childBoundsChanged(juce::Component* child)
+void ModPanel::childBoundsChanged(juce::Component*)
 {
-    if (sceneManaged && ! placingSockets && child != nullptr
-        && dynamic_cast<px3::ui::modrouting::ModSourceSocket*>(child) == nullptr)
-    {
-        layoutSockets();
-    }
 }
 
 void ModPanel::paint(juce::Graphics& g)
@@ -456,6 +447,14 @@ void ModPanel::setUIConfig(std::shared_ptr<const UIConfig> configIn)
 
     if (uiConfig != nullptr)
     {
+        // The tabs take the cards' identity colours (LFO purple, ENV yellow)
+        // and a height from the config.
+        lfoTabs.setAccent(uiConfig->getColour("cards.lfo1.border.color", juce::Colour(0xff9f7aea)));
+        envTabs.setAccent(uiConfig->getColour("cards.env1.border.color", juce::Colour(0xfff2c14e)));
+        const auto tabHeight = uiConfig->getInt("mod.tabs.height", 28);
+        lfoTabs.setTabHeight(tabHeight);
+        envTabs.setTabHeight(tabHeight);
+
         const auto comboStyle = uiConfig->getObject("styles.combos.default");
         for (auto& bundle : extraLfos)
         {
@@ -504,73 +503,14 @@ void ModPanel::resized()
         return;
     }
 
+    // Outside the scene (not used by the editor today): the two tab panels
+    // side by side, LFOs left.
     const auto panelPadX = uiConfig != nullptr ? uiConfig->getInt("mod.panel.layout.padX", 12) : 12;
     const auto panelPadY = uiConfig != nullptr ? uiConfig->getInt("mod.panel.layout.padY", 10) : 10;
     auto panelArea = getLocalBounds().reduced(panelPadX, panelPadY);
-
-    const auto colGap = uiConfig != nullptr ? uiConfig->getInt("mod.grid.colGap", 8) : 8;
-    const auto rowGap = uiConfig != nullptr ? uiConfig->getInt("mod.grid.rowGap", 10) : 10;
-    const auto minColWidth = uiConfig != nullptr ? uiConfig->getInt("mod.grid.minColWidth", 280) : 280;
-    const auto minLfoHeight = uiConfig != nullptr ? uiConfig->getInt("mod.grid.minLfoHeight", 300) : 300;
-    const auto minEnvHeight = uiConfig != nullptr ? uiConfig->getInt("mod.grid.minEnvHeight", 280) : 280;
-
-    const auto colWidth = juce::jmax(minColWidth, juce::jmax(1, (panelArea.getWidth() - (2 * colGap)) / 3));
-    // Each row takes its own minimum first and only then shares what is left
-    // over. Halving the panel and giving the LFO row the first half meant that
-    // once the envelope cards grew, the ENV row's minimum pushed it PAST the
-    // bottom of the content - so the cards were cut off and there was nothing
-    // to scroll to, because the panel did not know it needed to be taller.
-    //
-    // A tail is held back below the last row, so there is somewhere to scroll
-    // to rather than the cards ending flush against the edge. It reads the same
-    // key the viewport adds to the content height, so the two cannot disagree.
-    const auto scrollTail = uiConfig != nullptr ? uiConfig->getInt("editor.layout.scrollTail", 30) : 30;
-    const auto usable = juce::jmax(1, panelArea.getHeight() - scrollTail);
-    const auto surplus = juce::jmax(0, usable - rowGap - minLfoHeight - minEnvHeight);
-
-    const auto lfoRowHeight = minLfoHeight + surplus / 2;
-    const auto envRowHeight = minEnvHeight + (surplus - surplus / 2);
-    const auto totalGridWidth = colWidth * 3 + colGap * 2;
-    const auto gridX = panelArea.getX() + juce::jmax(0, (panelArea.getWidth() - totalGridWidth) / 2);
-
-    auto lfoRow = juce::Rectangle<int>(gridX, panelArea.getY(), totalGridWidth, lfoRowHeight);
-    auto envRow = juce::Rectangle<int>(gridX, lfoRow.getBottom() + rowGap, totalGridWidth, envRowHeight);
-
-    std::array<juce::Rectangle<int>, 3> lfoCells {};
-    std::array<juce::Rectangle<int>, 3> envCells {};
-    for (int i = 0; i < 3; ++i)
-    {
-        const auto x = gridX + i * (colWidth + colGap);
-        lfoCells[static_cast<std::size_t>(i)] = juce::Rectangle<int>(x, lfoRow.getY(), colWidth, lfoRow.getHeight());
-        envCells[static_cast<std::size_t>(i)] = juce::Rectangle<int>(x, envRow.getY(), colWidth, envRow.getHeight());
-    }
-
-    lfoComponent->setBounds(lfoCells[0].reduced(2, 2));
-    extraLfos[0].component->setBounds(lfoCells[1].reduced(2, 2));
-    extraLfos[1].component->setBounds(lfoCells[2].reduced(2, 2));
-
-    for (int i = 0; i < static_cast<int>(envelopes.size()); ++i)
-    {
-        envelopes[static_cast<std::size_t>(i)].component->setBounds(envCells[static_cast<std::size_t>(i)].reduced(2, 2));
-    }
-
-    // Each card's jack in its top-right corner, across from the power button:
-    // the power button's own rectangle mirrored to the right edge, so the two
-    // are the same size and sit level in the title band on every card.
-    for (int i = 0; i < static_cast<int>(cardSockets.size()); ++i)
-    {
-        auto* socket = cardSockets[static_cast<std::size_t>(i)].get();
-        if (socket == nullptr) { continue; }
-        const juce::Component* card = i == 0 ? static_cast<juce::Component*>(lfoComponent.get())
-                                    : i < 3 ? static_cast<juce::Component*>(extraLfos[static_cast<std::size_t>(i - 1)].component.get())
-                                            : static_cast<juce::Component*>(envelopes[static_cast<std::size_t>(i - 3)].component.get());
-        if (card == nullptr) { continue; }
-        const auto power = i < 3 ? static_cast<const LfoComponent*>(card)->powerBoundsInParent()
-                                 : static_cast<const EnvelopeComponent*>(card)->powerBoundsInParent();
-        const auto inset = power.getX() - card->getX();
-        socket->setBounds(card->getRight() - inset - power.getWidth(), power.getY(), power.getWidth(), power.getHeight());
-        socket->toFront(false);
-    }
+    lfoTabs.setBounds(panelArea.removeFromLeft((panelArea.getWidth() - 1) / 2));
+    panelArea.removeFromLeft(1);
+    envTabs.setBounds(panelArea);
 }
 
 int ModPanel::getPreferredContentWidth() const
