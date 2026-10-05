@@ -691,9 +691,10 @@ void testEditorLifecycle()
         };
             walk(*editor);
 
-            // 1518 x 884 since 0.8.2 (918 in 0.8.1, 938 before): VOICE row 1 tightened.
+            // 1488 x 884 since 0.8.2 (1518 x 918 in 0.8.1, 938 before): VOICE row 1
+            // tightened, then 30 px off the width.
             check("Editor_DefaultWindowSize",
-              editor->getWidth() == 1518 && editor->getHeight() == 884,
+              editor->getWidth() == 1488 && editor->getHeight() == 884,
               juce::String(editor->getWidth()) + "x" + juce::String(editor->getHeight()));
             const auto defaultPanel = panel != nullptr ? panel->getHeight() : 0;
         const auto defaultHeight = editor->getHeight();
