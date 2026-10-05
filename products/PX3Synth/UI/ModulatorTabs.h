@@ -16,7 +16,7 @@
 // jack sits on its tab, so a modulator can be patched without switching to it.
 //
 // The tabs are the top menu's: a flat key on the rail, a lifted face with the
-// identity colour as an underline when selected, a faint wash on hover, 1 px
+// identity colour along its top edge when selected, a faint wash on hover, 1 px
 // seams.
 class ModulatorTabs final : public juce::Component
 {
@@ -127,10 +127,8 @@ public:
             }
             if (on)
             {
-                g.setColour(juce::Colours::white.withAlpha(0.10f));
-                g.fillRect(tab.withHeight(1.0f));
                 g.setColour(accent);
-                g.fillRect(tab.withTop(tab.getBottom() - th::space::accentBar));
+                g.fillRect(tab.withHeight(th::space::accentBar));
             }
 
             auto text = tab.reduced(10.0f, 0.0f);

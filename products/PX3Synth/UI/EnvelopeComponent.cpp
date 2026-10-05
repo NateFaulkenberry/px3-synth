@@ -664,22 +664,19 @@ void EnvelopeComponent::layoutCompact()
     }
     area.removeFromTop(c::gap);
 
-    // Two knob rows under the display; the knobs give way before the display does.
-    const auto knob = juce::jlimit(20, 40, (area.getHeight() - 56 - 2 * (c::captionHeight + c::readoutHeight + 2) - c::gap * 2) / 2);
-    const auto knobRow = c::knobRowHeight(knob);
+    // One knob row under the display, in two groups - A D S R | AMOUNT KEY -
+    // so the display gets the height a second row would take. The knobs give
+    // way before the display does.
+    const auto knob = juce::jlimit(20, 40, area.getHeight() - 56 - (c::captionHeight + c::readoutHeight + 2) - c::gap);
+    auto row = area.removeFromBottom(c::knobRowHeight(knob));
 
-    // AMOUNT | KEY
-    {
-        const auto cell = c::cells(area.removeFromBottom(knobRow), 2);
-        if (amountKnob != nullptr) { c::knobCell(cell[0], amountLabel, *amountKnob, amountValueLabel, knob); }
-        if (keyKnob != nullptr) { c::knobCell(cell[1], keyLabel, *keyKnob, keyValueLabel, knob); }
-    }
-    area.removeFromBottom(c::gap);
-
-    // A D S R
     if (adsrKnobsBuilt)
     {
-        const auto cell = c::cells(area.removeFromBottom(knobRow), 4);
+        // Each group's cells the same width; a wider gap marks the split.
+        constexpr auto groupGap = 12;
+        auto adsrArea = row.removeFromLeft((row.getWidth() - groupGap) * 4 / 6);
+        row.removeFromLeft(groupGap);
+        const auto cell = c::cells(adsrArea, 4);
         constexpr const char* names[] { "ATK", "DEC", "SUS", "REL" };
         for (int i = 0; i < 4; ++i)
         {
@@ -687,9 +684,16 @@ void EnvelopeComponent::layoutCompact()
             entry.label.setText(names[i], juce::dontSendNotification);
             c::knobCell(cell[static_cast<std::size_t>(i)], &entry.label, entry.knob, &entry.readout, knob);
         }
-        // Clear of the display, so the captions do not read as part of it.
-        area.removeFromBottom(6);
     }
+
+    {
+        const auto cell = c::cells(row, 2);
+        if (amountKnob != nullptr) { c::knobCell(cell[0], amountLabel, *amountKnob, amountValueLabel, knob); }
+        if (keyKnob != nullptr) { c::knobCell(cell[1], keyLabel, *keyKnob, keyValueLabel, knob); }
+    }
+
+    // Clear of the display, so the captions do not read as part of it.
+    area.removeFromBottom(6);
 
     compactGraph = area;
 }

@@ -705,7 +705,9 @@ void testEnvelopeModes()
                 // short, because the TYPE selector is still there.
                 // 0.8.0 dense layout: in the compact module the TYPE selector
                 // left the knobs' row, so a mod envelope's four knobs span it.
-                // Since 0.8.2 TYPE sits in the top row, where ASSIGN was.
+                // Since 0.8.2 TYPE sits in the top row, where ASSIGN was, and
+                // the knobs are one row: A D S R in the left two thirds, AMOUNT
+                // and KEY beside them.
                 auto typeApart = false;
                 if (modCard != nullptr)
                 {
@@ -713,11 +715,15 @@ void testEnvelopeModes()
                     const auto box = modCard->debugModeBox().getBounds();
                     typeApart = ! box.isEmpty() && ! group.isEmpty() && box.getBottom() <= group.getY();
                     const auto content = modCard->getLocalBounds().reduced(8, 0).getWidth();
+                    const auto amount = modCard->debugAmountKnobBounds();
+                    const auto amountBeside = ! amount.isEmpty() && amount.getX() >= group.getRight()
+                                              && amount.getCentreY() > group.getY() && amount.getCentreY() < group.getBottom();
                     juce::ignoreUnused(modSpan);
                     check("EnvKnobs_ModEnvKnobsTakeTheirOwnRowInTheCompactModule",
-                          typeApart && group.getWidth() > content * 0.85,
+                          typeApart && amountBeside && group.getWidth() > content * 0.55,
                           "ENV 1's knobs span " + juce::String(group.getWidth()) + " of " + juce::String(content)
-                              + " px, TYPE " + (typeApart ? "in the top row, above them" : "NOT ABOVE THEM"));
+                              + " px, TYPE " + (typeApart ? "in the top row, above them" : "NOT ABOVE THEM")
+                              + ", AMOUNT " + (amountBeside ? "beside them" : "NOT BESIDE THEM"));
                 }
                 else
                 {

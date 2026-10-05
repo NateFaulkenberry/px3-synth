@@ -79,6 +79,7 @@ public:
     { return adsrKnobs[static_cast<std::size_t>(juce::jlimit(0, 3, i))].label; }
     // For the tests: the mode selector, and whether the ADSR knobs are showing.
     juce::ComboBox& debugModeBox() { return modeBox; }
+    juce::Rectangle<int> debugAmountKnobBounds() const { return amountKnob != nullptr ? amountKnob->getBounds() : juce::Rectangle<int>(); }
     bool debugAdsrKnobsVisible() const
     { return adsrKnobsBuilt && adsrKnobs[0].knob.isVisible(); }
 
