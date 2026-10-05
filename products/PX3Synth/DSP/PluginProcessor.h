@@ -73,8 +73,8 @@ class PX3SynthAudioProcessor final : public juce::AudioProcessor,
                                      private juce::AsyncUpdater
 {
 public:
-    // LFO 1..4 and ENV 1..4. Adding one is a parameter-schema change: see
-    // kCurrentStateVersion and the migration in PluginProcessorState.cpp.
+    // LFO 1..4 and ENV 1..4. Adding one changes the parameter schema, so state
+    // saved before the change no longer loads (the schema fingerprint check).
     static constexpr int kLfoSourceCount = 4;
     static constexpr int kEnvelopeSourceCount = 4;
     static constexpr int kMixerSourceCount = 4;
@@ -799,12 +799,6 @@ public:
     juce::ValueTree createParameterStateTree() const;
     juce::ValueTree createPresetStateTree() const;
     const px3::synth::ParameterCatalog& getParameterCatalog() const noexcept { return parameterCatalog; }
-    // Any state this build can read, brought to kCurrentStateVersion: a copy,
-    // or an invalid tree with `error` set. Version 1 (0.8.0/0.8.1) is migrated
-    // strictly - see ParameterCatalog::migrateParametersFromVersion1. Every
-    // path that loads state - host recall, preset load, the preset index -
-    // goes through here, so they cannot disagree about what loads.
-    juce::ValueTree upgradeStateTree(const juce::ValueTree& state, juce::String& error) const;
     bool applyParameterStateTree(const juce::ValueTree& state,
                                  juce::String* error = nullptr,
                                  bool restoreUiSessionState = true);

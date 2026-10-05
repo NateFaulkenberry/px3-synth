@@ -288,117 +288,22 @@ void ParameterCatalog::attachTo(juce::AudioProcessor& processor)
         processor.addParameterGroup(std::move(group));
     }
     rootGroups.clear();
-    const auto fingerprintOf = [this](bool version1)
+    juce::Array<juce::var> schema;
+    for (const auto& entry : catalogEntries)
     {
-        juce::Array<juce::var> schema;
-        for (const auto& entry : catalogEntries)
+        juce::Array<juce::var> choices;
+        if (entry.definition != nullptr)
         {
-            if (version1 && introducedInStateVersion2(entry.id)) { continue; }
-            juce::Array<juce::var> choices;
-            if (entry.definition != nullptr)
-            {
-                for (const auto& choice : entry.definition->choices) { choices.add(choice); }
-            }
-            const auto kind = entry.definition != nullptr ? static_cast<int>(entry.definition->kind) : -1;
-            const auto skew = entry.definition != nullptr ? entry.definition->range.skew : 1.0f;
-            schema.add(juce::var(juce::Array<juce::var> {
-                entry.id, kind, entry.minimum, entry.maximum, entry.interval, entry.defaultValue, skew, juce::var(choices) }));
+            for (const auto& choice : entry.definition->choices) { choices.add(choice); }
         }
-        const auto text = juce::JSON::toString(juce::var(schema), true);
-        return juce::SHA256(text.toRawUTF8(), static_cast<std::size_t>(text.getNumBytesAsUTF8())).toHexString();
-    };
-    schemaFingerprint = fingerprintOf(false);
-    version1Fingerprint = fingerprintOf(true);
+        const auto kind = entry.definition != nullptr ? static_cast<int>(entry.definition->kind) : -1;
+        const auto skew = entry.definition != nullptr ? entry.definition->range.skew : 1.0f;
+        schema.add(juce::var(juce::Array<juce::var> {
+            entry.id, kind, entry.minimum, entry.maximum, entry.interval, entry.defaultValue, skew, juce::var(choices) }));
+    }
+    const auto text = juce::JSON::toString(juce::var(schema), true);
+    schemaFingerprint = juce::SHA256(text.toRawUTF8(), static_cast<std::size_t>(text.getNumBytesAsUTF8())).toHexString();
     attached = true;
-}
-
-bool ParameterCatalog::introducedInStateVersion2(const juce::String& id)
-{
-    return id.startsWith("mod.lfo4.") || id.startsWith("mod.env4.");
-}
-
-bool ParameterCatalog::migrateParametersFromVersion1(juce::ValueTree& parameters, juce::String& error) const
-{
-    if (parameters.getType() != juce::Identifier("PARAMETERS"))
-    {
-        error = "Grouped parameter state is missing or invalid.";
-        return false;
-    }
-    if (version1Fingerprint.isEmpty() || parameters.getProperty("schemaFingerprint").toString() != version1Fingerprint)
-    {
-        error = "Parameter schema does not match this PX3 generation.";
-        return false;
-    }
-
-    // Exactly the version-1 set: every one of its parameters, and none of the
-    // new ones - a tree that already has some is not a version-1 tree.
-    auto expected = 0;
-    for (const auto& entry : catalogEntries)
-    {
-        const auto present = findStateEntry(parameters, entry.id).isValid();
-        if (introducedInStateVersion2(entry.id))
-        {
-            if (present)
-            {
-                error = "Version-1 parameter state contains " + entry.id + ", which version 1 did not have.";
-                return false;
-            }
-            continue;
-        }
-        ++expected;
-        if (! present)
-        {
-            error = "Grouped parameter state is missing a numeric value for " + entry.id;
-            return false;
-        }
-    }
-    auto count = 0;
-    std::function<void(const juce::ValueTree&)> countParameters = [&](const juce::ValueTree& node)
-    {
-        if (node.getType() == juce::Identifier("PARAMETER")) { ++count; }
-        for (const auto& child : node) { countParameters(child); }
-    };
-    countParameters(parameters);
-    if (count != expected)
-    {
-        error = "Grouped parameter state has missing or duplicate parameters.";
-        return false;
-    }
-
-    // The new parameters, at their defaults, where createStateTree puts them.
-    for (const auto& entry : catalogEntries)
-    {
-        if (! introducedInStateVersion2(entry.id)) { continue; }
-        auto parent = parameters;
-        for (std::size_t i = 0; i < entry.groupIds.size(); ++i)
-        {
-            auto child = juce::ValueTree();
-            for (const auto& candidate : parent)
-            {
-                if (candidate.getType() == juce::Identifier("GROUP")
-                    && candidate.getProperty("id").toString() == entry.groupIds[i])
-                {
-                    child = candidate;
-                    break;
-                }
-            }
-            if (! child.isValid())
-            {
-                child = juce::ValueTree("GROUP");
-                child.setProperty("id", entry.groupIds[i], nullptr);
-                child.setProperty("name", entry.groupNames[i], nullptr);
-                parent.addChild(child, -1, nullptr);
-            }
-            parent = child;
-        }
-        juce::ValueTree value("PARAMETER");
-        value.setProperty("id", entry.id, nullptr);
-        value.setProperty("value", entry.parameter != nullptr ? entry.parameter->getDefaultValue() : 0.0f, nullptr);
-        parent.addChild(value, -1, nullptr);
-    }
-    parameters.setProperty("schemaFingerprint", schemaFingerprint, nullptr);
-    error.clear();
-    return true;
 }
 
 const ParameterCatalogEntry* ParameterCatalog::find(const juce::String& id) const noexcept

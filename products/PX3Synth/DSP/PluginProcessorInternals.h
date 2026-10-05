@@ -32,11 +32,7 @@ inline float channelFaderMaxGain()
 
 // 0.8 starts a grouped parameter-state schema. No 0.7 parameter-property
 // reader or migration is retained.
-//
-// 1: 0.8.0 and 0.8.1.
-// 2: 0.8.2 - LFO 4 and ENV 4. Version 1 is upgraded on load
-//    (PX3SynthAudioProcessor::upgradeStateTree); nothing older is.
-inline constexpr int kCurrentStateVersion = 2;
+inline constexpr int kCurrentStateVersion = 1;
 
 inline const juce::Identifier kStateTypeId("PX3_STATE");
 inline const juce::Identifier kStateVersionId("stateVersion");

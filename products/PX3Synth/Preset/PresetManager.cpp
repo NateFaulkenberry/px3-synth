@@ -1191,19 +1191,12 @@ juce::ValueTree PresetManager::migratePresetTreeIfNeeded(const juce::ValueTree& 
         return {};
     }
 
-    const auto stored = presetTree.getChildWithName(kPluginStateId);
-    if (! stored.isValid())
+    const auto state = presetTree.getChildWithName(kPluginStateId);
+    if (!state.isValid()
+        || static_cast<int>(state.getProperty("stateVersion", 0))
+               != px3::processor_internal::kCurrentStateVersion)
     {
         error = "Preset contains an unsupported PX3 state schema.";
-        return {};
-    }
-    // A preset saved by an earlier 0.8 is brought to this version here, so it
-    // lists, loads and validates like one saved today.
-    juce::String upgradeError;
-    const auto state = processor.upgradeStateTree(stored, upgradeError);
-    if (! state.isValid())
-    {
-        error = upgradeError.isNotEmpty() ? upgradeError : juce::String("Preset contains an unsupported PX3 state schema.");
         return {};
     }
 
@@ -1221,10 +1214,7 @@ juce::ValueTree PresetManager::migratePresetTreeIfNeeded(const juce::ValueTree& 
     }
 
     error.clear();
-    auto migrated = presetTree.createCopy();
-    migrated.removeChild(migrated.getChildWithName(kPluginStateId), nullptr);
-    migrated.addChild(state, -1, nullptr);
-    return migrated;
+    return presetTree.createCopy();
 }
 
 bool PresetManager::collectAssetsForState(juce::ValueTree& pluginState,
