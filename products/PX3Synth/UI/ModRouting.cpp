@@ -92,37 +92,13 @@ bool sourceIsBipolar(int source) { return juce::isPositiveAndBelow(source, kLfos
 
 juce::String RouteInfo::key() const
 {
-    const char* kinds[] { "g", "c", "m" };
+    const char* kinds[] { "g", "m" };
     return juce::String(kinds[static_cast<int>(kind)]) + juce::String(slot) + ":" + juce::String(source) + ">" + destination;
 }
 
 std::vector<RouteInfo> collectRoutes(const Processor& processor)
 {
     std::vector<RouteInfo> routes;
-    for (int lfo = 0; lfo < kLfos; ++lfo)
-    {
-        const auto id = processor.getLfoAssignmentParameterId(lfo);
-        if (id.isEmpty() || id == "none") { continue; }
-        RouteInfo r;
-        r.kind = RouteInfo::Kind::card;
-        r.slot = lfo;
-        r.source = lfo;
-        r.destination = id;
-        r.depth = processor.getLfoAmountParam(lfo).get();
-        routes.push_back(r);
-    }
-    for (int env = 0; env < kEnvs; ++env)
-    {
-        const auto id = processor.getEnvelopeAssignmentParameterId(env);
-        if (id.isEmpty() || id == "none") { continue; }
-        RouteInfo r;
-        r.kind = RouteInfo::Kind::card;
-        r.slot = kLfos + env;
-        r.source = kLfos + env;
-        r.destination = id;
-        r.depth = processor.getEnvelopeAmountParam(env).get();
-        routes.push_back(r);
-    }
     for (int macro = 0; macro < Processor::kMacroCount; ++macro)
     {
         for (const auto& destination : processor.getMacroDestinations(macro))
@@ -193,9 +169,6 @@ bool removeRoute(Processor& processor, const RouteInfo& route)
             juce::String error;
             return processor.setGraphRoute(route.slot, {}, error);
         }
-        case RouteInfo::Kind::card:
-            return route.source < kLfos ? processor.setLfoAssignmentIndex(route.source, 0)
-                                        : processor.setEnvelopeAssignmentIndex(route.source - kLfos, 0);
         case RouteInfo::Kind::macro:
             if (processor.isMacroDestination(route.slot, route.destination))
             {
@@ -730,23 +703,15 @@ public:
         {
             destinationGroup = groupLabelFor(*entry);
         }
-        originText = route.kind == RouteInfo::Kind::card ? "CARD"
-                     : route.kind == RouteInfo::Kind::macro ? "MACRO" : "S" + juce::String(route.slot + 1);
+        originText = route.kind == RouteInfo::Kind::macro ? "MACRO" : "S" + juce::String(route.slot + 1);
         setTooltip(Processor::graphSourceName(route.source) + " > " + destinationText + "  ("
-                   + (route.kind == RouteInfo::Kind::card ? juce::String("card ASSIGN")
-                      : route.kind == RouteInfo::Kind::macro ? juce::String("macro destination")
+                   + (route.kind == RouteInfo::Kind::macro ? juce::String("macro destination")
                                                               : "matrix slot " + juce::String(route.slot + 1))
                    + ")");
 
         if (route.kind == RouteInfo::Kind::graph)
         {
             attachment = std::make_unique<juce::SliderParameterAttachment>(proc.getGraphRouteDepthParam(route.slot), depth, nullptr);
-        }
-        else if (route.kind == RouteInfo::Kind::card)
-        {
-            auto& parameter = route.source < kLfos ? proc.getLfoAmountParam(route.source)
-                                                   : proc.getEnvelopeAmountParam(route.source - kLfos);
-            attachment = std::make_unique<juce::SliderParameterAttachment>(parameter, depth, nullptr);
         }
         else
         {

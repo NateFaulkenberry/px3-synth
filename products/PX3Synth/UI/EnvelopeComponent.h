@@ -27,11 +27,6 @@ public:
                       juce::AudioParameterFloat& releaseIn,
                       juce::AudioParameterBool& enabledIn,
                       juce::ToggleButton& enabledButtonIn,
-                      juce::Label& assignLabelIn,
-                      juce::ComboBox& assignBoxIn,
-                      juce::Slider* amountKnobIn,
-                      juce::Label* amountLabelIn,
-                      juce::Label* amountValueLabelIn,
                       juce::Colour accentIn,
                       const juce::String& configPrefixIn = "mod.env1");
 
@@ -52,8 +47,8 @@ public:
     // The parent panel content box: reference for percentage dimensions.
     void setPanelContentBounds(juce::Rectangle<int> panelContent);
 
-    // ENV 1-3 only: the LOOP switch and the KEY (key tracking) knob, placed
-    // either side of AMOUNT. The owner keeps them; the card adds and lays them.
+    // ENV 1-4 only: the LOOP switch and the KEY (key tracking) knob. The owner
+    // keeps them; the card adds and lays them.
     void setLoopAndKeyControls(juce::Button* loop, juce::Slider* key,
                                juce::Label* keyLabel, juce::Label* keyValue);
     void refreshFromParameters();
@@ -79,7 +74,7 @@ public:
     { return adsrKnobs[static_cast<std::size_t>(juce::jlimit(0, 3, i))].label; }
     // For the tests: the mode selector, and whether the ADSR knobs are showing.
     juce::ComboBox& debugModeBox() { return modeBox; }
-    juce::Rectangle<int> debugAmountKnobBounds() const { return amountKnob != nullptr ? amountKnob->getBounds() : juce::Rectangle<int>(); }
+    juce::Rectangle<int> debugKeyKnobBounds() const { return keyKnob != nullptr ? keyKnob->getBounds() : juce::Rectangle<int>(); }
     bool debugAdsrKnobsVisible() const
     { return adsrKnobsBuilt && adsrKnobs[0].knob.isVisible(); }
 
@@ -165,8 +160,8 @@ public:
     }
     std::function<void(const px3::BreakpointEnvelope&)> onEnvelopeEdited;
 
-    // Dense module interior (VOICE's modulator row): ASSIGN / LOOP / SYNC,
-    // the envelope display, A D S R, then MODE / AMOUNT / KEY.
+    // Dense module interior (VOICE's modulator row): TYPE / LOOP / SYNC, then
+    // the envelope display, then A D S R | KEY.
     void setCompactLayout(bool shouldBeCompact) { if (compactLayout != shouldBeCompact) { compactLayout = shouldBeCompact; resized(); } }
 
     void resized() override;
@@ -205,10 +200,8 @@ private:
     juce::AudioParameterFloat& release;
     juce::AudioParameterBool& enabled;
     juce::ToggleButton& enabledButton;
-    juce::Label& assignLabel;
-    juce::ComboBox& assignBox;
     // ATTACK | DECAY | SUSTAIN | RELEASE, under the graph. Owned here rather
-    // than handed in like the amount knob, because both cards want the same
+    // than handed in like the KEY knob, because both cards want the same
     // four and neither has anywhere else to put them. Built only when the
     // card's config asks for them: see adsrKnobsWanted().
     struct AdsrKnob
@@ -246,22 +239,17 @@ private:
     // row is below it.
     juce::Rectangle<int> graphBounds() const;
 
-    // ADSR | Breakpoint. Styled through the shared combo style, like the
-    // assignment boxes beside it.
+    // ADSR | Breakpoint. Styled through the shared combo style.
     juce::ComboBox modeBox;
     px3::ui::ChipLabel modeLabel;
     px3::BreakpointEnvelope::Mode envelopeMode { px3::BreakpointEnvelope::Mode::adsr };
     void applyModeToControls();
     void layoutModeSelector();
 
-    juce::Slider* amountKnob { nullptr };
     juce::Button* loopButton { nullptr };
     juce::Slider* keyKnob { nullptr };
     juce::Label* keyLabel { nullptr };
     juce::Label* keyValueLabel { nullptr };
-    juce::Label* amountLabel { nullptr };
-    juce::Label* amountValueLabel { nullptr };
-    juce::Colour baseAmountValueTextColour;
     juce::Colour accent;
     std::shared_ptr<const UIConfig> uiConfig;
     float lastAttack { -1.0f };

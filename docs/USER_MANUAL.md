@@ -630,7 +630,9 @@ A jack's centre fills in once it has at least one route. A source can drive many
 destinations, and a destination can take many sources; up to 64 routes in all.
 
 > **Changed in v0.8.2:** the ASSIGN menus are gone from the LFO and ENV cards.
-> Routing is the patch bay's job: drag a jack, or use the MOD page.
+> Routing is the patch bay's job: drag a jack, or use the MOD page. The cards'
+> AMOUNT knobs, which only ever set the depth of an ASSIGN route, are gone too:
+> every route's depth is set on the MOD page.
 
 ## LFOs
 
@@ -648,12 +650,9 @@ beneath:
 | **DIVISION** | The note length for TEMPO and TRANSPORT: 4 BARS, 2 BARS, 1 BAR, 1/2, 1/4, 1/8, 1/16, 1/8T |
 | **RATE** | 0.01 Hz to 20 Hz, for the cyclic shapes in FREE. Reads SYNC when the clock is tempo-locked |
 | **TIME** | 0.05 s to 60 s. Takes RATE's place for RAMP UP and RAMP DOWN |
-| **AMOUNT** | See the note below |
 
-> **Note:** the card's AMOUNT knob does **not** set the depth of routes you patch
-> from the jack. Every route has its own depth, set on the MOD page. AMOUNT is
-> left over from the old ASSIGN menu and has no effect on a patch made in this
-> version.
+How far an LFO moves what it is patched to is not set on the card: every route
+has its own depth, on the [MOD page](#mod--the-modulation-matrix).
 
 **Sound:** A sine or triangle gives smooth movement — vibrato on pitch, a gentle
 sweep on cutoff. A square jumps between two values, useful for trills and gated
@@ -703,7 +702,6 @@ it:
 | **LOOP** | While the key is held, the envelope restarts its attack/decay each time it reaches sustain — a repeating, rhythmic contour |
 | **SYNC** | Snaps attack, decay and release to musical note lengths at the current tempo (host or MIDI clock) |
 | **ATK / DEC / SUS / REL** | The four ADSR knobs |
-| **AMOUNT** | Like the LFO card's, it does not set the depth of patched routes — that is on the MOD page |
 | **KEY** | Keyboard tracking, 0 to 100%: higher notes run the whole envelope faster (an octave up is twice as fast at 100%) |
 
 Clicking the card's background, away from its controls, switches it on or off,
@@ -1781,8 +1779,7 @@ keeps showing what you set. See
 ### A modulation route does nothing
 
 - Check the source's card is switched on.
-- Check the route's AMOUNT on the MOD page — the AMOUNT knob on the LFO or ENV
-  card does not affect patched routes.
+- Check the route's AMOUNT on the MOD page — a route at 0% does nothing.
 - An LFO on a TEMPO or TRANSPORT clock needs a host tempo or MIDI clock; its
   display says NO HOST CLOCK when there is none.
 - An envelope only moves while notes play.

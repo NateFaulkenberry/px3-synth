@@ -41,11 +41,11 @@ bool sourceIsBipolar(int source);
 
 struct RouteInfo
 {
-    // graph: an editable slot of the modulation matrix. card: an LFO/ENV card's
-    // ASSIGN menu. macro: a macro destination (assigned from the macro strip).
-    enum class Kind { graph, card, macro };
+    // graph: an editable slot of the modulation matrix. macro: a macro
+    // destination (assigned from the macro strip).
+    enum class Kind { graph, macro };
     Kind kind { Kind::graph };
-    int slot { -1 };     // graph slot; for card the source; for macro the macro index
+    int slot { -1 };     // graph slot; for macro the macro index
     int source { -1 };   // graph source index (0..kSourceCount-1)
     juce::String destination;
     float depth { 0.0f };

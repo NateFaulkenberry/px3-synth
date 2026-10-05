@@ -181,6 +181,20 @@ inline bool nearly(double a, double b, double tolerance)
 //==============================================================================
 // Processor helpers
 //==============================================================================
+// One patch-bay route, as the MOD page makes it: a graph slot, a source
+// (LFO 1-4 = 0-3, ENV 1-4 = 4-7, then the macros), a destination and a depth
+// of -1..1. Returns false, and makes nothing, if the destination cannot be
+// modulated.
+inline bool routeModulation(PX3SynthAudioProcessor& processor, int slot, int source,
+                            const juce::String& destination, float depth)
+{
+    juce::String error;
+    if (! processor.setGraphRoute(slot, { source, destination }, error)) { return false; }
+    auto& depthParameter = processor.getGraphRouteDepthParam(slot);
+    depthParameter.setValueNotifyingHost(depthParameter.convertTo0to1(depth));
+    return true;
+}
+
 inline juce::RangedAudioParameter* findParameter(juce::AudioProcessor& processor, const juce::String& id)
 {
     for (auto* parameter : processor.getParameters())
@@ -565,12 +579,8 @@ inline void makePlainPatch(PX3SynthAudioProcessor& processor)
     {
         const auto slot = juce::String(i + 1);
         setParam(processor, juce::String("mod.env") + slot + ".enabled", 0.0f);
-        setParam(processor, i == 0 ? juce::String("mod.env1.amount") : juce::String("mod.env") + slot + ".amount", 0.0f);
         const auto lfoPrefix = juce::String("mod.lfo") + slot + ".";
         setParam(processor, i == 0 ? juce::String("mod.lfo1.enabled") : lfoPrefix + "enabled", 0.0f);
-        setParam(processor, i == 0 ? juce::String("mod.lfo1.amount") : lfoPrefix + "amount", 0.0f);
-        processor.setLfoAssignmentIndex(i, 0, false);
-        processor.setEnvelopeAssignmentIndex(i, 0, false);
     }
 
     for (const auto* id : { "sub", "osc1", "osc2", "osc3" })

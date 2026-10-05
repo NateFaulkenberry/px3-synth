@@ -15,11 +15,6 @@ EnvelopeComponent::EnvelopeComponent(juce::AudioParameterFloat& attackIn,
                                                                          juce::AudioParameterFloat& releaseIn,
                                                                          juce::AudioParameterBool& enabledIn,
                                                                          juce::ToggleButton& enabledButtonIn,
-                                                                         juce::Label& assignLabelIn,
-                                                                         juce::ComboBox& assignBoxIn,
-                                                                         juce::Slider* amountKnobIn,
-                                                                         juce::Label* amountLabelIn,
-                                                                         juce::Label* amountValueLabelIn,
                                                                          juce::Colour accentIn,
                                                                          const juce::String& configPrefixIn)
         : attack(attackIn),
@@ -28,17 +23,12 @@ EnvelopeComponent::EnvelopeComponent(juce::AudioParameterFloat& attackIn,
             release(releaseIn),
             enabled(enabledIn),
             enabledButton(enabledButtonIn),
-            assignLabel(assignLabelIn),
-            assignBox(assignBoxIn),
-            amountKnob(amountKnobIn),
-            amountLabel(amountLabelIn),
-            amountValueLabel(amountValueLabelIn),
             accent(accentIn),
             configPrefix(configPrefixIn)
 {
     // The graph is a breakpoint editor now. It draws the same curve the DSP
-    // evaluates and reports every edit; this component still owns the card, the
-    // labels and the assignment box around it.
+    // evaluates and reports every edit; this component still owns the card and
+    // the controls around it.
     addAndMakeVisible(breakpointEditor);
     breakpointEditor.setConfigPrefix(configPrefixIn);
 
@@ -87,23 +77,6 @@ EnvelopeComponent::EnvelopeComponent(juce::AudioParameterFloat& attackIn,
         cardTitle = cardStyleKey.toUpperCase().replace("ENV", "ENV ");
 
         addAndMakeVisible(enabledButton);
-        // ASSIGN is no longer shown: routing is the patch cables' job. The
-        // pair stays a (hidden) child so its wiring and refresh are unchanged.
-        addChildComponent(assignLabel);
-        addChildComponent(assignBox);
-        if (amountKnob != nullptr)
-        {
-            addAndMakeVisible(*amountKnob);
-        }
-        if (amountLabel != nullptr)
-        {
-            addAndMakeVisible(*amountLabel);
-        }
-        if (amountValueLabel != nullptr)
-        {
-            baseAmountValueTextColour = amountValueLabel->findColour(juce::Label::textColourId);
-            addAndMakeVisible(*amountValueLabel);
-        }
         setMouseCursor(juce::MouseCursor::NormalCursor);
     refreshFromParameters();
 }
@@ -136,8 +109,8 @@ void EnvelopeComponent::setUIConfig(std::shared_ptr<const UIConfig> configIn)
 {
     breakpointEditor.setUIConfig(configIn);
 
-    // The mode box takes the same combo styling as the assignment boxes, so it
-    // reads as part of the card rather than as a control from somewhere else.
+    // The mode box takes the shared combo styling, so it reads as part of the
+    // card rather than as a control from somewhere else.
     if (configIn != nullptr)
     {
         configIn->applyComboStyle(configIn->getObject("styles.combos.default"), modeBox);
@@ -174,25 +147,6 @@ void EnvelopeComponent::refreshFromParameters()
         currentEnabled = nextEnabled;
         breakpointEditor.setEnvelopeEnabled(currentEnabled);
         enabledButton.setToggleState(currentEnabled, juce::dontSendNotification);
-        assignLabel.setEnabled(currentEnabled);
-        assignBox.setEnabled(currentEnabled);
-        if (amountKnob != nullptr)
-        {
-            amountKnob->setEnabled(currentEnabled);
-            amountKnob->setInterceptsMouseClicks(currentEnabled, currentEnabled);
-            amountKnob->getProperties().set("knobBypassed", !currentEnabled);
-            amountKnob->getProperties().set("psychedelicBypassGray", !currentEnabled);
-        }
-        if (amountValueLabel != nullptr)
-        {
-            amountValueLabel->setEnabled(currentEnabled);
-            amountValueLabel->setColour(juce::Label::textColourId,
-                                        currentEnabled ? baseAmountValueTextColour : juce::Colour::fromRGB(176, 176, 176));
-            const auto amountValue = amountKnob != nullptr ? static_cast<float>(amountKnob->getValue()) : 0.0f;
-            const auto amountPercent = static_cast<int>(std::lround(juce::jlimit(-1.0f, 1.0f, amountValue) * 100.0f));
-            const auto amountPrefix = amountPercent > 0 ? juce::String("+") : juce::String();
-            amountValueLabel->setText(amountPrefix + juce::String(amountPercent) + "%", juce::dontSendNotification);
-        }
         applyAdsrKnobState();
 
         // The rest of the card follows the same switch. MODE, LOOP, SYNC and
@@ -399,65 +353,38 @@ void EnvelopeComponent::resized()
 
     using px3::ui::ControlShape;
 
-    // Row 1: bypass and assign.
-    {
-        auto flex = inner.rowFlex(0);
-        const auto gap = inner.rowGap(0);
-        const auto row = inner.rowContent(0);
-        const auto cellHeight = static_cast<float>(juce::jmax(1, row.getHeight()));
-
-        flex.items.add(juce::FlexItem(116.0f, cellHeight).withMargin(gap));
-        flex.performLayout(row.toFloat());
-
-        const auto cell = [&flex](int i) { return flex.items.getReference(i).currentBounds.toNearestInt(); };
-        px3::ui::layoutLabelledControl(cell(0),
-                                       { &assignLabel, &assignBox, nullptr,
-                                         ControlShape::stretch, 14, 0, 24 },
-                                       inner.rowControl(0));
-    }
-
-    // Row 2: the amount knob, which the mod envelopes have and AMP ENV does
-    // not. It is knob-plus-readout with no label above, as it renders today.
-    if (amountKnob != nullptr && amountLabel != nullptr && amountValueLabel != nullptr)
+    // Row 2: LOOP (with SYNC under it) and KEY, which the mod envelopes have
+    // and AMP ENV does not.
+    if (loopButton != nullptr && keyKnob != nullptr)
     {
         auto flex = inner.rowFlex(1);
         const auto gap = inner.rowGap(1);
         const auto row = inner.rowContent(1);
-        const auto extras = loopButton != nullptr && keyKnob != nullptr;
         const auto cellHeight = static_cast<float>(juce::jmax(1, row.getHeight()));
 
-        // LOOP | AMOUNT | KEY when the card has them; AMOUNT alone otherwise.
-        if (extras) { flex.items.add(juce::FlexItem(84.0f, cellHeight).withMargin(gap)); }
         flex.items.add(juce::FlexItem(84.0f, cellHeight).withMargin(gap));
-        if (extras) { flex.items.add(juce::FlexItem(84.0f, cellHeight).withMargin(gap)); }
+        flex.items.add(juce::FlexItem(84.0f, cellHeight).withMargin(gap));
         flex.performLayout(row.toFloat());
         const auto cell = [&flex](int i) { return flex.items.getReference(i).currentBounds.toNearestInt(); };
 
+        const auto chipWidth = juce::jmin(64, cell(0).getWidth());
+        if (syncButton != nullptr)
+        {
+            loopButton->setBounds(juce::Rectangle<int>(chipWidth, 20)
+                                      .withCentre(cell(0).getCentre().translated(0, -12)));
+            syncButton->setBounds(juce::Rectangle<int>(chipWidth, 20)
+                                      .withCentre(cell(0).getCentre().translated(0, 12)));
+        }
+        else
+        {
+            loopButton->setBounds(juce::Rectangle<int>(chipWidth, 22).withCentre(cell(0).getCentre()));
+        }
         // Same label height, readout height and cap as the LFO knobs, so the
         // two card families read as one family.
-        px3::ui::layoutLabelledControl(cell(extras ? 1 : 0),
-                                       { amountLabel, amountKnob, amountValueLabel,
+        px3::ui::layoutLabelledControl(cell(1),
+                                       { keyLabel, keyKnob, keyValueLabel,
                                          ControlShape::square, 16, 20, 84 },
                                        inner.rowControl(1));
-        if (extras)
-        {
-            const auto chipWidth = juce::jmin(64, cell(0).getWidth());
-            if (syncButton != nullptr)
-            {
-                loopButton->setBounds(juce::Rectangle<int>(chipWidth, 20)
-                                          .withCentre(cell(0).getCentre().translated(0, -12)));
-                syncButton->setBounds(juce::Rectangle<int>(chipWidth, 20)
-                                          .withCentre(cell(0).getCentre().translated(0, 12)));
-            }
-            else
-            {
-                loopButton->setBounds(juce::Rectangle<int>(chipWidth, 22).withCentre(cell(0).getCentre()));
-            }
-            px3::ui::layoutLabelledControl(cell(2),
-                                           { keyLabel, keyKnob, keyValueLabel,
-                                             ControlShape::square, 16, 20, 84 },
-                                           inner.rowControl(1));
-        }
     }
 
     // Row 3 is the ADSR graph. computeGeometry() reads its bounds, which is
@@ -570,7 +497,7 @@ void EnvelopeComponent::applyAdsrKnobState()
 
     // TWO things gate these knobs, and both have to be consulted every time.
     //
-    // The card's bypass greys them, by the same two properties the AMOUNT knob
+    // The card's bypass greys them, by the same two properties the KEY knob
     // uses, or a bypassed card carries four knobs still drawn as if they were
     // live. Breakpoint mode disables them because four numbers do not describe
     // that envelope.
@@ -640,7 +567,7 @@ void EnvelopeComponent::layoutCompact()
     area.removeFromTop(c::headerClearance);
 
     // The editor on top and the controls under it, as on the LFO cards: one
-    // knob row - A D S R | AMOUNT KEY - then TYPE | LOOP | SYNC above it,
+    // knob row - A D S R | KEY - then TYPE | LOOP | SYNC above it,
     // placed from the bottom up so the editor takes what they leave. The
     // knobs give way before the editor does.
     const auto knob = juce::jlimit(20, 40, area.getHeight() - 56 - (c::captionHeight + c::readoutHeight + 2) - rowH - 2 * c::gap);
@@ -648,9 +575,10 @@ void EnvelopeComponent::layoutCompact()
 
     if (adsrKnobsBuilt)
     {
-        // Each group's cells the same width; a wider gap marks the split.
+        // Five cells the same width; a wider gap marks the split between the
+        // envelope's own four and KEY.
         constexpr auto groupGap = 12;
-        auto adsrArea = row.removeFromLeft((row.getWidth() - groupGap) * 4 / 6);
+        auto adsrArea = row.removeFromLeft((row.getWidth() - groupGap) * 4 / 5);
         row.removeFromLeft(groupGap);
         const auto cell = c::cells(adsrArea, 4);
         constexpr const char* names[] { "ATK", "DEC", "SUS", "REL" };
@@ -662,11 +590,7 @@ void EnvelopeComponent::layoutCompact()
         }
     }
 
-    {
-        const auto cell = c::cells(row, 2);
-        if (amountKnob != nullptr) { c::knobCell(cell[0], amountLabel, *amountKnob, amountValueLabel, knob); }
-        if (keyKnob != nullptr) { c::knobCell(cell[1], keyLabel, *keyKnob, keyValueLabel, knob); }
-    }
+    if (keyKnob != nullptr) { c::knobCell(row, keyLabel, *keyKnob, keyValueLabel, knob); }
     area.removeFromBottom(c::gap);
 
     // TYPE | LOOP | SYNC: TYPE (ADSR / BREAKPOINT) where ASSIGN used to be.
@@ -721,7 +645,7 @@ void EnvelopeComponent::buildAdsrKnobs()
     {
         auto& entry = adsrKnobs[static_cast<std::size_t>(i)];
 
-        // Styled exactly as the AMOUNT knob beside them, which is the same
+        // Styled exactly as the KEY knob beside them, which is the same
         // styling every other knob in the plugin carries: the shared rotary
         // look-and-feel, a chip caption above and a plain readout below.
         entry.knob.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);

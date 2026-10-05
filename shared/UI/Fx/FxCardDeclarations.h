@@ -103,7 +103,7 @@ inline void declareDriveRows(FxCardComponent& card, const juce::StringArray& typ
 {
     card.setDescription("Overdrive and distortion before the modulation and time effects. Level-matched, so DRIVE changes tone, not volume.");
     card.addChoiceRow({ { "type", "CLIP",
-                          "SOFT: smooth diode-style overdrive. HARD: op-amp style clipping. "
+                          "SOFT: smooth op-amp-style overdrive. HARD: diodes-to-ground clipping, buzzier. "
                           "ASYM: asymmetric, adds even harmonics",
                           typeChoices } });
 

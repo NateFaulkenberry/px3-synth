@@ -263,8 +263,8 @@ void ParameterCatalog::add(juce::AudioProcessorParameter* parameter)
         entry.defaultValue = entry.definition->defaultValue;
         const auto& key = entry.id;
         // The envelopes' own ADSR - AMP ENV's included - are destinations like
-        // any other control; they are "source controls" only in that the
-        // legacy per-LFO assign list leaves them out.
+        // any other control. They and the LFO rates are flagged as "source
+        // controls": settings of a modulator rather than of the sound.
         const auto isAdsr = key.endsWith(".attack") || key.endsWith(".decay")
                             || key.endsWith(".sustain") || key.endsWith(".release");
         entry.sourceControl = (key.startsWith("mod.lfo") && (key.endsWith(".frequency") || key.endsWith(".ramp.time")))

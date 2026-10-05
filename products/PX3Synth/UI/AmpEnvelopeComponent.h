@@ -37,8 +37,6 @@ private:
 
     juce::ToggleButton enabledButton;
     px3::ui::ChipLabel enabledLabel;
-    px3::ui::ChipLabel assignLabel;
-    juce::ComboBox assignBox;
 
     std::unique_ptr<EnvelopeComponent> envelopeGraph;
 };

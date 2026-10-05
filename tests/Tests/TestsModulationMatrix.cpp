@@ -47,7 +47,6 @@ void driveSource(Processor& processor, int source)
     {
         const auto prefix = ownPrefix(source);
         setParam(processor, prefix + "enabled", 1.0f);
-        setParam(processor, prefix + "amount", 1.0f);
         setParam(processor, prefix + "frequency", 0.01f);
         setChoice(processor, prefix + "waveform", 3);   // SQUARE
     }
@@ -55,7 +54,6 @@ void driveSource(Processor& processor, int source)
     {
         const auto slot = source - Processor::kLfoSourceCount;
         setParam(processor, ownPrefix(source) + "enabled", 1.0f);
-        setParam(processor, ownPrefix(source) + "amount", 1.0f);
         processor.getEnvelopeAttackParam(slot).setValueNotifyingHost(0.0f);
         processor.getEnvelopeSustainParam(slot).setValueNotifyingHost(1.0f);
     }
@@ -174,7 +172,6 @@ void applyContext(Processor& processor, const juce::String& id)
         const auto prefix = "mod.env" + juce::String(i + 1) + ".";
         if (! id.startsWith(prefix)) { continue; }
         setParam(processor, prefix + "enabled", 1.0f);
-        setParam(processor, prefix + "amount", 1.0f);
         routeIntoCutoff(processor, Processor::kLfoSourceCount + i);
     }
     for (int i = 0; i < Processor::kLfoSourceCount; ++i)
@@ -182,7 +179,6 @@ void applyContext(Processor& processor, const juce::String& id)
         const auto prefix = "mod.lfo" + juce::String(i + 1) + ".";
         if (! id.startsWith(prefix)) { continue; }
         setParam(processor, prefix + "enabled", 1.0f);
-        setParam(processor, prefix + "amount", 1.0f);
         setChoice(processor, prefix + "waveform", id.contains("ramp") ? 4 : 0);   // RAMP UP or SINE
         routeIntoCutoff(processor, i);
     }

@@ -15,6 +15,17 @@ constexpr int kFxSectionDelay = 1;
 constexpr int kFxSectionReverb = 2;
 constexpr int kFxSectionMood = 3;
 
+// How many patch-bay / MOD-page routes leave one modulation source.
+int debugCountGraphRoutesFrom(const PX3SynthAudioProcessor& processor, int source)
+{
+    auto count = 0;
+    for (int slot = 0; slot < PX3SynthAudioProcessor::kGraphRouteSlots; ++slot)
+    {
+        count += processor.getGraphRoute(slot).source == source ? 1 : 0;
+    }
+    return count;
+}
+
 void setDebugTextStable(juce::TextEditor& editor,
                         const juce::String& text,
                         bool freezeWhileInteracting)
@@ -209,32 +220,6 @@ void PX3SynthAudioProcessorEditor::setupDebugPanel()
     debugDumpPresetCategoryBox.setColour(juce::ComboBox::outlineColourId,
                                          juce::Colour::fromRGBA(255, 255, 255, 100));
 
-    debugLfoAssignLabel.setText("LFO Assignment", juce::dontSendNotification);
-    debugLfoAssignLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(236, 236, 236));
-    debugLfoAssignLabel.setFont(juce::FontOptions(11.0f, juce::Font::bold));
-    debugLfoAssignLabel.setJustificationType(juce::Justification::centredLeft);
-
-    debugLfoAssignBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour::fromRGBA(34, 34, 34, 220));
-    debugLfoAssignBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
-    debugLfoAssignBox.setColour(juce::ComboBox::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 110));
-
-    const auto& lfoAssignments = audioProcessor.getLfoAssignmentDisplayNames();
-    for (int i = 0; i < lfoAssignments.size(); ++i)
-    {
-        debugLfoAssignBox.addItem(lfoAssignments[i], i + 1);
-    }
-    debugLfoAssignBox.onChange = [this]()
-    {
-        if (debugLfoAssignSuppressCallbacks)
-        {
-            return;
-        }
-
-        const auto selected = juce::jmax(0, debugLfoAssignBox.getSelectedId() - 1);
-        audioProcessor.setLfoAssignmentIndex(selected);
-        refreshDebugLfoState();
-    };
-
     debugParamViewport.setViewedComponent(&debugParamContent, false);
     debugParamViewport.setScrollBarsShown(true, false);
 
@@ -308,8 +293,6 @@ void PX3SynthAudioProcessorEditor::setupDebugPanel()
     addToSections(debugDumpPresetNameEditor);
     addToSections(debugDumpPresetAuthorEditor);
     addToSections(debugDumpPresetCategoryBox);
-    addToSections(debugLfoAssignLabel);
-    addToSections(debugLfoAssignBox);
     addToSections(debugDumpPresetButton);
     addToSections(debugParamViewport);
 
@@ -1046,10 +1029,6 @@ void PX3SynthAudioProcessorEditor::layoutDebugPanel(const juce::Rectangle<int>& 
     debugLfoLabel.setBounds(right.removeFromTop(18));
     debugLfoText.setBounds(right.removeFromTop(66));
     right.removeFromTop(4);
-    auto lfoAssignRow = right.removeFromTop(24);
-    debugLfoAssignLabel.setBounds(lfoAssignRow.removeFromLeft(130));
-    debugLfoAssignBox.setBounds(lfoAssignRow.reduced(1, 0));
-    right.removeFromTop(4);
 
     debugEnvelopeLabel.setBounds(right.removeFromTop(18));
     debugEnvelopeText.setBounds(right.removeFromTop(180));
@@ -1342,18 +1321,9 @@ void PX3SynthAudioProcessorEditor::refreshDebugUpdateStatus()
 
 void PX3SynthAudioProcessorEditor::refreshDebugLfoState()
 {
-    const auto assignmentIndex = audioProcessor.getLfoAssignmentIndex();
-    debugLfoAssignSuppressCallbacks = true;
-    debugLfoAssignBox.setSelectedId(assignmentIndex + 1, juce::dontSendNotification);
-    debugLfoAssignSuppressCallbacks = false;
-
     const auto frequencyHz = audioProcessor.getLfoFrequencyParam().get();
     const auto phase = audioProcessor.debugGetLfoPhase();
     const auto lfoValue = audioProcessor.debugGetLfoCurrentValue();
-    const auto baseNorm = audioProcessor.debugGetLfoBaseNormalized();
-    const auto effectiveNorm = audioProcessor.debugGetLfoEffectiveNormalized();
-    const auto assignmentId = audioProcessor.getLfoAssignmentParameterId();
-    const auto assignmentName = audioProcessor.debugGetLfoAssignmentName();
     const auto oscBusRms = audioProcessor.debugGetOscillatorBusRms();
     const auto dryBusRms = audioProcessor.debugGetDryBusRms();
     const auto fxBusRms = audioProcessor.debugGetFxBusRms();
@@ -1366,13 +1336,8 @@ void PX3SynthAudioProcessorEditor::refreshDebugLfoState()
 
     juce::String text;
     text << "Frequency: " << juce::String(frequencyHz, 4) << " Hz\n"
-         << "Assignment: " << assignmentName << "\n"
-         << "Assignment ID: " << assignmentId << "\n"
          << "Phase: " << juce::String(phase, 5) << "\n"
-         << "LFO Value: " << juce::String(lfoValue, 5) << "\n"
-         << "Base (norm): " << juce::String(baseNorm, 5) << "\n"
-         << "Effective (norm): " << juce::String(effectiveNorm, 5) << "\n"
-         << "Delta: " << juce::String(effectiveNorm - baseNorm, 5) << "\n\n"
+         << "LFO Value: " << juce::String(lfoValue, 5) << "\n\n"
          << "Bus RMS\n"
          << "Oscillator: " << juce::String(oscBusRms, 6) << "\n"
          << "Dry: " << juce::String(dryBusRms, 6) << "\n"
@@ -1390,8 +1355,7 @@ void PX3SynthAudioProcessorEditor::refreshDebugLfoState()
     {
         text << "LFO " << juce::String(i + 1)
              << " value=" << juce::String(audioProcessor.debugGetLfoCurrentValue(i), 5)
-             << " amount=" << juce::String(audioProcessor.getLfoAmountParam(i).get(), 4)
-             << " assign=" << audioProcessor.getLfoAssignmentParameterId(i)
+             << " routes=" << juce::String(debugCountGraphRoutesFrom(audioProcessor, i))
              << "\n";
     }
 
@@ -1570,18 +1534,10 @@ void PX3SynthAudioProcessorEditor::refreshDebugEnvelopeState()
 
         for (int i = 0; i < PX3SynthAudioProcessor::kEnvelopeSourceCount; ++i)
         {
-           const auto baseNorm = audioProcessor.debugGetEnvelopeDestinationBaseNormalized(i);
-           const auto effectiveNorm = audioProcessor.debugGetEnvelopeDestinationEffectiveNormalized(i);
-           const auto contributionNorm = audioProcessor.debugGetEnvelopeContributionNormalized(i);
            text << "ENV " << juce::String(i + 1)
                << " value=" << juce::String(audioProcessor.debugGetEnvelopeCurrentValue(i), 5)
-               << " amount=" << juce::String(audioProcessor.getEnvelopeAmountParam(i).get(), 4)
-               << " assign=" << audioProcessor.debugGetEnvelopeAssignmentName(i)
-               << "\n"
-               << "      contribution(norm)=" << juce::String(contributionNorm, 5)
-               << " base(norm)=" << juce::String(baseNorm, 5)
-               << " effective(norm)=" << juce::String(effectiveNorm, 5)
-               << " delta(norm)=" << juce::String(effectiveNorm - baseNorm, 5)
+               << " routes=" << juce::String(debugCountGraphRoutesFrom(audioProcessor,
+                                                                       PX3SynthAudioProcessor::kLfoSourceCount + i))
                << "\n";
         }
 

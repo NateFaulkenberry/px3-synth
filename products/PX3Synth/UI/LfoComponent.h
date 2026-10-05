@@ -22,14 +22,9 @@ public:
     // (the MOD jack) can sit level with it.
     juce::Rectangle<int> powerBoundsInParent() const { return card.powerBounds() + getPosition(); }
     LfoComponent(juce::ToggleButton& enabledButtonIn,
-                        juce::Label& assignLabelIn,
-                        juce::ComboBox& assignBoxIn,
                         juce::Slider& rateKnobIn,
                         juce::Label& rateLabelIn,
                         juce::Label& rateValueLabelIn,
-                        juce::Slider& amountKnobIn,
-                        juce::Label& amountLabelIn,
-                        juce::Label& amountValueLabelIn,
                         juce::ComboBox& waveformBoxIn,
                         juce::Label& waveformLabelIn,
                         juce::Colour accentIn,
@@ -40,7 +35,7 @@ public:
     void setUIConfig(std::shared_ptr<const UIConfig> configIn);
     // The parent panel content box: reference for percentage dimensions.
     void setPanelContentBounds(juce::Rectangle<int> panelContent);
-    void refreshFromParameters(bool enabled, float rateHz, float amount, int waveformIndex);
+    void refreshFromParameters(bool enabled, float rateHz, int waveformIndex);
     std::uint64_t debugGraphFrameRequests() const noexcept { return graphView.getFrameRequestCount(); }
     void advanceAnimation(float deltaPhase);
 
@@ -78,11 +73,6 @@ private:
     juce::Slider& rateKnob;
     juce::Label& rateLabel;
     juce::Label& rateValueLabel;
-    juce::Slider& amountKnob;
-    juce::Label& amountLabel;
-    juce::Label& amountValueLabel;
-    juce::Label& assignLabel;
-    juce::ComboBox& assignBox;
     juce::ComboBox& waveformBox;
     juce::Label& waveformLabel;
     juce::Colour accent;
@@ -92,10 +82,8 @@ private:
     bool currentEnabled { true };
     int currentWaveformIndex { 0 };
     float currentRateHz { 1.0f };
-    float currentAmount { 0.0f };
     float visualPhase { 0.0f };
     juce::Colour baseRateValueTextColour;
-    juce::Colour baseAmountValueTextColour;
     juce::String configPrefix;
 
     juce::Slider rampTimeKnob;

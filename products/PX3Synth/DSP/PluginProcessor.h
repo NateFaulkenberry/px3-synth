@@ -643,8 +643,6 @@ public:
     juce::AudioParameterBool& getLfoEnabledParam(int lfoIndex) const;
     juce::AudioParameterFloat& getLfoFrequencyParam() const;
     juce::AudioParameterFloat& getLfoFrequencyParam(int lfoIndex) const;
-    juce::AudioParameterFloat& getLfoAmountParam() const;
-    juce::AudioParameterFloat& getLfoAmountParam(int lfoIndex) const;
     juce::AudioParameterChoice& getLfoWaveformParam() const;
     juce::AudioParameterChoice& getLfoWaveformParam(int lfoIndex) const;
     juce::AudioParameterFloat& getLfoRampTimeParam(int lfoIndex) const;
@@ -652,26 +650,6 @@ public:
     juce::AudioParameterChoice& getLfoClockModeParam(int lfoIndex) const;
     juce::AudioParameterChoice& getLfoClockDivisionParam(int lfoIndex) const;
     bool isLfoClockAvailable(int lfoIndex) const;
-    juce::AudioParameterFloat& getEnvelopeAmountParam() const;
-    juce::AudioParameterFloat& getEnvelopeAmountParam(int envIndex) const;
-    const juce::StringArray& getLfoAssignmentDisplayNames() const;
-    int getLfoAssignmentIndex() const;
-    int getLfoAssignmentIndex(int lfoIndex) const;
-    juce::String getLfoAssignmentParameterId() const;
-    juce::String getLfoAssignmentParameterId(int lfoIndex) const;
-    bool setLfoAssignmentIndex(int index, bool notifyHost = true);
-    bool setLfoAssignmentIndex(int lfoIndex, int index, bool notifyHost = true);
-    bool setLfoAssignmentByParameterId(const juce::String& parameterId, bool notifyHost = true);
-    bool setLfoAssignmentByParameterId(int lfoIndex, const juce::String& parameterId, bool notifyHost = true);
-    const juce::StringArray& getEnvelopeAssignmentDisplayNames() const;
-    int getEnvelopeAssignmentIndex() const;
-    int getEnvelopeAssignmentIndex(int envIndex) const;
-    juce::String getEnvelopeAssignmentParameterId() const;
-    juce::String getEnvelopeAssignmentParameterId(int envIndex) const;
-    bool setEnvelopeAssignmentIndex(int index, bool notifyHost = true);
-    bool setEnvelopeAssignmentIndex(int envIndex, int index, bool notifyHost = true);
-    bool setEnvelopeAssignmentByParameterId(const juce::String& parameterId, bool notifyHost = true);
-    bool setEnvelopeAssignmentByParameterId(int envIndex, const juce::String& parameterId, bool notifyHost = true);
     px3::FxOrder getFxProcessingOrder() const;
     void setFxProcessingOrder(const px3::FxOrder& order);
     void setFxProcessingOrderWithReason(const px3::FxOrder& order,
@@ -705,13 +683,7 @@ public:
     float debugGetLfoPhase() const;
     float debugGetLfoCurrentValue() const;
     float debugGetLfoCurrentValue(int lfoIndex) const;
-    float debugGetLfoBaseNormalized() const;
-    float debugGetLfoEffectiveNormalized() const;
     float debugGetEnvelopeCurrentValue(int envIndex) const;
-    float debugGetEnvelopeContributionNormalized(int envIndex) const;
-    float debugGetEnvelopeDestinationBaseNormalized(int envIndex) const;
-    float debugGetEnvelopeDestinationEffectiveNormalized(int envIndex) const;
-    juce::String debugGetEnvelopeAssignmentName(int envIndex) const;
     float debugGetOscillatorBusRms() const;
     float debugGetDryBusRms() const;
     float debugGetFxBusRms() const;
@@ -741,7 +713,6 @@ public:
     float debugGetFxReturnRms() const;
     float debugGetInstanceCpuLoadPercent() const;
     int debugGetActiveInstanceCount() const;
-    juce::String debugGetLfoAssignmentName() const;
     float debugGetAnalogDriftGlobalAmount() const;
     float debugGetAnalogDriftEffectiveAmount() const;
     bool debugGetAnalogDriftBypass() const;
@@ -848,15 +819,6 @@ private:
     StereoSpreadSettings currentStereoSpreadSettings() const;
 
     void updateTransportState();
-    void buildLfoAssignableTargets();
-    float lfoDepthForParameterId(const juce::String& parameterId) const;
-    int getAssignmentIndex(int source) const;
-    juce::String getAssignmentParameterId(int source) const;
-    bool setAssignmentIndex(int source, int index, bool notifyHost, const juce::String& sourceName);
-    bool setAssignmentByParameterId(int source,
-                                    const juce::String& parameterId,
-                                    bool notifyHost,
-                                    const juce::String& sourceName);
     float modulatedParameterValue(juce::AudioParameterFloat* parameter) const;
     float applyModulationToNormalizedValue(juce::RangedAudioParameter* parameter,
                                            float baseNormalized,
@@ -913,7 +875,7 @@ private:
     std::array<juce::AudioParameterChoice*, kOscillatorSourceCount> oscVowelParams { { nullptr, nullptr, nullptr } };
 
     // WT Position is its OWN parameter rather than one of the macros, and that
-    // is the whole reason it can be modulated: buildLfoAssignableTargets builds
+    // is the whole reason it can be modulated: the parameter catalog builds
     // the destination list from the float parameters that exist, so a real
     // parameter is a modulation destination with no further plumbing, and a
     // value folded into macroA would have no identity to assign to.
@@ -1104,15 +1066,12 @@ private:
     juce::AudioParameterInt* pitchBendRangeParam { nullptr };
     std::array<juce::AudioParameterBool*, kLfoSourceCount> lfoEnabledParams { { nullptr, nullptr, nullptr } };
     std::array<juce::AudioParameterFloat*, kLfoSourceCount> lfoFrequencyParams { { nullptr, nullptr, nullptr } };
-    std::array<juce::AudioParameterFloat*, kLfoSourceCount> lfoAmountParams { { nullptr, nullptr, nullptr } };
     std::array<juce::AudioParameterChoice*, kLfoSourceCount> lfoWaveformParams { { nullptr, nullptr, nullptr } };
     std::array<juce::AudioParameterFloat*, kLfoSourceCount> lfoRampTimeParams { { nullptr, nullptr, nullptr } };
     std::array<juce::AudioParameterBool*, kLfoSourceCount> lfoKeySyncParams { { nullptr, nullptr, nullptr } };
     juce::AudioParameterBool* lfoEnabledParam { nullptr };
     juce::AudioParameterFloat* lfoFrequencyParam { nullptr };
-    juce::AudioParameterFloat* lfoAmountParam { nullptr };
     juce::AudioParameterChoice* lfoWaveformParam { nullptr };
-    std::array<juce::AudioParameterFloat*, kEnvelopeSourceCount> envelopeAmountParams { { nullptr, nullptr, nullptr } };
     std::array<juce::AudioParameterBool*, kEnvelopeSourceCount> envelopeLoopParams { { nullptr, nullptr, nullptr } };
     // Per-voice modulation (VoiceModulation.h): the parameters whose envelope
     // routes are evaluated inside each voice, and a flag per parameter index so
@@ -1124,18 +1083,6 @@ private:
     void buildVoiceModulationPlan(px3::synth::VoiceModulationPlan& plan) const;
     std::array<juce::AudioParameterFloat*, kEnvelopeSourceCount> envelopeKeyTrackParams { { nullptr, nullptr, nullptr } };
     std::array<juce::AudioParameterBool*, kEnvelopeSourceCount> envelopeSyncParams { { nullptr, nullptr, nullptr } };
-
-    struct LfoAssignableTarget
-    {
-        juce::String parameterId;
-        juce::String displayName;
-        juce::RangedAudioParameter* parameter { nullptr };
-        float normalizedDepth { 0.10f };
-
-        // Scale the source by how much room the base value actually has, rather
-        // than letting it swing a fixed amount and clamping what falls outside.
-        //
-    };
 
     // One slot per oscillator, each holding an immutable table shared by every
     // voice rather than copied into it - a table is 2.25 MB.
@@ -1178,10 +1125,6 @@ private:
     std::array<bool, kShapedEnvelopeCount> breakpointInitialised {};
 
     void handleAsyncUpdate() override;
-
-    std::vector<LfoAssignableTarget> lfoAssignableTargets;
-    juce::StringArray lfoAssignmentDisplayNames;
-    std::array<GraphRouteConfiguration, kLfoSourceCount + kEnvelopeSourceCount> primaryGraphRoutes;
 
     std::array<std::atomic<int>, PianoKeyboard::totalKeys> activeNoteCounts {};
     std::array<std::atomic<int>, PianoKeyboard::totalKeys> activeNoteVelocities {};
@@ -1274,6 +1217,10 @@ private:
     // is a pointer compare - no strings, no allocation, no lock, and a fixed
     // size that never grows under the audio thread's feet.
     static constexpr int kMacroRouteSlots = 64;
+    // Where each kind of route sits in the compiled graph's slot table: the
+    // macro routes first, then the patch-bay / MOD-page routes.
+    static constexpr int kMacroRouteSlotBase = 0;
+    static constexpr int kGraphRouteSlotBase = kMacroRouteSlotBase + kMacroRouteSlots;
 
     std::array<std::vector<MacroDestination>, kMacroCount> macroDestinations;
     std::array<juce::AudioParameterFloat*, kMacroCount> macroParams {};
@@ -1284,7 +1231,6 @@ private:
     mutable std::recursive_mutex graphAuthoringMutex;
     bool compileModulationGraph(const std::array<GraphRouteConfiguration, kGraphRouteSlots>& configurations,
                                 px3::synth::CompiledModulationGraph& plan, juce::String& error,
-                                const std::array<GraphRouteConfiguration, kLfoSourceCount + kEnvelopeSourceCount>* primary = nullptr,
                                 const std::array<std::vector<MacroDestination>, kMacroCount>* macros = nullptr) const;
     std::array<GraphRouteConfiguration, kGraphRouteSlots> graphRouteConfigurations;
     std::array<juce::AudioParameterFloat*, kGraphRouteSlots> graphRouteDepthParams {};
@@ -1384,11 +1330,6 @@ private:
     std::array<std::atomic<float>, kLfoSourceCount> lfoPhaseForDebug { { 0.0f, 0.0f, 0.0f } };
     std::array<std::atomic<float>, kLfoSourceCount> lfoCurrentValues { { 0.0f, 0.0f, 0.0f } };
     std::array<std::atomic<float>, kEnvelopeSourceCount> modulationEnvelopeValues { { 0.0f, 0.0f, 0.0f } };
-    std::array<std::atomic<float>, kEnvelopeSourceCount> debugEnvelopeContributionNormalized { { 0.0f, 0.0f, 0.0f } };
-    std::array<std::atomic<float>, kEnvelopeSourceCount> debugEnvelopeDestinationBaseNormalized { { 0.0f, 0.0f, 0.0f } };
-    std::array<std::atomic<float>, kEnvelopeSourceCount> debugEnvelopeDestinationEffectiveNormalized { { 0.0f, 0.0f, 0.0f } };
-    std::atomic<float> lfoDebugBaseNormalized { 0.0f };
-    std::atomic<float> lfoDebugEffectiveNormalized { 0.0f };
     std::atomic<float> debugOscillatorBusRms { 0.0f };
     std::atomic<float> debugDryBusRms { 0.0f };
     std::atomic<float> debugFxBusRms { 0.0f };

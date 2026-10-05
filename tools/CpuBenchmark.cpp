@@ -76,6 +76,21 @@ void setParameter(juce::AudioProcessor& processor, const juce::String& id, float
     std::printf("  !! parameter not found: %s\n", id.toRawUTF8());
 }
 
+// One patch-bay route, as the MOD page makes it: a graph slot, its source, its
+// destination and its depth (-1..1).
+void routeModulation(PX3SynthAudioProcessor& processor, int slot, int source,
+                     const juce::String& destination, float depth)
+{
+    juce::String error;
+    if (! processor.setGraphRoute(slot, { source, destination }, error))
+    {
+        std::printf("  !! route not made: %s (%s)\n", destination.toRawUTF8(), error.toRawUTF8());
+        return;
+    }
+    auto& depthParameter = processor.getGraphRouteDepthParam(slot);
+    depthParameter.setValueNotifyingHost(depthParameter.convertTo0to1(depth));
+}
+
 void setChoiceIndex(juce::AudioProcessor& processor, const juce::String& id, int index)
 {
     if (auto* parameter = findParameter(processor, id))
@@ -216,19 +231,18 @@ void configure(PX3SynthAudioProcessor& processor, const Scenario& scenario)
     {
         const auto slot = juce::String(envIndex + 1);
         setParameter(processor, juce::String("mod.env") + slot + ".enabled", scenario.modEnvelopes ? 1.0f : 0.0f);
-        setParameter(processor,
-                     envIndex == 0 ? juce::String("mod.env1.amount") : juce::String("mod.env") + slot + ".amount",
-                     scenario.modEnvelopes ? 0.7f : 0.0f);
         setParameter(processor, juce::String("mod.env") + slot + ".attack", 0.02f + 0.05f * static_cast<float>(envIndex));
         setParameter(processor, juce::String("mod.env") + slot + ".decay", 0.25f);
         setParameter(processor, juce::String("mod.env") + slot + ".sustain", 0.5f);
         setParameter(processor, juce::String("mod.env") + slot + ".release", 0.8f);
     }
+    // LFO routes in slots 0-3 and envelope routes in 4-7.
+    constexpr auto env1 = PX3SynthAudioProcessor::kLfoSourceCount;
     if (scenario.modEnvelopes)
     {
-        processor.setEnvelopeAssignmentByParameterId(0, "voice.filter1.cutoff", false);
-        processor.setEnvelopeAssignmentByParameterId(1, "voice.osc1.macro.a", false);
-        processor.setEnvelopeAssignmentByParameterId(2, "mix.osc1.level", false);
+        routeModulation(processor, 4, env1, "voice.filter1.cutoff", 0.7f);
+        routeModulation(processor, 5, env1 + 1, "voice.osc1.macro.a", 0.7f);
+        routeModulation(processor, 6, env1 + 2, "mix.osc1.level", 0.7f);
     }
 
     for (int lfoIndex = 0; lfoIndex < 3; ++lfoIndex)
@@ -237,16 +251,14 @@ void configure(PX3SynthAudioProcessor& processor, const Scenario& scenario)
         const auto prefix = juce::String("mod.lfo") + slot + ".";
         setParameter(processor, lfoIndex == 0 ? juce::String("mod.lfo1.enabled") : prefix + "enabled",
                      scenario.lfos ? 1.0f : 0.0f);
-        setParameter(processor, lfoIndex == 0 ? juce::String("mod.lfo1.amount") : prefix + "amount",
-                     scenario.lfos ? 0.6f : 0.0f);
         setParameter(processor, lfoIndex == 0 ? juce::String("mod.lfo1.frequency") : prefix + "frequency",
                      2.0f + static_cast<float>(lfoIndex));
     }
     if (scenario.lfos)
     {
-        processor.setLfoAssignmentByParameterId(0, "voice.filter1.cutoff", false);
-        processor.setLfoAssignmentByParameterId(1, "mix.osc1.level", false);
-        processor.setLfoAssignmentByParameterId(2, "voice.osc1.pitch.mod", false);
+        routeModulation(processor, 0, 0, "voice.filter1.cutoff", 0.6f);
+        routeModulation(processor, 1, 1, "mix.osc1.level", 0.6f);
+        routeModulation(processor, 2, 2, "voice.osc1.pitch.mod", 0.6f);
     }
 }
 

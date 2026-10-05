@@ -272,8 +272,6 @@ bool PX3SynthAudioProcessor::debugRoundTripCurrentState(juce::String& report)
     auto serializedLfoFrequency = lfoFrequencyParam->get();
     auto serializedLfoWaveform = lfoWaveformParam->getIndex();
     auto serializedLfoEnabled = lfoEnabledParam != nullptr ? lfoEnabledParam->get() : true;
-    auto serializedLfoAssignment = juce::String("none");
-    auto serializedEnvelopeAssignment = juce::String("none");
     if (const auto lfoSources = state.getChildWithName(kLfoSourcesStateId); lfoSources.isValid())
     {
         for (int i = 0; i < lfoSources.getNumChildren(); ++i)
@@ -302,10 +300,6 @@ bool PX3SynthAudioProcessor::debugRoundTripCurrentState(juce::String& report)
             {
                 serializedLfoWaveform = px3::clampLfoWaveformIndex(static_cast<int>(source[kLfoWaveformId]));
             }
-            if (source.hasProperty(kLfoAssignmentId))
-            {
-                serializedLfoAssignment = source[kLfoAssignmentId].toString();
-            }
             break;
         }
     }
@@ -313,27 +307,6 @@ bool PX3SynthAudioProcessor::debugRoundTripCurrentState(juce::String& report)
     const auto frequencyMatches = std::abs(serializedLfoFrequency - lfoFrequencyParam->get()) <= 0.0005f;
     const auto waveformMatches = serializedLfoWaveform == lfoWaveformParam->getIndex();
     const auto enabledMatches = lfoEnabledParam == nullptr || serializedLfoEnabled == lfoEnabledParam->get();
-    const auto assignmentMatches = serializedLfoAssignment.equalsIgnoreCase(getLfoAssignmentParameterId());
-
-    if (const auto envelopeSources = state.getChildWithName(kEnvelopeSourcesStateId); envelopeSources.isValid())
-    {
-        for (int i = 0; i < envelopeSources.getNumChildren(); ++i)
-        {
-            const auto source = envelopeSources.getChild(i);
-            if (!source.isValid() || source.getType() != kSourceEntryId)
-            {
-                continue;
-            }
-
-            const auto sourceIndex = juce::jlimit(0, kEnvelopeSourceCount - 1, static_cast<int>(source.getProperty(kSourceIndexId, 0)));
-            if (sourceIndex == 0 && source.hasProperty(kEnvelopeAssignmentId))
-            {
-                serializedEnvelopeAssignment = source[kEnvelopeAssignmentId].toString();
-                break;
-            }
-        }
-    }
-    const auto envelopeAssignmentMatches = serializedEnvelopeAssignment.equalsIgnoreCase(getEnvelopeAssignmentParameterId());
 
     auto serializedSubOscEnabled = subOscEnabledParam->get();
     auto serializedSubOscWaveform = subOscWaveformParam->getIndex();
@@ -373,8 +346,6 @@ bool PX3SynthAudioProcessor::debugRoundTripCurrentState(juce::String& report)
                    && frequencyMatches
                    && enabledMatches
                    && waveformMatches
-                   && assignmentMatches
-                   && envelopeAssignmentMatches
                    && subOscEnabledMatches
                    && subOscWaveformMatches
                    && attackMatches
@@ -391,10 +362,6 @@ bool PX3SynthAudioProcessor::debugRoundTripCurrentState(juce::String& report)
              "lfoEnabledSerialized=" + juce::String(serializedLfoEnabled ? 1 : 0) + "\n"
              "lfoWaveformCurrent=" + juce::String(lfoWaveformParam->getIndex()) + "\n"
              "lfoWaveformSerialized=" + juce::String(serializedLfoWaveform) + "\n"
-             "lfoAssignmentCurrent=" + getLfoAssignmentParameterId() + "\n"
-             "lfoAssignmentSerialized=" + serializedLfoAssignment + "\n"
-             "envAssignmentCurrent=" + getEnvelopeAssignmentParameterId() + "\n"
-             "envAssignmentSerialized=" + serializedEnvelopeAssignment + "\n"
              "subOscEnabledCurrent=" + juce::String(subOscEnabledParam->get() ? 1 : 0) + "\n"
              "subOscEnabledSerialized=" + juce::String(serializedSubOscEnabled ? 1 : 0) + "\n"
              "subOscWaveformCurrent=" + juce::String(subOscWaveformParam->getIndex()) + "\n"
@@ -450,63 +417,10 @@ float PX3SynthAudioProcessor::debugGetLfoCurrentValue(int lfoIndex) const
     return lfoCurrentValues[static_cast<std::size_t>(idx)].load(std::memory_order_relaxed);
 }
 
-float PX3SynthAudioProcessor::debugGetLfoBaseNormalized() const
-{
-    return lfoDebugBaseNormalized.load(std::memory_order_relaxed);
-}
-
-float PX3SynthAudioProcessor::debugGetLfoEffectiveNormalized() const
-{
-    return lfoDebugEffectiveNormalized.load(std::memory_order_relaxed);
-}
-
 float PX3SynthAudioProcessor::debugGetEnvelopeCurrentValue(int envIndex) const
 {
     const auto idx = juce::jlimit(0, kEnvelopeSourceCount - 1, envIndex);
     return modulationEnvelopeValues[static_cast<std::size_t>(idx)].load(std::memory_order_relaxed);
-}
-
-float PX3SynthAudioProcessor::debugGetEnvelopeContributionNormalized(int envIndex) const
-{
-    const auto idx = juce::jlimit(0, kEnvelopeSourceCount - 1, envIndex);
-    return debugEnvelopeContributionNormalized[static_cast<std::size_t>(idx)].load(std::memory_order_relaxed);
-}
-
-float PX3SynthAudioProcessor::debugGetEnvelopeDestinationBaseNormalized(int envIndex) const
-{
-    const auto idx = juce::jlimit(0, kEnvelopeSourceCount - 1, envIndex);
-    return debugEnvelopeDestinationBaseNormalized[static_cast<std::size_t>(idx)].load(std::memory_order_relaxed);
-}
-
-float PX3SynthAudioProcessor::debugGetEnvelopeDestinationEffectiveNormalized(int envIndex) const
-{
-    const auto idx = juce::jlimit(0, kEnvelopeSourceCount - 1, envIndex);
-    return debugEnvelopeDestinationEffectiveNormalized[static_cast<std::size_t>(idx)].load(std::memory_order_relaxed);
-}
-
-juce::String PX3SynthAudioProcessor::debugGetEnvelopeAssignmentName(int envIndex) const
-{
-    const auto idx = juce::jlimit(0, kEnvelopeSourceCount - 1, envIndex);
-    const auto assignment = getEnvelopeAssignmentIndex(idx);
-    if (assignment <= 0 || assignment >= static_cast<int>(lfoAssignableTargets.size()))
-    {
-        return "None";
-    }
-
-    return lfoAssignableTargets[static_cast<std::size_t>(assignment)].displayName
-        + " [" + lfoAssignableTargets[static_cast<std::size_t>(assignment)].parameterId + "]";
-}
-
-juce::String PX3SynthAudioProcessor::debugGetLfoAssignmentName() const
-{
-    const auto index = getLfoAssignmentIndex();
-    if (index <= 0 || index >= static_cast<int>(lfoAssignableTargets.size()))
-    {
-        return "None";
-    }
-
-    return lfoAssignableTargets[static_cast<std::size_t>(index)].displayName
-        + " [" + lfoAssignableTargets[static_cast<std::size_t>(index)].parameterId + "]";
 }
 
 float PX3SynthAudioProcessor::debugGetOscillatorBusRms() const

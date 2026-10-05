@@ -699,8 +699,6 @@ void PX3SynthAudioProcessorEditor::applyUiConfig()
     {
         const auto comboStyle = uiConfig->getObject("styles.combos.default");
         uiConfig->applyComboStyle(comboStyle, lfoWaveformBox);
-        uiConfig->applyComboStyle(comboStyle, lfoAssignBox);
-        uiConfig->applyComboStyle(comboStyle, envAssignBox);
         uiConfig->applyComboStyle(comboStyle, subOscWaveformBox);
         uiConfig->applyComboStyle(comboStyle, filterTypeBox);
         uiConfig->applyComboStyle(comboStyle, filter2TypeBox);

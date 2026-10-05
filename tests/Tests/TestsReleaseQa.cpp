@@ -173,7 +173,6 @@ void testReleaseQa()
         processor.setPlayConfigDetails(0, 2, 48000.0, 512);
         processor.prepareToPlay(48000.0, 512);
         setParam(processor, "mod.lfo1.enabled", 1.0f);
-        setParam(processor, "mod.lfo1.amount", 1.0f);
         setChoice(processor, "mod.lfo1.waveform", 0);       // SINE
         setParam(processor, "mod.lfo1.clock.mode", 2.0f);   // TRANSPORT
         juce::AudioBuffer<float> buffer(2, 512);
@@ -217,7 +216,6 @@ void testReleaseQa()
             makePlainPatch(processor);
             patch(processor);
             setParam(processor, "mod.lfo1.enabled", 1.0f);
-            setParam(processor, "mod.lfo1.amount", 1.0f);
             setParam(processor, "mod.lfo1.frequency", 5.0f);
             setChoice(processor, "mod.lfo1.waveform", 0);   // SINE
             juce::String error;
@@ -724,7 +722,6 @@ void testReleaseQa()
             setChoice(processor, "voice.filter1.type", 1);   // LP24
             setParam(processor, "voice.filter1.cutoff", 300.0f);
             setParam(processor, "mod.env1.enabled", 1.0f);
-            setParam(processor, "mod.env1.amount", 1.0f);
             processor.getEnvelopeAttackParam(0).setValueNotifyingHost(processor.getEnvelopeAttackParam(0).convertTo0to1(0.001f));
             processor.getEnvelopeDecayParam(0).setValueNotifyingHost(processor.getEnvelopeDecayParam(0).convertTo0to1(0.03f));
             processor.getEnvelopeSustainParam(0).setValueNotifyingHost(0.0f);
@@ -1128,7 +1125,6 @@ void testReleaseQa()
             setParam(processor, "mod.lfo1.enabled", routed ? 1.0f : 0.0f);
             setChoice(processor, "mod.lfo1.waveform", 3);   // square
             setParam(processor, "mod.lfo1.frequency", 5.0f);
-            setParam(processor, "mod.lfo1.amount", 1.0f);
             if (routed)
             {
                 juce::String error;

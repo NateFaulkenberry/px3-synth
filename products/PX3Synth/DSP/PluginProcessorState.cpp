@@ -94,16 +94,6 @@ juce::ValueTree PX3SynthAudioProcessor::createParameterStateTree() const
     state.setProperty(kStateVersionId, kCurrentStateVersion, nullptr);
     state.addChild(parameterCatalog.createStateTree(), -1, nullptr);
     juce::ValueTree graphState("MODULATION_GRAPH");
-    for (std::size_t slot = 0; slot < primaryGraphRoutes.size(); ++slot)
-    {
-        const auto& route = primaryGraphRoutes[slot];
-        if (route.source < 0) { continue; }
-        juce::ValueTree node("PRIMARY_ROUTE");
-        node.setProperty("slot", static_cast<int>(slot), nullptr);
-        node.setProperty("source", graphSourceId(route.source), nullptr);
-        node.setProperty("destination", route.destination, nullptr);
-        graphState.addChild(node, -1, nullptr);
-    }
     for (int slot = 0; slot < kGraphRouteSlots; ++slot)
     {
         const auto& route = graphRouteConfigurations[static_cast<std::size_t>(slot)];
@@ -355,10 +345,8 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
     }
 
     std::array<GraphRouteConfiguration, kGraphRouteSlots> graphConfigurations;
-    std::array<GraphRouteConfiguration, kLfoSourceCount + kEnvelopeSourceCount> primaryConfigurations;
     std::array<std::vector<MacroDestination>, kMacroCount> macroConfigurations;
     auto macroRouteCount = 0;
-    std::array<bool, kLfoSourceCount + kEnvelopeSourceCount> usedPrimarySlots {};
     std::array<bool, kGraphRouteSlots> usedGraphSlots {};
     const auto graphState = state.getChildWithName("MODULATION_GRAPH");
     const auto parseIndex = [](const juce::ValueTree& node, const char* property, int& output)
@@ -404,22 +392,6 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
             routes.push_back({ destination, depth });
             continue;
         }
-        if (node.getType() == juce::Identifier("PRIMARY_ROUTE"))
-        {
-            int primarySlot = -1;
-            if (! parseIndex(node, "slot", primarySlot)
-                || ! juce::isPositiveAndBelow(primarySlot, static_cast<int>(primaryConfigurations.size()))
-                || usedPrimarySlots[static_cast<std::size_t>(primarySlot)]
-                || node.getProperty("source").toString() != graphSourceId(primarySlot))
-            {
-                if (error != nullptr) { *error = "Malformed primary modulation route."; }
-                return false;
-            }
-            primaryConfigurations[static_cast<std::size_t>(primarySlot)]
-                = { primarySlot, node.getProperty("destination").toString() };
-            usedPrimarySlots[static_cast<std::size_t>(primarySlot)] = true;
-            continue;
-        }
         int slot = -1;
         int polarity = -1;
         int curve = -1;
@@ -453,13 +425,12 @@ bool PX3SynthAudioProcessor::applyParameterStateTree(const juce::ValueTree& stat
     }
     px3::synth::CompiledModulationGraph graphPlan;
     juce::String graphError;
-    if (! compileModulationGraph(graphConfigurations, graphPlan, graphError, &primaryConfigurations, &macroConfigurations))
+    if (! compileModulationGraph(graphConfigurations, graphPlan, graphError, &macroConfigurations))
     {
         if (error != nullptr) { *error = graphError; }
         return false;
     }
     graphRouteConfigurations = std::move(graphConfigurations);
-    primaryGraphRoutes = std::move(primaryConfigurations);
     macroDestinations = std::move(macroConfigurations);
 
     // Validate the complete parameter set before applying any value.

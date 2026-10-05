@@ -179,13 +179,27 @@ void testEcosystem()
 
         check("ParameterCatalog_MacroIdsAndLevelRoutesHaveNoLegacyAliases",
               catalog.find("mod.macro1.value") != nullptr && catalog.find("macro1") == nullptr
-                  && ! processor.setLfoAssignmentByParameterId(0, "osc1Level", false)
-                  && ! processor.setEnvelopeAssignmentByParameterId(0, "subOscLevel", false)
-                  && processor.setLfoAssignmentByParameterId(0, "mix.osc1.level", false));
-        processor.setLfoAssignmentIndex(0, 0, false);
+                  && ! processor.isGraphDestination("osc1Level")
+                  && ! processor.isGraphDestination("subOscLevel")
+                  && processor.isGraphDestination("mix.osc1.level"));
+
+        // The LFO and ENV cards have no AMOUNT: a route's depth lives on the
+        // route. The card-level depth only ever scaled the single legacy
+        // ASSIGN route, which no longer exists.
+        juce::StringArray amountIds;
+        for (int i = 1; i <= 4; ++i)
+        {
+            for (const auto* kind : { "lfo", "env" })
+            {
+                const auto id = "mod." + juce::String(kind) + juce::String(i) + ".amount";
+                if (catalog.find(id) != nullptr) { amountIds.add(id); }
+            }
+        }
+        check("ParameterCatalog_ModulatorCardsHaveNoAmountParameter", amountIds.isEmpty(),
+              amountIds.isEmpty() ? "no mod.lfoN.amount / mod.envN.amount" : amountIds.joinIntoString(", "));
 
         const auto* lfoSource = catalog.find("mod.lfo1.frequency");
-        const auto* envSource = catalog.find("mod.env3.amount");
+        const auto* envSource = catalog.find("mod.env3.keytrack");
         check("ParameterCatalog_DeclaresModulationCapabilitiesAndSourceControls",
               lfoSource != nullptr && lfoSource->modulationDestination && lfoSource->sourceControl
                   && envSource != nullptr && ! envSource->modulationDestination

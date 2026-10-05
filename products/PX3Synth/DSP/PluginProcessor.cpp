@@ -771,11 +771,6 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
             labelPrefix + "Frequency",
             juce::NormalisableRange<float>(0.01f, 20.0f, 0.0001f, 0.30f),
             1.0f + static_cast<float>(lfoIndex));
-        lfoAmountParams[static_cast<std::size_t>(lfoIndex)] = parameterCatalog.createFloat(
-            idPrefix + "amount",
-            labelPrefix + "Amount",
-            juce::NormalisableRange<float>(-1.0f, 1.0f),
-            0.0f);
         lfoWaveformParams[static_cast<std::size_t>(lfoIndex)] = parameterCatalog.createChoice(
             idPrefix + "waveform",
             labelPrefix + "Waveform",
@@ -803,11 +798,6 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
         const auto slot = juce::String(envIndex + 1);
         const auto idPrefix = juce::String("mod.env") + slot + ".";
         const auto labelPrefix = juce::String("ENV ") + slot + " ";
-        envelopeAmountParams[static_cast<std::size_t>(envIndex)] = parameterCatalog.createFloat(
-            idPrefix + "amount",
-            labelPrefix + "Amount",
-            juce::NormalisableRange<float>(-1.0f, 1.0f),
-            0.0f);
         envelopeLoopParams[static_cast<std::size_t>(envIndex)] = parameterCatalog.createBool(
             idPrefix + "loop", labelPrefix + "Loop", false);
         envelopeKeyTrackParams[static_cast<std::size_t>(envIndex)] = parameterCatalog.createFloat(
@@ -818,7 +808,6 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
 
     lfoEnabledParam = lfoEnabledParams[0];
     lfoFrequencyParam = lfoFrequencyParams[0];
-    lfoAmountParam = lfoAmountParams[0];
     lfoWaveformParam = lfoWaveformParams[0];
 
     for (int oscIndex = 0; oscIndex < kOscillatorSourceCount; ++oscIndex)
@@ -1043,12 +1032,10 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
         addParameter(lfoFrequencyParams[static_cast<std::size_t>(lfoIndex)]);
         addParameter(lfoClockModeParams[static_cast<std::size_t>(lfoIndex)]);
         addParameter(lfoClockDivisionParams[static_cast<std::size_t>(lfoIndex)]);
-        addParameter(lfoAmountParams[static_cast<std::size_t>(lfoIndex)]);
         addParameter(lfoWaveformParams[static_cast<std::size_t>(lfoIndex)]);
     }
     for (int envIndex = 0; envIndex < kEnvelopeSourceCount; ++envIndex)
     {
-        addParameter(envelopeAmountParams[static_cast<std::size_t>(envIndex)]);
         addParameter(envelopeLoopParams[static_cast<std::size_t>(envIndex)]);
         addParameter(envelopeKeyTrackParams[static_cast<std::size_t>(envIndex)]);
         addParameter(envelopeSyncParams[static_cast<std::size_t>(envIndex)]);
@@ -1071,8 +1058,6 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     addParameter(fxSeparateOutputParam);
     parameterCatalog.attachTo(*this);
     initialiseVoiceModulationTargets();
-
-    buildLfoAssignableTargets();
 
     const auto initialAmpEnvelope = currentAmpEnvelopeSettings();
     std::array<EnvelopeSettings, kEnvelopeSourceCount> initialModEnvelopeSettings;
@@ -1679,7 +1664,15 @@ void PX3SynthAudioProcessor::consumeMidiClock(const juce::MidiBuffer& midi, int 
 
 void PX3SynthAudioProcessor::advanceLfosForBlock(int numSamples)
 {
-    const std::array<int, kLfoSourceCount> defaultOrder { 0, 1, 2 };
+    // Every LFO, in index order, until a graph has been compiled. Spelled out
+    // as a literal this once read { 0, 1, 2 } after LFO 4 arrived, so the last
+    // entry was zero-filled and LFO 4 never advanced in a fresh instance.
+    static constexpr auto defaultOrder = []
+    {
+        std::array<int, kLfoSourceCount> order {};
+        for (int i = 0; i < kLfoSourceCount; ++i) { order[static_cast<std::size_t>(i)] = i; }
+        return order;
+    }();
     auto graph = modulationGraph.read();
     const auto compiledOrder = graph ? graph->evaluationOrder() : std::span<const int> {};
     const auto order = compiledOrder.empty() ? std::span<const int>(defaultOrder) : compiledOrder;
@@ -1932,73 +1925,6 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     consumeMidiClock(midiMessages, buffer.getNumSamples());
     updateHostClock();
     advanceLfosForBlock(buffer.getNumSamples());
-
-#if PX3_DEBUG_PANEL
-    // Read ONLY by the debug panel's LFO and envelope sections, and computed
-    // here on the audio thread every block. applyModulationToNormalizedValue
-    // walks the LFO, envelope and macro source lists on each of these four
-    // calls, and in a shipping build - where there is no debug panel to read
-    // the result - all of it was thrown away.
-    //
-    // Gated on the same flag that decides whether anything can read it, so the
-    // two cannot disagree about whether the work is worth doing.
-    const auto lfoAssignedIndex = getLfoAssignmentIndex(0);
-    if (lfoAssignedIndex > 0 && lfoAssignedIndex < static_cast<int>(lfoAssignableTargets.size()))
-    {
-        const auto& target = lfoAssignableTargets[static_cast<std::size_t>(lfoAssignedIndex)];
-        if (target.parameter != nullptr)
-        {
-            float baseNorm = 0.0f;
-            float effectiveNorm = 0.0f;
-            juce::ignoreUnused(applyModulationToNormalizedValue(target.parameter,
-                                                                 target.parameter->getValue(),
-                                                                 &baseNorm,
-                                                                 &effectiveNorm));
-            lfoDebugBaseNormalized.store(baseNorm, std::memory_order_relaxed);
-            lfoDebugEffectiveNormalized.store(effectiveNorm, std::memory_order_relaxed);
-        }
-    }
-    else
-    {
-        lfoDebugBaseNormalized.store(0.0f, std::memory_order_relaxed);
-        lfoDebugEffectiveNormalized.store(0.0f, std::memory_order_relaxed);
-    }
-
-    for (int envIndex = 0; envIndex < kEnvelopeSourceCount; ++envIndex)
-    {
-        auto baseNorm = 0.0f;
-        auto effectiveNorm = 0.0f;
-        auto contributionNorm = 0.0f;
-
-        const auto assignment = getEnvelopeAssignmentIndex(envIndex);
-        if (assignment > 0 && assignment < static_cast<int>(lfoAssignableTargets.size()))
-        {
-            const auto& target = lfoAssignableTargets[static_cast<std::size_t>(assignment)];
-            if (target.parameter != nullptr)
-            {
-                const auto envSignal = juce::jlimit(0.0f,
-                                                    1.0f,
-                                                    modulationEnvelopeValues[static_cast<std::size_t>(envIndex)].load(std::memory_order_relaxed));
-                const auto envAmount = juce::jlimit(-1.0f, 1.0f, getEnvelopeAmountParam(envIndex).get());
-                contributionNorm = target.normalizedDepth * (envSignal * envAmount);
-
-                const auto baseNormalized = target.parameter->getValue();
-                juce::ignoreUnused(applyModulationToNormalizedValue(target.parameter,
-                                                                     baseNormalized,
-                                                                     &baseNorm,
-                                                                     &effectiveNorm));
-            }
-        }
-
-        debugEnvelopeContributionNormalized[static_cast<std::size_t>(envIndex)].store(contributionNorm,
-                                                                                       std::memory_order_relaxed);
-        debugEnvelopeDestinationBaseNormalized[static_cast<std::size_t>(envIndex)].store(baseNorm,
-                                                                                          std::memory_order_relaxed);
-        debugEnvelopeDestinationEffectiveNormalized[static_cast<std::size_t>(envIndex)].store(effectiveNorm,
-                                                                                               std::memory_order_relaxed);
-    }
-#endif
-
 
     const auto ampEnvelope = currentAmpEnvelopeSettings();
     // AMP ENV has no off switch in the instrument. voice.amp.enabled stays

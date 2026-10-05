@@ -89,12 +89,11 @@ void applyUnusualConfiguration(PX3SynthAudioProcessor& processor)
         setParam(processor, juce::String("mod.env") + slot + ".decay", 0.37f + 0.19f * static_cast<float>(envIndex));
         setParam(processor, juce::String("mod.env") + slot + ".sustain", 0.29f + 0.17f * static_cast<float>(envIndex));
         setParam(processor, juce::String("mod.env") + slot + ".release", 1.13f + 0.41f * static_cast<float>(envIndex));
-        setParam(processor, envIndex == 0 ? juce::String("mod.env1.amount") : juce::String("mod.env") + slot + ".amount",
-                 -0.63f + 0.44f * static_cast<float>(envIndex));
     }
-    processor.setEnvelopeAssignmentByParameterId(0, "voice.filter1.cutoff", false);
-    processor.setEnvelopeAssignmentByParameterId(1, "mix.osc1.level", false);
-    processor.setEnvelopeAssignmentByParameterId(2, "voice.filter2.resonance", false);
+    constexpr auto env1 = PX3SynthAudioProcessor::kLfoSourceCount;
+    routeModulation(processor, 4, env1, "voice.filter1.cutoff", -0.63f);
+    routeModulation(processor, 5, env1 + 1, "mix.osc1.level", -0.19f);
+    routeModulation(processor, 6, env1 + 2, "voice.filter2.resonance", 0.25f);
 
     for (int lfoIndex = 0; lfoIndex < PX3SynthAudioProcessor::kLfoSourceCount; ++lfoIndex)
     {
@@ -103,14 +102,12 @@ void applyUnusualConfiguration(PX3SynthAudioProcessor& processor)
         setParam(processor, lfoIndex == 0 ? juce::String("mod.lfo1.enabled") : prefix + "enabled", 1.0f);
         setParam(processor, lfoIndex == 0 ? juce::String("mod.lfo1.frequency") : prefix + "frequency",
                  0.73f + 3.19f * static_cast<float>(lfoIndex));
-        setParam(processor, lfoIndex == 0 ? juce::String("mod.lfo1.amount") : prefix + "amount",
-                 -0.81f + 0.57f * static_cast<float>(lfoIndex));
         setChoice(processor, lfoIndex == 0 ? juce::String("mod.lfo1.waveform") : prefix + "waveform",
                   (lfoIndex + 2) % 4);
     }
-    processor.setLfoAssignmentByParameterId(0, "voice.filter2.cutoff", false);
-    processor.setLfoAssignmentByParameterId(1, "mix.osc2.pan", false);
-    processor.setLfoAssignmentByParameterId(2, "voice.osc1.tuning.cents", false);
+    routeModulation(processor, 0, 0, "voice.filter2.cutoff", -0.81f);
+    routeModulation(processor, 1, 1, "mix.osc2.pan", -0.24f);
+    routeModulation(processor, 2, 2, "voice.osc1.tuning.cents", 0.33f);
 
     setParam(processor, "fx.analog.enabled", 1.0f);
     setParam(processor, "fx.analog.amount", 0.67f);
@@ -248,16 +245,17 @@ void testPresets()
         applyUnusualConfiguration(processor);
         const auto before = snapshotParameters(processor);
         const auto orderBefore = processor.getFxProcessingOrder();
-        const auto envAssignmentsBefore = std::array<int, 3> {
-            processor.getEnvelopeAssignmentIndex(0),
-            processor.getEnvelopeAssignmentIndex(1),
-            processor.getEnvelopeAssignmentIndex(2)
+        const auto routesOf = [](const PX3SynthAudioProcessor& p)
+        {
+            juce::StringArray routes;
+            for (int slot = 0; slot < PX3SynthAudioProcessor::kGraphRouteSlots; ++slot)
+            {
+                const auto route = p.getGraphRoute(slot);
+                if (route.source >= 0) { routes.add(juce::String(slot) + ":" + juce::String(route.source) + ">" + route.destination); }
+            }
+            return routes;
         };
-        const auto lfoAssignmentsBefore = std::array<int, 3> {
-            processor.getLfoAssignmentIndex(0),
-            processor.getLfoAssignmentIndex(1),
-            processor.getLfoAssignmentIndex(2)
-        };
+        const auto routesBefore = routesOf(processor);
 
         juce::MemoryBlock state;
         processor.getStateInformation(state);
@@ -306,14 +304,9 @@ void testPresets()
 
         check("Preset_RoundTripRestoresFxProcessingOrder",
               restored.getFxProcessingOrder() == orderBefore);
-        check("Preset_RoundTripRestoresEnvelopeAssignments",
-              restored.getEnvelopeAssignmentIndex(0) == envAssignmentsBefore[0]
-                  && restored.getEnvelopeAssignmentIndex(1) == envAssignmentsBefore[1]
-                  && restored.getEnvelopeAssignmentIndex(2) == envAssignmentsBefore[2]);
-        check("Preset_RoundTripRestoresLfoAssignments",
-              restored.getLfoAssignmentIndex(0) == lfoAssignmentsBefore[0]
-                  && restored.getLfoAssignmentIndex(1) == lfoAssignmentsBefore[1]
-                  && restored.getLfoAssignmentIndex(2) == lfoAssignmentsBefore[2]);
+        check("Preset_RoundTripRestoresModulationRoutes",
+              routesBefore.size() == 6 && routesOf(restored) == routesBefore,
+              routesBefore.joinIntoString(" "));
     }
 
     // The restored patch must also SOUND the same, which parameter equality
@@ -1071,18 +1064,17 @@ void testIntegration()
                   {
                       const auto slot = juce::String(i + 1);
                       setParam(p, juce::String("mod.env") + slot + ".enabled", 1.0f);
-                      setParam(p, i == 0 ? juce::String("mod.env1.amount") : juce::String("mod.env") + slot + ".amount", 1.0f);
                       const auto prefix = juce::String("mod.lfo") + slot + ".";
                       setParam(p, i == 0 ? juce::String("mod.lfo1.enabled") : prefix + "enabled", 1.0f);
-                      setParam(p, i == 0 ? juce::String("mod.lfo1.amount") : prefix + "amount", 1.0f);
                       setParam(p, i == 0 ? juce::String("mod.lfo1.frequency") : prefix + "frequency", 20.0f);
                   }
-                  p.setLfoAssignmentByParameterId(0, "voice.filter1.cutoff", false);
-                  p.setLfoAssignmentByParameterId(1, "voice.osc1.tuning.cents", false);
-                  p.setLfoAssignmentByParameterId(2, "mix.osc1.pan", false);
-                  p.setEnvelopeAssignmentByParameterId(0, "voice.filter1.resonance", false);
-                  p.setEnvelopeAssignmentByParameterId(1, "mix.osc1.level", false);
-                  p.setEnvelopeAssignmentByParameterId(2, "voice.filter2.cutoff", false);
+                  constexpr auto env1 = PX3SynthAudioProcessor::kLfoSourceCount;
+                  routeModulation(p, 0, 0, "voice.filter1.cutoff", 1.0f);
+                  routeModulation(p, 1, 1, "voice.osc1.tuning.cents", 1.0f);
+                  routeModulation(p, 2, 2, "mix.osc1.pan", 1.0f);
+                  routeModulation(p, 4, env1, "voice.filter1.resonance", 1.0f);
+                  routeModulation(p, 5, env1 + 1, "mix.osc1.level", 1.0f);
+                  routeModulation(p, 6, env1 + 2, "voice.filter2.cutoff", 1.0f);
               } },
             { "AllFxAtMaximum", [](PX3SynthAudioProcessor& p)
               {

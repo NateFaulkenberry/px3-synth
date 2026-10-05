@@ -187,7 +187,6 @@ void PX3SynthAudioProcessorEditor::buildParameterKnobs()
         KnobBinding { &sustainKnob, &sustainLabel, nullptr },
         KnobBinding { &releaseKnob, &releaseLabel, nullptr },
         KnobBinding { &lfoFrequencyKnob, &lfoFrequencyLabel, nullptr },
-        KnobBinding { &lfoAmountKnob, &lfoAmountLabel, nullptr },
         KnobBinding { &gainKnob, &gainLabel, nullptr },
         // Fine tuning, appended rather than inserted beside coarse: every call
         // site indexes this array by hand.
@@ -223,11 +222,6 @@ void PX3SynthAudioProcessorEditor::buildParameterKnobs()
     configureKnob(knobBindings[19], "Sustain", audioProcessor.getSustainParam());
     configureKnob(knobBindings[20], "Release", audioProcessor.getReleaseParam());
     configureKnob(knobBindings[21], "RATE", audioProcessor.getLfoFrequencyParam());
-    configureKnob(knobBindings[22], "AMOUNT", audioProcessor.getLfoAmountParam());
-    // Amount runs -100%..+100%, so zero is dead centre and worth a detent. The
-    // extremes are not: unlike pan, full depth is not a position people aim at.
-    lfoAmountKnob.setCentreDetent(0.06);
-    lfoAmountKnob.setExtremeDetent(0.0);
     // ---- comb mode -------------------------------------------------------
     // Configured directly rather than through knobBindings: the bindings array
     // is indexed by hand at every call site, so growing it by twelve would mean
@@ -279,17 +273,17 @@ void PX3SynthAudioProcessorEditor::buildParameterKnobs()
         attachButton(audioProcessor.getFilterCombInvertParam(filterIndex), invert);
     }
 
-    configureKnob(knobBindings[23], "MASTER", audioProcessor.getMasterGainParam());
-    configureKnob(knobBindings[24], "FINE", audioProcessor.getOscillatorFineParam(0));
-    configureKnob(knobBindings[25], "FINE", audioProcessor.getOscillatorFineParam(1));
-    configureKnob(knobBindings[26], "FINE", audioProcessor.getOscillatorFineParam(2));
-    configureKnob(knobBindings[27], "FINE", audioProcessor.getSubOscFineParam());
+    configureKnob(knobBindings[22], "MASTER", audioProcessor.getMasterGainParam());
+    configureKnob(knobBindings[23], "FINE", audioProcessor.getOscillatorFineParam(0));
+    configureKnob(knobBindings[24], "FINE", audioProcessor.getOscillatorFineParam(1));
+    configureKnob(knobBindings[25], "FINE", audioProcessor.getOscillatorFineParam(2));
+    configureKnob(knobBindings[26], "FINE", audioProcessor.getSubOscFineParam());
     for (int oscillator = 0; oscillator < kOscillatorSourceCount; ++oscillator)
     {
-        configureKnob(knobBindings[static_cast<std::size_t>(28 + oscillator)], "SEMI", audioProcessor.getOscillatorSemitoneParam(oscillator));
+        configureKnob(knobBindings[static_cast<std::size_t>(27 + oscillator)], "SEMI", audioProcessor.getOscillatorSemitoneParam(oscillator));
         oscTuning[static_cast<std::size_t>(oscillator)].configureSemitoneReadout();
     }
-    configureKnob(knobBindings[31], "SEMI", audioProcessor.getSubOscSemitoneParam());
+    configureKnob(knobBindings[30], "SEMI", audioProcessor.getSubOscSemitoneParam());
     subTuning.configureSemitoneReadout();
     // The caption is gone from the layout, so the name lives on the knob.
     gainKnob.setTooltip("Master gain");
@@ -374,39 +368,10 @@ void PX3SynthAudioProcessorEditor::buildEnvelopeAndLfoControls()
     lfoFrequencyValueLabel.setFont(juce::FontOptions(11.0f));
     lfoFrequencyValueLabel.setInterceptsMouseClicks(false, false);
 
-    lfoAmountValueLabel.setJustificationType(juce::Justification::centred);
-    lfoAmountValueLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(218, 218, 228));
-    lfoAmountValueLabel.setColour(juce::Label::backgroundColourId, juce::Colours::transparentBlack);
-    lfoAmountValueLabel.setFont(juce::FontOptions(11.0f));
-    lfoAmountValueLabel.setInterceptsMouseClicks(false, false);
-
-    envAmountValueLabel.setJustificationType(juce::Justification::centred);
-    envAmountValueLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(218, 218, 228));
-    envAmountValueLabel.setColour(juce::Label::backgroundColourId, juce::Colours::transparentBlack);
-    envAmountValueLabel.setFont(juce::FontOptions(11.0f));
-    envAmountValueLabel.setInterceptsMouseClicks(false, false);
-
     lfoFrequencyKnob.onValueChange = [this]()
     {
         refreshLfoFrequencyLabel();
     };
-
-    lfoAmountKnob.onValueChange = [this]()
-    {
-        const auto amount = juce::jlimit(-1.0f, 1.0f, static_cast<float>(lfoAmountKnob.getValue()));
-        const auto amountPercent = static_cast<int>(std::lround(amount * 100.0f));
-        const auto prefix = amountPercent > 0 ? juce::String("+") : juce::String();
-        lfoAmountValueLabel.setText(prefix + juce::String(amountPercent) + "%", juce::dontSendNotification);
-    };
-
-    lfoAmountLabel.setText("AMOUNT", juce::dontSendNotification);
-    lfoAmountLabel.setJustificationType(juce::Justification::centred);
-    lfoAmountLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
-    lfoAmountLabel.setFont(juce::FontOptions(11.0f));
-    lfoAmountLabel.setColour(juce::Label::backgroundColourId, juce::Colours::transparentBlack);
-    lfoAmountLabel.setInterceptsMouseClicks(false, false);
-
-    lfoAmountKnob.onValueChange();
 
     auto& lfoWaveformParam = audioProcessor.getLfoWaveformParam();
     for (int i = 0; i < lfoWaveformParam.choices.size(); ++i)
@@ -423,18 +388,6 @@ void PX3SynthAudioProcessorEditor::buildEnvelopeAndLfoControls()
     lfoWaveformLabel.setFont(juce::FontOptions(11.5f));
     enableLabelHoverOverlay(lfoWaveformLabel, "Waveform");
 
-    lfoAssignLabel.setText("ASSIGN", juce::dontSendNotification);
-    lfoAssignLabel.setJustificationType(juce::Justification::centred);
-    lfoAssignLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
-    lfoAssignLabel.setFont(juce::FontOptions(11.5f));
-    enableLabelHoverOverlay(lfoAssignLabel, "LFO Assignment");
-
-    envAssignLabel.setText("ASSIGN", juce::dontSendNotification);
-    envAssignLabel.setJustificationType(juce::Justification::centred);
-    envAssignLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
-    envAssignLabel.setFont(juce::FontOptions(11.5f));
-    enableLabelHoverOverlay(envAssignLabel, "Envelope Assignment");
-
     envBypassButton.setButtonText("");
     envBypassButton.setClickingTogglesState(true);
     envBypassButton.setColour(juce::ToggleButton::textColourId, juce::Colour::fromRGB(210, 210, 210));
@@ -444,25 +397,6 @@ void PX3SynthAudioProcessorEditor::buildEnvelopeAndLfoControls()
     lfoBypassButton.setClickingTogglesState(true);
     lfoBypassButton.setColour(juce::ToggleButton::textColourId, juce::Colour::fromRGB(210, 210, 210));
     lfoBypassButton.setColour(juce::ToggleButton::tickColourId, juce::Colour::fromRGB(196, 196, 196));
-    lfoAssignBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour::fromRGBA(34, 34, 34, 210));
-    lfoAssignBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
-    lfoAssignBox.setColour(juce::ComboBox::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 105));
-    envAssignBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour::fromRGBA(34, 34, 34, 210));
-    envAssignBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
-    envAssignBox.setColour(juce::ComboBox::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 105));
-
-    const auto& lfoAssignments = audioProcessor.getLfoAssignmentDisplayNames();
-    for (int i = 0; i < lfoAssignments.size(); ++i)
-    {
-        lfoAssignBox.addItem(lfoAssignments[i], i + 1);
-    }
-
-    lfoAssignBox.onChange = [this]()
-    {
-        const auto selected = juce::jmax(0, lfoAssignBox.getSelectedId() - 1);
-        audioProcessor.setLfoAssignmentIndex(selected);
-    };
-
     auto& subOscWaveformParam = audioProcessor.getSubOscWaveformParam();
     for (int i = 0; i < subOscWaveformParam.choices.size(); ++i)
     {
@@ -827,14 +761,9 @@ void PX3SynthAudioProcessorEditor::buildPanels()
                                           kGroupAccents[0]);
     modPanel = std::make_unique<ModPanel>(audioProcessor,
                                           lfoBypassButton,
-                                          lfoAssignLabel,
-                                          lfoAssignBox,
                                           lfoFrequencyKnob,
                                           lfoFrequencyLabel,
                                           lfoFrequencyValueLabel,
-                                          lfoAmountKnob,
-                                          lfoAmountLabel,
-                                          lfoAmountValueLabel,
                                           lfoWaveformBox,
                                           lfoWaveformLabel,
                                           &knobLookAndFeel,
@@ -1311,8 +1240,6 @@ void PX3SynthAudioProcessorEditor::finishConstruction()
 
     refreshOscillatorModeUI();
     refreshGranularModeUI();
-    refreshLfoAssignmentUI();
-    refreshEnvelopeAssignmentUI();
     refreshLfoUI();
     refreshSubOscUI();
     refreshEnvelopeGraphUI();

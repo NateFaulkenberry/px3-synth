@@ -247,16 +247,6 @@ void testAmpEnvelope()
               quietRms < loudRms * 0.6,
               "sustain 0.2 -> " + fmt(quietRms, 5) + ", sustain 1.0 -> " + fmt(loudRms, 5));
     }
-
-    {
-        PX3SynthAudioProcessor processor;
-        makePlainPatch(processor);
-        // The AMP ADSR controls are deliberately excluded from the assignable
-        // destination list; they are a VCA contour, not a modulation lane.
-        const auto assigned = processor.setLfoAssignmentByParameterId(0, "voice.amp.attack", false);
-        check("AmpEnvelope_AdsrIsNotAModulationDestination", ! assigned,
-              "assigning an LFO to ampAttack must be rejected");
-    }
 }
 
 //==============================================================================
@@ -393,8 +383,7 @@ void testModEnvelopes()
             setParam(processor, "mod.env1.decay", 0.005f);
             setParam(processor, "mod.env1.sustain", 1.0f);
             setParam(processor, "mod.env1.release", 0.100f);
-            setParam(processor, "mod.env1.amount", amount);
-            processor.setEnvelopeAssignmentByParameterId(0, "voice.filter1.cutoff", false);
+            routeModulation(processor, 0, PX3SynthAudioProcessor::kLfoSourceCount, "voice.filter1.cutoff", amount);
             return render(processor, 48000, { { 2000, true, 45, 0.9f } });
         };
 
@@ -433,8 +422,7 @@ void testModEnvelopes()
             setParam(processor, "mod.env2.attack", 0.005f);
             setParam(processor, "mod.env2.decay", 0.005f);
             setParam(processor, "mod.env2.sustain", 1.0f);
-            setParam(processor, "mod.env2.amount", amount);
-            processor.setEnvelopeAssignmentByParameterId(1, "mix.osc1.level", false);
+            routeModulation(processor, 0, PX3SynthAudioProcessor::kLfoSourceCount + 1, "mix.osc1.level", amount);
             return render(processor, 40000, { { 2000, true, 57, 0.9f } }).rmsOver(20000, 38000);
         };
         const auto neutral = renderWithEnvToLevel(0.0f, true);
@@ -463,9 +451,7 @@ void testModEnvelopes()
             setParam(processor, "mod.env2.attack", 0.005f);
             setParam(processor, "mod.env2.decay", 0.005f);
             setParam(processor, "mod.env2.sustain", 1.0f);
-            setParam(processor, "mod.env2.amount", amount);
-            const auto assigned = processor.setEnvelopeAssignmentByParameterId(1, "mix.sub.level", false);
-            juce::ignoreUnused(assigned);
+            routeModulation(processor, 0, PX3SynthAudioProcessor::kLfoSourceCount + 1, "mix.sub.level", amount);
             return render(processor, 40000, { { 2000, true, 57, 0.9f } }).rmsOver(20000, 38000);
         };
         const auto neutral = renderSubLevelModulation(0.0f);
@@ -480,23 +466,21 @@ void testModEnvelopes()
         // restore it and it has to still modulate afterwards.
         PX3SynthAudioProcessor source;
         makePlainPatch(source);
-        source.setEnvelopeAssignmentByParameterId(1, "mix.osc1.level", false);
-        source.setLfoAssignmentByParameterId(0, "mix.sub.level", false);
-        const auto envAssignment = source.getEnvelopeAssignmentParameterId(1);
-        const auto lfoAssignment = source.getLfoAssignmentParameterId(0);
+        routeModulation(source, 0, PX3SynthAudioProcessor::kLfoSourceCount + 1, "mix.osc1.level", 0.5f);
+        routeModulation(source, 1, 0, "mix.sub.level", 0.5f);
 
         juce::MemoryBlock state;
         source.getStateInformation(state);
         PX3SynthAudioProcessor restored;
         restored.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
 
-        check("Preset_SourceLevelModulationAssignmentsSurviveRoundTrip",
-              restored.getEnvelopeAssignmentParameterId(1).equalsIgnoreCase(envAssignment)
-                  && restored.getLfoAssignmentParameterId(0).equalsIgnoreCase(lfoAssignment)
-                  && envAssignment.equalsIgnoreCase("mix.osc1.level")
-                  && lfoAssignment.equalsIgnoreCase("mix.sub.level"),
-              "env2 -> " + restored.getEnvelopeAssignmentParameterId(1)
-                  + ", lfo1 -> " + restored.getLfoAssignmentParameterId(0));
+        const auto envRoute = restored.getGraphRoute(0);
+        const auto lfoRoute = restored.getGraphRoute(1);
+        check("Preset_SourceLevelModulationRoutesSurviveRoundTrip",
+              envRoute.source == PX3SynthAudioProcessor::kLfoSourceCount + 1
+                  && envRoute.destination == "mix.osc1.level"
+                  && lfoRoute.source == 0 && lfoRoute.destination == "mix.sub.level",
+              "env2 -> " + envRoute.destination + ", lfo1 -> " + lfoRoute.destination);
     }
 
     // Independence between the three envelopes, measured through their effects.
@@ -510,8 +494,7 @@ void testModEnvelopes()
             setParam(processor, "voice.filter1.cutoff", 900.0f);
             setParam(processor, "mod.env1.enabled", 1.0f);
             setParam(processor, "mod.env1.sustain", 1.0f);
-            setParam(processor, "mod.env1.amount", 0.8f);
-            processor.setEnvelopeAssignmentByParameterId(0, "voice.filter1.cutoff", false);
+            routeModulation(processor, 0, PX3SynthAudioProcessor::kLfoSourceCount, "voice.filter1.cutoff", 0.8f);
             tweak(processor);
             return render(processor, 40000, { { 2000, true, 45, 0.9f } });
         };
@@ -544,8 +527,8 @@ void testModEnvelopes()
               "rms moved " + fmt(std::abs(controlA.rms() - withAmpChanged.rms()), 6));
     }
 
-    // A disabled envelope must not modulate, even with an assignment and a
-    // non-zero amount still set.
+    // A disabled envelope must not modulate, even with a route at non-zero
+    // depth still patched.
     {
         auto renderEnv3 = [](bool enabled)
         {
@@ -554,8 +537,7 @@ void testModEnvelopes()
             setParam(processor, "mix.osc1.level", 0.5f);
             setParam(processor, "mod.env3.enabled", enabled ? 1.0f : 0.0f);
             setParam(processor, "mod.env3.sustain", 1.0f);
-            setParam(processor, "mod.env3.amount", 1.0f);
-            processor.setEnvelopeAssignmentByParameterId(2, "mix.osc1.level", false);
+            routeModulation(processor, 0, PX3SynthAudioProcessor::kLfoSourceCount + 2, "mix.osc1.level", 1.0f);
             return render(processor, 40000, { { 2000, true, 57, 0.9f } }).rmsOver(20000, 38000);
         };
         check("Env3_DisabledDoesNotModulateItsDestination",
@@ -735,10 +717,9 @@ void testLfo()
             setParam(processor, "voice.filter1.cutoff", 1200.0f);
             setParam(processor, "mod.lfo1.enabled", lfoEnabled ? 1.0f : 0.0f);
             setParam(processor, "mod.lfo1.frequency", 6.0f);
-            setParam(processor, "mod.lfo1.amount", amount);
             if (assigned)
             {
-                processor.setLfoAssignmentByParameterId(0, "voice.filter1.cutoff", false);
+                routeModulation(processor, 0, 0, "voice.filter1.cutoff", amount);
             }
             return render(processor, 64000, { { 2000, true, 45, 0.9f } });
         };
@@ -791,12 +772,10 @@ void testLfo()
             setParam(processor, "voice.filter1.cutoff", 1200.0f);
             setParam(processor, "mod.lfo1.enabled", 1.0f);
             setParam(processor, "mod.lfo1.frequency", 6.0f);
-            setParam(processor, "mod.lfo1.amount", 1.0f);
-            processor.setLfoAssignmentByParameterId(0, "voice.filter1.cutoff", false);
+            routeModulation(processor, 0, 0, "voice.filter1.cutoff", 1.0f);
             setParam(processor, "mod.lfo2.enabled", 1.0f);
             setParam(processor, "mod.lfo2.frequency", 3.0f);
-            setParam(processor, "mod.lfo2.amount", lfo2Amount);
-            processor.setLfoAssignmentByParameterId(1, "mix.osc1.pan", false);
+            routeModulation(processor, 1, 1, "mix.osc1.pan", lfo2Amount);
             return render(processor, 48000, { { 2000, true, 45, 0.9f } });
         };
         const auto capture = renderTwoLfos(1.0f);
@@ -829,9 +808,8 @@ void testLfo()
         for (int i = 1; i <= 3; ++i) setParam(processor, "voice.osc" + juce::String(i) + ".enabled", 0.0f);
         setParam(processor, "voice.sub.enabled", 0.0f);
         setParam(processor, "mod.lfo1.enabled", 1.0f);
-        setParam(processor, "mod.lfo1.amount", 1.0f);
         setParam(processor, "mod.lfo1.frequency", 8.0f);
-        processor.setLfoAssignmentByParameterId(0, "mix.osc1.level", false);
+        routeModulation(processor, 0, 0, "mix.osc1.level", 1.0f);
         const auto capture = render(processor, 32000, { { 2000, true, 57, 0.9f } });
         check("Lfo_IsNotAnAudioSource", capture.peak() < 1.0e-6,
               "peak with all oscillators disabled " + fmt(capture.peak(), 9));

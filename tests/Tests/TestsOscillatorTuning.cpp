@@ -250,12 +250,10 @@ void testOscillatorTuning()
         {
             setParam(processor, "mod.lfo1.enabled", 1.0f);
             setParam(processor, "mod.lfo1.frequency", 0.01f);
-            setParam(processor, "mod.lfo1.amount", 0.5f);
             setChoice(processor, "mod.lfo1.waveform", 3);
-            processor.setLfoAssignmentByParameterId(0,
-                                                    source == Source::osc ? "voice.osc1.pitch.mod"
-                                                                          : "voice.sub.pitch.mod",
-                                                    false);
+            routeModulation(processor, 0, 0,
+                            source == Source::osc ? "voice.osc1.pitch.mod" : "voice.sub.pitch.mod",
+                            0.5f);
         });
         check((juce::String("Tuning_") + nameOf(source) + "_PitchModulationAddsToStaticTuning").toRawUTF8(),
               std::abs(cancelled) < 1.0,

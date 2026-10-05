@@ -933,8 +933,8 @@ Mood::Frame Mood::renderWetSlip(float inL, float inR, float spread)
     // which meant routing the micro-loop into it did nothing.
     writeWet(applyDegradation(inL, 0), applyDegradation(inR, 1));
 
-    // Playback speed in semitone steps, from an octave down through neutral to
-    // an octave up, in each direction.
+    // Playback speed in semitone steps, from two octaves down through neutral
+    // to two octaves up (+/-24 semitones), in each direction.
     const auto modify = clamp01(currentSettings.wetModify);
     const auto semitones = std::round(juce::jmap(modify, -24.0f, 24.0f));
     auto speed = semitoneRatio(std::abs(semitones) > 24.0f ? 0.0f : semitones);

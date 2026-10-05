@@ -706,8 +706,8 @@ void testEnvelopeModes()
                 // 0.8.0 dense layout: in the compact module the TYPE selector
                 // left the knobs' row, so a mod envelope's four knobs span it.
                 // Since 0.8.2 TYPE sits in the top row, where ASSIGN was, and
-                // the knobs are one row: A D S R in the left two thirds, AMOUNT
-                // and KEY beside them.
+                // the knobs are one row: A D S R in the left four fifths, KEY
+                // beside them. (AMOUNT, which shared KEY's group, is gone.)
                 auto typeApart = false;
                 if (modCard != nullptr)
                 {
@@ -715,15 +715,15 @@ void testEnvelopeModes()
                     const auto box = modCard->debugModeBox().getBounds();
                     typeApart = ! box.isEmpty() && ! group.isEmpty() && box.getBottom() <= group.getY();
                     const auto content = modCard->getLocalBounds().reduced(8, 0).getWidth();
-                    const auto amount = modCard->debugAmountKnobBounds();
-                    const auto amountBeside = ! amount.isEmpty() && amount.getX() >= group.getRight()
-                                              && amount.getCentreY() > group.getY() && amount.getCentreY() < group.getBottom();
+                    const auto key = modCard->debugKeyKnobBounds();
+                    const auto keyBeside = ! key.isEmpty() && key.getX() >= group.getRight()
+                                           && key.getCentreY() > group.getY() && key.getCentreY() < group.getBottom();
                     juce::ignoreUnused(modSpan);
                     check("EnvKnobs_ModEnvKnobsTakeTheirOwnRowInTheCompactModule",
-                          typeApart && amountBeside && group.getWidth() > content * 0.55,
+                          typeApart && keyBeside && group.getWidth() > content * 0.65,
                           "ENV 1's knobs span " + juce::String(group.getWidth()) + " of " + juce::String(content)
                               + " px, TYPE " + (typeApart ? "in the top row, above them" : "NOT ABOVE THEM")
-                              + ", AMOUNT " + (amountBeside ? "beside them" : "NOT BESIDE THEM"));
+                              + ", KEY " + (keyBeside ? "beside them" : "NOT BESIDE THEM"));
                 }
                 else
                 {

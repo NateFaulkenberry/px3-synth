@@ -505,23 +505,6 @@ void PX3SynthAudioProcessorEditor::refreshGranularModeUI()
     delayTimeKnob.setTooltip(delayTimeLabel.getText());
 }
 
-void PX3SynthAudioProcessorEditor::refreshLfoAssignmentUI()
-{
-    const auto assignmentIndex = audioProcessor.getLfoAssignmentIndex();
-    if (assignmentIndex == lastLfoAssignmentIndex)
-    {
-        return;
-    }
-
-    lastLfoAssignmentIndex = assignmentIndex;
-    lfoAssignBox.setSelectedId(assignmentIndex + 1, juce::dontSendNotification);
-}
-
-void PX3SynthAudioProcessorEditor::refreshEnvelopeAssignmentUI()
-{
-    // ENV assignment controls are owned by ModPanel (ENV1/2/3) and refreshed there.
-}
-
 void PX3SynthAudioProcessorEditor::refreshLfoFrequencyLabel()
 {
     const auto hz = juce::jlimit(0.01f, 20.0f, audioProcessor.getLfoFrequencyParam().get());
@@ -655,14 +638,11 @@ void PX3SynthAudioProcessorEditor::timerCallback()
     if (isPanelVisible(kSectionOsc))
     {
         refreshOscillatorModeUI();
-        refreshLfoAssignmentUI();
         refreshSubOscUI();
     }
     // The modulator cards sit on the VOICE surface (the MOD page is the matrix).
     if (modPanel != nullptr && modPanel->isVisible())
     {
-        refreshLfoAssignmentUI();
-        refreshEnvelopeAssignmentUI();
         refreshEnvelopeGraphUI();
     }
     if (isPanelVisible(kSectionAmp))

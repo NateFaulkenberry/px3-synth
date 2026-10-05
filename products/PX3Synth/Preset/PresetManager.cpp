@@ -557,26 +557,6 @@ juce::ValueTree PresetManager::initPresetTree(juce::String& error) const
     state.addChild(moduleOrder, -1, nullptr);
     state.setProperty("moduleOrderRevision", 0, nullptr);
 
-    juce::ValueTree lfoSources("LFO_SOURCES");
-    for (int index = 0; index < PX3SynthAudioProcessor::kLfoSourceCount; ++index)
-    {
-        juce::ValueTree source("SOURCE");
-        source.setProperty("index", index, nullptr);
-        source.setProperty("assignment", "none", nullptr);
-        lfoSources.addChild(source, -1, nullptr);
-    }
-    state.addChild(lfoSources, -1, nullptr);
-
-    juce::ValueTree envelopeSources("ENVELOPE_SOURCES");
-    for (int index = 0; index < PX3SynthAudioProcessor::kEnvelopeSourceCount; ++index)
-    {
-        juce::ValueTree source("SOURCE");
-        source.setProperty("index", index, nullptr);
-        source.setProperty("assignment", "none", nullptr);
-        envelopeSources.addChild(source, -1, nullptr);
-    }
-    state.addChild(envelopeSources, -1, nullptr);
-
     juce::ValueTree analogState("ANALOG");
     analogState.setProperty("seed", 1337, nullptr);
     state.addChild(analogState, -1, nullptr);

@@ -102,7 +102,6 @@ float PX3SynthAudioProcessor::applyModulationToNormalizedValue(juce::RangedAudio
         const auto index = static_cast<std::size_t>(i);
         signals[index] = lfoCurrentValues[index].load(std::memory_order_relaxed);
         enabledSources[index] = getLfoEnabledParam(i).get() && isLfoClockAvailable(i);
-        depths[index] = getLfoAmountParam(i).get();
     }
     // Envelopes are per-voice sources. For a destination that lives inside the
     // voice, each voice adds its own envelopes (VoiceModulation.h), so they are
@@ -116,7 +115,6 @@ float PX3SynthAudioProcessor::applyModulationToNormalizedValue(juce::RangedAudio
         const auto index = static_cast<std::size_t>(i);
         signals[static_cast<std::size_t>(kLfoSourceCount + i)] = modulationEnvelopeValues[index].load(std::memory_order_relaxed);
         enabledSources[static_cast<std::size_t>(kLfoSourceCount + i)] = getEnvelopeEnabledParam(i).get() && ! envelopesAreVoiceLocal;
-        depths[static_cast<std::size_t>(kLfoSourceCount + i)] = getEnvelopeAmountParam(i).get();
     }
     for (int macro = 0; macro < kMacroCount; ++macro)
     {
@@ -126,7 +124,7 @@ float PX3SynthAudioProcessor::applyModulationToNormalizedValue(juce::RangedAudio
     }
     for (int slot = 0; slot < kGraphRouteSlots; ++slot)
     {
-        depths[static_cast<std::size_t>(kLfoSourceCount + kEnvelopeSourceCount + kMacroRouteSlots + slot)]
+        depths[static_cast<std::size_t>(kGraphRouteSlotBase + slot)]
             = graphRouteDepthParams[static_cast<std::size_t>(slot)]->get();
     }
     const auto totalDelta = graph->deltaFor(parameter->getParameterIndex(), base, signals, depths, enabledSources);
@@ -463,17 +461,6 @@ juce::AudioParameterBool& PX3SynthAudioProcessor::getAnalogEnabledParam() const 
 juce::AudioParameterBool& PX3SynthAudioProcessor::getFxSeparateOutputParam() const { return *fxSeparateOutputParam; }
 bool PX3SynthAudioProcessor::isParameterModulated(const juce::String& parameterId) const
 {
-    const auto pointsAt = [this, &parameterId](int source)
-    {
-        const auto assignment = getAssignmentIndex(source);
-        if (assignment <= 0 || assignment >= static_cast<int>(lfoAssignableTargets.size()))
-        {
-            return false;
-        }
-        return lfoAssignableTargets[static_cast<std::size_t>(assignment)]
-            .parameterId.equalsIgnoreCase(parameterId);
-    };
-
     // A macro counts as modulation for this purpose: the question this answers
     // is "does the knob need a moving ring", and a macro moves the value just
     // as an LFO does. Without this the ring stayed dark and a macro-driven
@@ -483,24 +470,26 @@ bool PX3SynthAudioProcessor::isParameterModulated(const juce::String& parameterI
         return true;
     }
 
-    for (int i = 0; i < kLfoSourceCount; ++i)
-    {
-        if (pointsAt(i) && getLfoEnabledParam(i).get())
-        {
-            return true;
-        }
-    }
-    for (int i = 0; i < kEnvelopeSourceCount; ++i)
-    {
-        if (pointsAt(kLfoSourceCount + i) && getEnvelopeEnabledParam(i).get())
-        {
-            return true;
-        }
-    }
     const auto* entry = parameterCatalog.find(parameterId);
     auto graph = modulationGraph.read();
-    return graph && entry != nullptr && graph->hasDestination(entry->parameter->getParameterIndex(),
-                kLfoSourceCount + kEnvelopeSourceCount + kMacroRouteSlots);
+    if (! graph || entry == nullptr) { return false; }
+
+    // A route counts only while its source is switched on: an LFO or envelope
+    // that is off is not modulating anything, whatever it is patched to.
+    auto live = false;
+    graph->forEachRouteTo(entry->parameter->getParameterIndex(),
+                          [this, &live](const px3::synth::ModulationRoute& route,
+                                        const px3::synth::ModulationSourceDescriptor&)
+    {
+        if (route.slot < kGraphRouteSlotBase) { return; }
+        if (route.source < kLfoSourceCount) { live = live || getLfoEnabledParam(route.source).get(); }
+        else if (route.source < kLfoSourceCount + kEnvelopeSourceCount)
+        {
+            live = live || getEnvelopeEnabledParam(route.source - kLfoSourceCount).get();
+        }
+        else { live = true; }
+    });
+    return live;
 }
 
 float PX3SynthAudioProcessor::getModulatedNormalisedValue(juce::RangedAudioParameter& parameter) const
@@ -745,12 +734,6 @@ juce::AudioParameterFloat& PX3SynthAudioProcessor::getLfoFrequencyParam(int lfoI
     const auto idx = juce::jlimit(0, kLfoSourceCount - 1, lfoIndex);
     return *lfoFrequencyParams[static_cast<std::size_t>(idx)];
 }
-juce::AudioParameterFloat& PX3SynthAudioProcessor::getLfoAmountParam() const { return getLfoAmountParam(0); }
-juce::AudioParameterFloat& PX3SynthAudioProcessor::getLfoAmountParam(int lfoIndex) const
-{
-    const auto idx = juce::jlimit(0, kLfoSourceCount - 1, lfoIndex);
-    return *lfoAmountParams[static_cast<std::size_t>(idx)];
-}
 juce::AudioParameterChoice& PX3SynthAudioProcessor::getLfoWaveformParam() const { return getLfoWaveformParam(0); }
 juce::AudioParameterChoice& PX3SynthAudioProcessor::getLfoWaveformParam(int lfoIndex) const
 {
@@ -775,12 +758,6 @@ juce::AudioParameterFloat& PX3SynthAudioProcessor::getOscillatorPitchModParam(in
 juce::AudioParameterFloat& PX3SynthAudioProcessor::getSubOscPitchModParam() const { return *subOscPitchModParam; }
 juce::AudioParameterChoice& PX3SynthAudioProcessor::getFilterRoutingParam() const { return *filterRoutingParam; }
 juce::AudioParameterFloat& PX3SynthAudioProcessor::getFilterParallelBalanceParam() const { return *filterParallelBalanceParam; }
-juce::AudioParameterFloat& PX3SynthAudioProcessor::getEnvelopeAmountParam() const { return getEnvelopeAmountParam(0); }
-juce::AudioParameterFloat& PX3SynthAudioProcessor::getEnvelopeAmountParam(int envIndex) const
-{
-    const auto idx = juce::jlimit(0, kEnvelopeSourceCount - 1, envIndex);
-    return *envelopeAmountParams[static_cast<std::size_t>(idx)];
-}
 int PX3SynthAudioProcessor::getTopMenuViewIndex() const
 {
     return juce::jlimit(0, kTopMenuViewCount - 1,
@@ -796,72 +773,6 @@ void PX3SynthAudioProcessor::setTopMenuViewIndex(int index, bool notifyHost)
     {
         updateHostDisplay(juce::AudioProcessor::ChangeDetails().withNonParameterStateChanged(true));
     }
-}
-
-const juce::StringArray& PX3SynthAudioProcessor::getLfoAssignmentDisplayNames() const
-{
-    return lfoAssignmentDisplayNames;
-}
-
-int PX3SynthAudioProcessor::getAssignmentIndex(int source) const
-{
-    auto graph = modulationGraph.read();
-    const auto destination = graph ? graph->routeAtSlot(source).destination : -1;
-    for (std::size_t index = 1; index < lfoAssignableTargets.size(); ++index)
-    {
-        const auto* parameter = lfoAssignableTargets[index].parameter;
-        if (parameter != nullptr && parameter->getParameterIndex() == destination) { return static_cast<int>(index); }
-    }
-    return 0;
-}
-
-juce::String PX3SynthAudioProcessor::getAssignmentParameterId(int source) const
-{
-    const auto index = getAssignmentIndex(source);
-    if (index <= 0 || index >= static_cast<int>(lfoAssignableTargets.size()))
-    {
-        return "none";
-    }
-
-    return lfoAssignableTargets[static_cast<std::size_t>(index)].parameterId;
-}
-
-bool PX3SynthAudioProcessor::setAssignmentIndex(int source,
-                                                int index,
-                                                bool notifyHost,
-                                                const juce::String& sourceName)
-{
-    const std::lock_guard<std::recursive_mutex> lock(graphAuthoringMutex);
-    if (lfoAssignableTargets.empty())
-    {
-        return false;
-    }
-
-    const auto clamped = juce::jlimit(0,
-                                      static_cast<int>(lfoAssignableTargets.size()) - 1,
-                                      index);
-    const auto previous = primaryGraphRoutes[static_cast<std::size_t>(source)];
-    primaryGraphRoutes[static_cast<std::size_t>(source)] = clamped == 0 ? GraphRouteConfiguration {}
-        : GraphRouteConfiguration { source, lfoAssignableTargets[static_cast<std::size_t>(clamped)].parameterId };
-    px3::synth::CompiledModulationGraph plan;
-    juce::String error;
-    if (! compileModulationGraph(graphRouteConfigurations, plan, error) || ! modulationGraph.publish(plan))
-    {
-        primaryGraphRoutes[static_cast<std::size_t>(source)] = previous;
-        return false;
-    }
-
-    if (notifyHost)
-    {
-        updateHostDisplay();
-        updateHostDisplay(juce::AudioProcessor::ChangeDetails().withNonParameterStateChanged(true));
-    }
-
-    debugLogEvent(sourceName,
-                  "ASSIGNMENT_CHANGED",
-                  "index=" + juce::String(clamped)
-                      + " id=" + getAssignmentParameterId(source));
-    return true;
 }
 
 bool PX3SynthAudioProcessor::sourceMuted(int sourceIndex) const
@@ -990,166 +901,6 @@ bool PX3SynthAudioProcessor::fxReturnAudible(bool anySolo, bool anySourceSolo, b
     // itself is soloed. This does not depend on whether a source is also soloed.
     juce::ignoreUnused(anySourceSolo);
     return fxSolo;
-}
-
-bool PX3SynthAudioProcessor::setAssignmentByParameterId(int source,
-                                                        const juce::String& parameterId,
-                                                        bool notifyHost,
-                                                        const juce::String& sourceName)
-{
-    if (parameterId.isEmpty() || parameterId.equalsIgnoreCase("none"))
-    {
-        return setAssignmentIndex(source, 0, notifyHost, sourceName);
-    }
-
-    for (int i = 0; i < static_cast<int>(lfoAssignableTargets.size()); ++i)
-    {
-        if (lfoAssignableTargets[static_cast<std::size_t>(i)].parameterId.equalsIgnoreCase(parameterId))
-        {
-            return setAssignmentIndex(source, i, notifyHost, sourceName);
-        }
-    }
-
-    return false;
-}
-
-int PX3SynthAudioProcessor::getLfoAssignmentIndex() const
-{
-    return getLfoAssignmentIndex(0);
-}
-
-int PX3SynthAudioProcessor::getLfoAssignmentIndex(int lfoIndex) const
-{
-    return getAssignmentIndex(juce::jlimit(0, kLfoSourceCount - 1, lfoIndex));
-}
-
-juce::String PX3SynthAudioProcessor::getLfoAssignmentParameterId() const
-{
-    return getLfoAssignmentParameterId(0);
-}
-
-juce::String PX3SynthAudioProcessor::getLfoAssignmentParameterId(int lfoIndex) const
-{
-    return getAssignmentParameterId(juce::jlimit(0, kLfoSourceCount - 1, lfoIndex));
-}
-
-bool PX3SynthAudioProcessor::setLfoAssignmentIndex(int index, bool notifyHost)
-{
-    return setLfoAssignmentIndex(0, index, notifyHost);
-}
-
-bool PX3SynthAudioProcessor::setLfoAssignmentIndex(int lfoIndex, int index, bool notifyHost)
-{
-    const auto sourceName = "LFO" + juce::String(juce::jlimit(0, kLfoSourceCount - 1, lfoIndex) + 1);
-    return setAssignmentIndex(juce::jlimit(0, kLfoSourceCount - 1, lfoIndex), index, notifyHost, sourceName);
-}
-
-bool PX3SynthAudioProcessor::setLfoAssignmentByParameterId(const juce::String& parameterId, bool notifyHost)
-{
-    return setLfoAssignmentByParameterId(0, parameterId, notifyHost);
-}
-
-bool PX3SynthAudioProcessor::setLfoAssignmentByParameterId(int lfoIndex,
-                                                           const juce::String& parameterId,
-                                                           bool notifyHost)
-{
-    const auto sourceName = "LFO" + juce::String(juce::jlimit(0, kLfoSourceCount - 1, lfoIndex) + 1);
-    return setAssignmentByParameterId(juce::jlimit(0, kLfoSourceCount - 1, lfoIndex), parameterId, notifyHost, sourceName);
-}
-
-const juce::StringArray& PX3SynthAudioProcessor::getEnvelopeAssignmentDisplayNames() const
-{
-    return lfoAssignmentDisplayNames;
-}
-
-int PX3SynthAudioProcessor::getEnvelopeAssignmentIndex() const
-{
-    return getEnvelopeAssignmentIndex(0);
-}
-
-int PX3SynthAudioProcessor::getEnvelopeAssignmentIndex(int envIndex) const
-{
-    return getAssignmentIndex(kLfoSourceCount + juce::jlimit(0, kEnvelopeSourceCount - 1, envIndex));
-}
-
-juce::String PX3SynthAudioProcessor::getEnvelopeAssignmentParameterId() const
-{
-    return getEnvelopeAssignmentParameterId(0);
-}
-
-juce::String PX3SynthAudioProcessor::getEnvelopeAssignmentParameterId(int envIndex) const
-{
-    return getAssignmentParameterId(kLfoSourceCount + juce::jlimit(0, kEnvelopeSourceCount - 1, envIndex));
-}
-
-bool PX3SynthAudioProcessor::setEnvelopeAssignmentIndex(int index, bool notifyHost)
-{
-    return setEnvelopeAssignmentIndex(0, index, notifyHost);
-}
-
-bool PX3SynthAudioProcessor::setEnvelopeAssignmentIndex(int envIndex, int index, bool notifyHost)
-{
-    const auto sourceName = "ENV" + juce::String(juce::jlimit(0, kEnvelopeSourceCount - 1, envIndex) + 1);
-    return setAssignmentIndex(kLfoSourceCount + juce::jlimit(0, kEnvelopeSourceCount - 1, envIndex), index, notifyHost, sourceName);
-}
-
-bool PX3SynthAudioProcessor::setEnvelopeAssignmentByParameterId(const juce::String& parameterId, bool notifyHost)
-{
-    return setEnvelopeAssignmentByParameterId(0, parameterId, notifyHost);
-}
-
-bool PX3SynthAudioProcessor::setEnvelopeAssignmentByParameterId(int envIndex,
-                                                                const juce::String& parameterId,
-                                                                bool notifyHost)
-{
-    const auto sourceName = "ENV" + juce::String(juce::jlimit(0, kEnvelopeSourceCount - 1, envIndex) + 1);
-    return setAssignmentByParameterId(kLfoSourceCount + juce::jlimit(0, kEnvelopeSourceCount - 1, envIndex), parameterId, notifyHost, sourceName);
-}
-
-void PX3SynthAudioProcessor::buildLfoAssignableTargets()
-{
-    // This list is the authoritative mapping between UI assignment index and
-    // processor parameter targets. It is built from existing float parameters
-    // so new automatable controls become assignable without custom plumbing.
-    lfoAssignableTargets.clear();
-    lfoAssignmentDisplayNames.clear();
-
-    lfoAssignableTargets.push_back({ "none", "None", nullptr, 0.0f });
-    lfoAssignmentDisplayNames.add("None");
-
-    for (const auto& entry : parameterCatalog.entries())
-    {
-        auto* floatParam = dynamic_cast<juce::AudioParameterFloat*>(entry.parameter);
-        if (floatParam == nullptr)
-        {
-            continue;
-        }
-
-        const auto id = floatParam->getParameterID();
-        if (! entry.modulationDestination || entry.sourceControl)
-        {
-            continue;
-        }
-
-        lfoAssignableTargets.push_back({ id,
-                                         floatParam->getName(64),
-                                         floatParam,
-                                         lfoDepthForParameterId(id) });
-
-        lfoAssignmentDisplayNames.add(floatParam->getName(64));
-    }
-
-    primaryGraphRoutes = {};
-}
-
-float PX3SynthAudioProcessor::lfoDepthForParameterId(const juce::String& parameterId) const
-{
-    juce::ignoreUnused(parameterId);
-
-    // Source amount is already user-scaled (-100%..+100%).
-    // Use full normalized depth here so routing is clearly audible and
-    // modulation behavior is consistent across destinations.
-    return 1.0f;
 }
 
 px3::FxOrder PX3SynthAudioProcessor::getFxProcessingOrder() const
@@ -1422,7 +1173,6 @@ bool PX3SynthAudioProcessor::rebuildModulationGraph()
 bool PX3SynthAudioProcessor::compileModulationGraph(
     const std::array<GraphRouteConfiguration, kGraphRouteSlots>& configurations,
     px3::synth::CompiledModulationGraph& plan, juce::String& graphError,
-    const std::array<GraphRouteConfiguration, kLfoSourceCount + kEnvelopeSourceCount>* primary,
     const std::array<std::vector<MacroDestination>, kMacroCount>* macros) const
 {
     const std::lock_guard<std::recursive_mutex> lock(graphAuthoringMutex);
@@ -1444,29 +1194,7 @@ bool PX3SynthAudioProcessor::compileModulationGraph(
         }
     }
     std::vector<ModulationRoute> routes;
-    const auto& primaryConfigurations = primary != nullptr ? *primary : primaryGraphRoutes;
-    const auto addAssignment = [&](int slot, const GraphRouteConfiguration& configuration)
-    {
-        if (configuration.source < 0) { return true; }
-        const auto* entry = parameterCatalog.find(configuration.destination);
-        auto* target = entry != nullptr ? entry->parameter : nullptr;
-        if (target == nullptr || ! entry->modulationDestination)
-        {
-            graphError = "Primary modulation route has an unavailable destination.";
-            return false;
-        }
-        routes.push_back({ slot, configuration.source, target->getParameterIndex(), 1.0f });
-        return true;
-    };
-    for (int source = 0; source < kLfoSourceCount; ++source)
-    {
-        if (! addAssignment(source, primaryConfigurations[static_cast<std::size_t>(source)])) { return false; }
-    }
-    for (int source = 0; source < kEnvelopeSourceCount; ++source)
-    {
-        if (! addAssignment(kLfoSourceCount + source, primaryConfigurations[static_cast<std::size_t>(kLfoSourceCount + source)])) { return false; }
-    }
-    auto slot = kLfoSourceCount + kEnvelopeSourceCount;
+    auto slot = kMacroRouteSlotBase;
     const auto& macroConfigurations = macros != nullptr ? *macros : macroDestinations;
     for (int macro = 0; macro < kMacroCount; ++macro)
     {
@@ -1474,14 +1202,7 @@ bool PX3SynthAudioProcessor::compileModulationGraph(
         {
             auto* entry = parameterCatalog.find(destination.parameterId);
             auto* target = entry != nullptr ? entry->parameter : nullptr;
-            if (target == nullptr)
-            {
-                for (const auto& candidate : lfoAssignableTargets)
-                {
-                    if (candidate.parameterId == destination.parameterId) { target = candidate.parameter; break; }
-                }
-            }
-            if (target == nullptr || slot >= kLfoSourceCount + kEnvelopeSourceCount + kMacroRouteSlots)
+            if (target == nullptr || slot >= kMacroRouteSlotBase + kMacroRouteSlots)
             {
                 graphError = "Macro modulation route has an unavailable endpoint or exceeds capacity.";
                 return false;
@@ -1502,7 +1223,7 @@ bool PX3SynthAudioProcessor::compileModulationGraph(
             graphError = "Modulation destination is unavailable: " + configuration.destination;
             return false;
         }
-        routes.push_back({ kLfoSourceCount + kEnvelopeSourceCount + kMacroRouteSlots + index,
+        routes.push_back({ kGraphRouteSlotBase + index,
                            configuration.source, target->getParameterIndex(), 0.0f,
                            configuration.polarity, configuration.curve });
     }
@@ -1548,13 +1269,9 @@ void PX3SynthAudioProcessor::buildVoiceModulationPlan(px3::synth::VoiceModulatio
 
     // The same depth table the global evaluation uses.
     auto depths = graph->depths();
-    for (int i = 0; i < kEnvelopeSourceCount; ++i)
-    {
-        depths[static_cast<std::size_t>(kLfoSourceCount + i)] = getEnvelopeAmountParam(i).get();
-    }
     for (int slot = 0; slot < kGraphRouteSlots; ++slot)
     {
-        depths[static_cast<std::size_t>(kLfoSourceCount + kEnvelopeSourceCount + kMacroRouteSlots + slot)]
+        depths[static_cast<std::size_t>(kGraphRouteSlotBase + slot)]
             = graphRouteDepthParams[static_cast<std::size_t>(slot)]->get();
     }
 

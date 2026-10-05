@@ -553,8 +553,6 @@ private:
                             std::initializer_list<std::pair<const char*, const char*>> knobs,
                             std::initializer_list<std::pair<const char*, const char*>> choices,
                             const char* enabledParameterId);
-    void refreshLfoAssignmentUI();
-    void refreshEnvelopeAssignmentUI();
     void refreshLfoFrequencyLabel();
     void refreshLfoUI();
     void refreshSubOscUI();
@@ -923,14 +921,11 @@ private:
     juce::Slider releaseKnob;
     juce::Slider gainKnob;
     juce::Slider lfoFrequencyKnob;
-    PanKnob lfoAmountKnob;
     // Coarse and fine tuning, one pair per oscillator and one for the sub.
     std::array<TuningControls, 3> oscTuning;
     TuningControls subTuning;
     juce::ComboBox lfoWaveformBox;
     juce::ComboBox subOscWaveformBox;
-    juce::ComboBox lfoAssignBox;
-    juce::ComboBox envAssignBox;
     px3::ui::BypassButton lfoBypassButton;
     px3::ui::BypassButton envBypassButton;
     px3::ui::BypassButton filter1EnabledButton;
@@ -961,7 +956,6 @@ private:
     KnobLabel releaseLabel;
     KnobLabel gainLabel;
     KnobLabel lfoFrequencyLabel;
-    KnobLabel lfoAmountLabel;
     KnobLabel lfoWaveformLabel;
     // One readout per macro knob. Every other knob in the plugin shows the
     // value it is setting; the oscillator macros were the only ones that did
@@ -976,11 +970,7 @@ private:
     juce::Label osc3MacroBValueLabel;
     juce::Label osc3MacroCValueLabel;
     KnobLabel subOscWaveformLabel;
-    KnobLabel envAssignLabel;
     juce::Label lfoFrequencyValueLabel;
-    juce::Label lfoAmountValueLabel;
-    juce::Label envAmountValueLabel;
-    KnobLabel lfoAssignLabel;
     std::unique_ptr<OscPanel> oscPanel;
     // In-window modulation routing (docs/PX3_0.8.0_MODULATION_UI.md). The
     // controller outlives every jack that refers to it: declared first.
@@ -1117,10 +1107,8 @@ private:
     std::vector<std::unique_ptr<juce::ComboBoxParameterAttachment>> comboBoxAttachments;
     std::vector<std::unique_ptr<juce::ButtonParameterAttachment>> buttonAttachments;
 
-    std::array<KnobBinding, 32> knobBindings {};
+    std::array<KnobBinding, 31> knobBindings {};
     int lastGranularModeIndex { -2 };   // -1 is "not Granular"; -2 is "never set"
-    int lastLfoAssignmentIndex { -1 };
-    int lastEnvelopeAssignmentIndex { -1 };
 
     juce::Label debugPerformanceOverlayLabel;
     uint32_t debugPerformanceOverlayLastUpdateMs { 0 };
@@ -1166,7 +1154,6 @@ private:
     juce::Label debugUpdateLabel;
     juce::Label debugSnapshotLabel;
     juce::Label debugLfoLabel;
-    juce::Label debugLfoAssignLabel;
     juce::Label debugEnvelopeLabel;
     juce::Label debugPresetToolsLabel;
     juce::Label debugDumpPresetNameLabel;
@@ -1185,7 +1172,6 @@ private:
     juce::TextEditor debugDumpPresetNameEditor;
     juce::TextEditor debugDumpPresetAuthorEditor;
     juce::ComboBox debugDumpPresetCategoryBox;
-    juce::ComboBox debugLfoAssignBox;
     juce::TextButton debugDumpPresetButton;
     juce::Viewport debugParamViewport;
     juce::Component debugParamContent;
@@ -1204,7 +1190,6 @@ private:
     int debugRefreshTickCounter { 0 };
     bool debugPanelVisible { false };
     bool debugParamControlsInitialized { false };
-    bool debugLfoAssignSuppressCallbacks { false };
     bool debugHasSnapshot { false };
     juce::String debugEditorCreatedTime;
     DebugSnapshot debugLastSnapshot;

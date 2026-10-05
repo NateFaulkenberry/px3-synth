@@ -171,8 +171,9 @@ float mapWetModifyToDelayFeedback(float modify)
 
 float mapWetModifyToSlipSemitones(float modify)
 {
-    // Quantised, an octave down through neutral to an octave up, in each
-    // direction - the same reasoning as TAPE's table.
+    // Quantised to semitones, two octaves down through neutral to two octaves
+    // up (+/-24 semitones), in each direction - the same reasoning as TAPE's
+    // table.
     constexpr auto kLowest = -24.0f;
     constexpr auto kHighest = 24.0f;
     return std::round(lerp(modify, kLowest, kHighest));

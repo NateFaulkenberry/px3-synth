@@ -698,8 +698,8 @@ runtime orchestration path.
     (filter cutoff and resonance, oscillator fine tune, pitch mod, PARAM A-C
     and wavetable position),
     allocation-free and copied to each voice once per block.
-- `buildLfoAssignableTargets`
-  - Builds the destination list from supported float parameters.
+- `ParameterCatalog` / `isGraphDestination`
+  - Which float parameters can be modulation destinations.
 - `currentLfoSignalForBlock`
   - Generates the current block LFO signal and tracks debug phase/value state.
 - `applyModulationToNormalizedValue`

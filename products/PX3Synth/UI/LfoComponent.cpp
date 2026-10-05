@@ -30,14 +30,9 @@ juce::PopupMenu::Options LfoComponent::WaveformComboLookAndFeel::getOptionsForCo
 }
 
 LfoComponent::LfoComponent(juce::ToggleButton& enabledButtonIn,
-                                                     juce::Label& assignLabelIn,
-                                                     juce::ComboBox& assignBoxIn,
                                                      juce::Slider& rateKnobIn,
                                                      juce::Label& rateLabelIn,
                                                      juce::Label& rateValueLabelIn,
-                                     juce::Slider& amountKnobIn,
-                                     juce::Label& amountLabelIn,
-                                     juce::Label& amountValueLabelIn,
                                                      juce::ComboBox& waveformBoxIn,
                                                      juce::Label& waveformLabelIn,
                                                      juce::Colour accentIn,
@@ -46,11 +41,6 @@ LfoComponent::LfoComponent(juce::ToggleButton& enabledButtonIn,
             rateKnob(rateKnobIn),
       rateLabel(rateLabelIn),
       rateValueLabel(rateValueLabelIn),
-    amountKnob(amountKnobIn),
-    amountLabel(amountLabelIn),
-    amountValueLabel(amountValueLabelIn),
-      assignLabel(assignLabelIn),
-      assignBox(assignBoxIn),
       waveformBox(waveformBoxIn),
       waveformLabel(waveformLabelIn),
     accent(accentIn),
@@ -62,22 +52,12 @@ LfoComponent::LfoComponent(juce::ToggleButton& enabledButtonIn,
 
         addAndMakeVisible(enabledButton);
     baseRateValueTextColour = rateValueLabel.findColour(juce::Label::textColourId);
-    baseAmountValueTextColour = amountValueLabel.findColour(juce::Label::textColourId);
     graphView.paintStill = [this](juce::Graphics& g) { paintGraphStill(g); };
     graphView.paintMoving = [this](juce::Graphics& g) { paintGraphMoving(g); };
     addAndMakeVisible(graphView);
     addAndMakeVisible(rateKnob);
     addAndMakeVisible(rateLabel);
     addAndMakeVisible(rateValueLabel);
-    addAndMakeVisible(amountKnob);
-    addAndMakeVisible(amountLabel);
-    addAndMakeVisible(amountValueLabel);
-    assignBox.setLookAndFeel(&waveformComboLookAndFeel);
-    // ASSIGN is no longer shown: routing is the patch cables' job. The pair
-    // stays a (hidden) child so its parameter wiring and refresh are unchanged
-    // and a legacy assignment in a saved state still loads and still sounds.
-    addChildComponent(assignLabel);
-    addChildComponent(assignBox);
     waveformBox.setLookAndFeel(&waveformComboLookAndFeel);
     addAndMakeVisible(waveformBox);
     addAndMakeVisible(waveformLabel);
@@ -85,7 +65,6 @@ LfoComponent::LfoComponent(juce::ToggleButton& enabledButtonIn,
 
 LfoComponent::~LfoComponent()
 {
-    assignBox.setLookAndFeel(nullptr);
     waveformBox.setLookAndFeel(nullptr);
     rampTimeKnob.setLookAndFeel(nullptr);
 }
@@ -201,7 +180,7 @@ void LfoComponent::setUIConfig(std::shared_ptr<const UIConfig> configIn)
     repaint();
 }
 
-void LfoComponent::refreshFromParameters(bool enabled, float rateHz, float amount, int waveformIndex)
+void LfoComponent::refreshFromParameters(bool enabled, float rateHz, int waveformIndex)
 {
     const auto enabledChanged = currentEnabled != enabled;
     currentEnabled = enabled;
@@ -213,35 +192,20 @@ void LfoComponent::refreshFromParameters(bool enabled, float rateHz, float amoun
     const auto rateLive = currentEnabled && clockFree;
 
     enabledButton.setToggleState(currentEnabled, juce::dontSendNotification);
-    assignBox.setEnabled(currentEnabled);
-    assignLabel.setEnabled(currentEnabled);
     waveformBox.setEnabled(currentEnabled);
     waveformLabel.setEnabled(currentEnabled);
     rateKnob.setEnabled(rateLive);
     rateKnob.setInterceptsMouseClicks(rateLive, rateLive);
     rateKnob.getProperties().set("knobBypassed", !currentEnabled);
     rateKnob.getProperties().set("psychedelicBypassGray", !currentEnabled);
-    amountKnob.setEnabled(currentEnabled);
-    amountKnob.setInterceptsMouseClicks(currentEnabled, currentEnabled);
-    amountKnob.getProperties().set("knobBypassed", !currentEnabled);
-    amountKnob.getProperties().set("psychedelicBypassGray", !currentEnabled);
     rateLabel.setEnabled(currentEnabled);
     rateValueLabel.setEnabled(currentEnabled);
-    amountLabel.setEnabled(currentEnabled);
-    amountValueLabel.setEnabled(currentEnabled);
     const auto disabledRateValueColour = juce::Colour::fromRGB(178, 178, 178);
-    const auto disabledAmountValueColour = juce::Colour::fromRGB(178, 178, 178);
     rateValueLabel.setColour(juce::Label::textColourId,
                              currentEnabled ? baseRateValueTextColour : disabledRateValueColour);
-    amountValueLabel.setColour(juce::Label::textColourId,
-                               currentEnabled ? baseAmountValueTextColour : disabledAmountValueColour);
 
     currentRateHz = juce::jlimit(0.01f, 20.0f, rateHz);
     rateValueLabel.setText(clockFree ? juce::String(currentRateHz, 2) + " Hz" : juce::String("SYNC"), juce::dontSendNotification);
-    currentAmount = juce::jlimit(-1.0f, 1.0f, amount);
-    const auto amountPercent = static_cast<int>(std::lround(currentAmount * 100.0f));
-    const auto amountPrefix = amountPercent > 0 ? juce::String("+") : juce::String();
-    amountValueLabel.setText(amountPrefix + juce::String(amountPercent) + "%", juce::dontSendNotification);
 
     const auto clamped = px3::clampLfoWaveformIndex(waveformIndex);
     // The animation tick is not there to show a new shape when animations
@@ -278,7 +242,6 @@ void LfoComponent::refreshFromParameters(bool enabled, float rateHz, float amoun
     if (enabledChanged)
     {
         rateKnob.repaint();
-        amountKnob.repaint();
         repaint();
         graphView.invalidateStill();
     }
@@ -357,14 +320,13 @@ void LfoComponent::resized()
         clockStatus.setBounds(first.removeFromTop(16));
     }
 
-    // Row 1: bypass, assign and wave type.
+    // Row 1: wave type and key sync.
     {
         auto flex = inner.rowFlex(0);
         const auto gap = inner.rowGap(0);
         const auto row = inner.rowContent(0);
         const auto cellHeight = static_cast<float>(juce::jmax(1, row.getHeight()));
 
-        flex.items.add(juce::FlexItem(84.0f, cellHeight).withMargin(gap));
         flex.items.add(juce::FlexItem(84.0f, cellHeight).withMargin(gap));
         if (rampControlsAttached)
         {
@@ -374,18 +336,14 @@ void LfoComponent::resized()
 
         const auto cell = [&flex](int i) { return flex.items.getReference(i).currentBounds.toNearestInt(); };
         px3::ui::layoutLabelledControl(cell(0),
-                                       { &assignLabel, &assignBox, nullptr,
-                                         ControlShape::stretch, 14, 0, 24 },
-                                       inner.rowControl(0));
-        px3::ui::layoutLabelledControl(cell(1),
                                        { &waveformLabel, &waveformBox, nullptr,
                                          ControlShape::stretch, 14, 0, 24 },
                                        inner.rowControl(0));
         if (rampControlsAttached)
         {
             // No caption of its own, but the same reserved caption height, so
-            // the chip lines up with the two dropdowns beside it.
-            px3::ui::layoutLabelledControl(cell(2),
+            // the chip lines up with the dropdown beside it.
+            px3::ui::layoutLabelledControl(cell(1),
                                            { &keySyncCaptionSpacer, &keySyncButton, nullptr,
                                              ControlShape::stretch, 14, 0, 24 },
                                            inner.rowControl(0));
@@ -393,37 +351,25 @@ void LfoComponent::resized()
         }
     }
 
-    // Row 2: rate and amount, each name-knob-value. Both cells declare the same
-    // label height, readout height and cap, which is what makes the two knobs
-    // come out the same size - a hidden label on one of them was enough to make
-    // them differ.
+    // Row 2: rate, name-knob-value, centred in the row.
     {
         auto flex = inner.rowFlex(1);
         const auto gap = inner.rowGap(1);
         const auto row = inner.rowContent(1);
         const auto cellHeight = static_cast<float>(juce::jmax(1, row.getHeight()));
 
-        for (int i = 0; i < 2; ++i)
-        {
-            auto item = juce::FlexItem(84.0f, cellHeight).withMargin(gap);
-            item.flexGrow = 1.0f;
-            flex.items.add(item);
-        }
+        flex.items.add(juce::FlexItem(84.0f, cellHeight).withMargin(gap));
         flex.performLayout(row.toFloat());
 
         const auto cell = [&flex](int i) { return flex.items.getReference(i).currentBounds.toNearestInt(); };
-        // Name above, knob, value below. The names used to be hidden, which left
-        // two unlabelled knobs telling you only "0.54 Hz" and "+100%".
+        // Name above, knob, value below. The name used to be hidden, which left
+        // an unlabelled knob telling you only "0.54 Hz".
         const auto showRampTime = rampControlsAttached && laidOutForRamp;
         rateKnob.setVisible(! showRampTime);
         rampTimeKnob.setVisible(showRampTime);
         juce::Slider& timeKnob = showRampTime ? rampTimeKnob : rateKnob;
         px3::ui::layoutLabelledControl(cell(0),
                                        { &rateLabel, &timeKnob, &rateValueLabel,
-                                         ControlShape::square, 16, 20, 84 },
-                                       inner.rowControl(1));
-        px3::ui::layoutLabelledControl(cell(1),
-                                       { &amountLabel, &amountKnob, &amountValueLabel,
                                          ControlShape::square, 16, 20, 84 },
                                        inner.rowControl(1));
     }
@@ -449,20 +395,21 @@ void LfoComponent::layoutCompact()
     area.removeFromTop(c::headerClearance);
 
     // The display on top, the controls under it - WAVE | KEY SYNC, CLOCK |
-    // DIVISION, RATE | AMOUNT - placed from the bottom up so the display takes
+    // DIVISION, RATE - placed from the bottom up so the display takes
     // what they leave.
     const auto boxRows = clockControlsAttached ? 2 : 1;
     const auto knob = juce::jlimit(26, 50, (area.getHeight() - boxRows * (rowH + c::gap) - c::gap - 40) / 2);
 
-    // RATE | AMOUNT
+    // RATE, alone in its row: centred, in a cell half the row wide - the width
+    // it had when it shared the row - so its caption and readout do not stretch.
     {
-        const auto knobs = c::cells(area.removeFromBottom(c::knobRowHeight(knob)), 2);
+        const auto knobRow = area.removeFromBottom(c::knobRowHeight(knob));
+        const auto rateCell = knobRow.withSizeKeepingCentre(c::cells(knobRow, 2).front().getWidth(), knobRow.getHeight());
         const auto showRampTime = rampControlsAttached && laidOutForRamp;
         rateKnob.setVisible(! showRampTime);
         rampTimeKnob.setVisible(showRampTime);
         juce::Slider& timeKnob = showRampTime ? rampTimeKnob : rateKnob;
-        c::knobCell(knobs[0], &rateLabel, timeKnob, &rateValueLabel, knob);
-        c::knobCell(knobs[1], &amountLabel, amountKnob, &amountValueLabel, knob);
+        c::knobCell(rateCell, &rateLabel, timeKnob, &rateValueLabel, knob);
     }
     area.removeFromBottom(c::gap);
 

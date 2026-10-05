@@ -631,24 +631,24 @@ void testWavetable()
 
     // ---- WT Position is an ordinary modulation destination -----------------
     // The point of making it a real parameter rather than folding it into a
-    // macro: the assignment list is built from the float parameters that exist,
-    // so this needed no plumbing of its own and would be a silent omission if
-    // it were ever moved.
+    // macro: the destination list is built from the float parameters that
+    // exist, so this needed no plumbing of its own and would be a silent
+    // omission if it were ever moved.
     {
         PX3SynthAudioProcessor processor;
-        const auto& names = processor.getLfoAssignmentDisplayNames();
         juce::StringArray found;
-        for (const auto& name : names)
+        for (int osc = 1; osc <= 3; ++osc)
         {
-            if (name.containsIgnoreCase("WT Position")) { found.add(name); }
+            const auto id = "voice.osc" + juce::String(osc) + ".wavetable.position";
+            if (processor.isGraphDestination(id)) { found.add(id); }
         }
         check("Wavetable_PositionIsAModulationDestination", found.size() == 3,
-              found.isEmpty() ? "WT Position is not assignable"
+              found.isEmpty() ? "WT Position is not a destination"
                               : found.joinIntoString(", "));
 
-        check("Wavetable_PositionAcceptsAnLfoAssignment",
-              processor.setLfoAssignmentByParameterId("voice.osc1.wavetable.position"),
-              "an LFO can be pointed at osc1WtPos");
+        check("Wavetable_PositionAcceptsAnLfoRoute",
+              routeModulation(processor, 0, 0, "voice.osc1.wavetable.position", 1.0f),
+              "an LFO can be patched to osc1 WT position");
     }
 
     // ---- fast scanning must not click --------------------------------------
@@ -664,8 +664,7 @@ void testWavetable()
         setParam(processor, "global.character.enabled", 0.0f);
         setParam(processor, "mod.lfo1.enabled", 1.0f);
         setParam(processor, "mod.lfo1.frequency", 9.0f);
-        setParam(processor, "mod.lfo1.amount", 1.0f);
-        processor.setLfoAssignmentByParameterId("voice.osc1.wavetable.position");
+        routeModulation(processor, 0, 0, "voice.osc1.wavetable.position", 1.0f);
 
         const auto capture = render(processor, static_cast<int>(kSampleRate * 3.0),
                                     { { 1000, true, 57, 0.9f } });
@@ -1407,9 +1406,8 @@ void testWavetable()
                 setParam(processor, "voice.osc1.wavetable.position", base);
                 setParam(processor, "mod.lfo1.enabled", 1.0f);
                 setParam(processor, "mod.lfo1.frequency", 0.5f);
-                setParam(processor, "mod.lfo1.amount", amount);
                 setChoice(processor, "mod.lfo1.waveform", 0);
-                processor.setLfoAssignmentByParameterId("voice.osc1.wavetable.position");
+                routeModulation(processor, 0, 0, "voice.osc1.wavetable.position", amount);
 
                 processor.setPlayConfigDetails(0, 2, kSampleRate, kBlockSize);
                 processor.prepareToPlay(kSampleRate, kBlockSize);
@@ -1530,10 +1528,9 @@ void testWavetable()
                         makePlainPatch(processor);
                         setParam(processor, "mod.lfo1.enabled", 1.0f);
                         setParam(processor, "mod.lfo1.frequency", 4.0f);
-                        setParam(processor, "mod.lfo1.amount", amount);
                         setChoice(processor, "mod.lfo1.waveform", waveform);
 
-                        if (! processor.setLfoAssignmentByParameterId(destination.parameterId))
+                        if (! routeModulation(processor, 0, 0, destination.parameterId, amount))
                         {
                             continue;
                         }
@@ -1612,9 +1609,8 @@ void testWavetable()
         makePlainPatch(processor);
         setParam(processor, "mod.lfo1.enabled", 1.0f);
         setParam(processor, "mod.lfo1.frequency", 6.0f);
-        setParam(processor, "mod.lfo1.amount", 1.0f);
         setChoice(processor, "mod.lfo1.waveform", 0);
-        processor.setLfoAssignmentByParameterId("voice.filter1.cutoff");
+        routeModulation(processor, 0, 0, "voice.filter1.cutoff", 1.0f);
 
         auto* cutoff = findParameter(processor, "voice.filter1.cutoff");
         cutoff->setValueNotifyingHost(0.30f);
@@ -1697,10 +1693,9 @@ void testWavetable()
                     makePlainPatch(processor);
                     setParam(processor, "mod.lfo1.enabled", 1.0f);
                     setParam(processor, "mod.lfo1.frequency", 0.5f);
-                    setParam(processor, "mod.lfo1.amount", 1.0f);
                     setChoice(processor, "mod.lfo1.waveform", waveform);
 
-                    if (! processor.setLfoAssignmentByParameterId(destination.parameterId))
+                    if (! routeModulation(processor, 0, 0, destination.parameterId, 1.0f))
                     {
                         continue;
                     }
@@ -1768,9 +1763,8 @@ void testWavetable()
         makePlainPatch(processor);
         setParam(processor, "mod.lfo1.enabled", 1.0f);
         setParam(processor, "mod.lfo1.frequency", 3.0f);
-        setParam(processor, "mod.lfo1.amount", 1.0f);
         setChoice(processor, "mod.lfo1.waveform", 0);
-        processor.setLfoAssignmentByParameterId("voice.osc1.wavetable.position");
+        routeModulation(processor, 0, 0, "voice.osc1.wavetable.position", 1.0f);
 
         auto& positionParam = processor.getOscillatorWtPositionParam(0);
         auto& asRanged = static_cast<juce::RangedAudioParameter&>(positionParam);
@@ -1815,10 +1809,9 @@ void testWavetable()
         setParam(processor, "voice.osc1.wavetable.position", 0.5f);
         setParam(processor, "mod.lfo1.enabled", 1.0f);
         setParam(processor, "mod.lfo1.frequency", 0.5f);
-        setParam(processor, "mod.lfo1.amount", 1.0f);
         setChoice(processor, "mod.lfo1.waveform", 0);
         setParam(processor, "global.character.enabled", 0.0f);
-        processor.setLfoAssignmentByParameterId("voice.osc1.wavetable.position");
+        routeModulation(processor, 0, 0, "voice.osc1.wavetable.position", 1.0f);
 
         const auto capture = render(processor, static_cast<int>(kSampleRate * 4.0),
                                     { { 1000, true, 45, 0.9f } });
@@ -1868,8 +1861,7 @@ void testWavetable()
               "an unmodulated cutoff returns -1, which the knob draws as no ring");
 
         setParam(processor, "mod.lfo1.enabled", 1.0f);
-        setParam(processor, "mod.lfo1.amount", 0.8f);
-        processor.setLfoAssignmentByParameterId("voice.filter1.cutoff");
+        routeModulation(processor, 0, 0, "voice.filter1.cutoff", 0.8f);
 
         const auto modulated = processor.getModulatedNormalisedValue(cutoff);
         check("ModulationRing_AssignedParameterReportsItsModulatedValue",

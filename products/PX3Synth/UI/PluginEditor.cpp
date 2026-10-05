@@ -587,13 +587,10 @@ void PX3SynthAudioProcessorEditor::applyTopMenuSectionSelection(int sectionIndex
     if (clamped == kSectionOsc)
     {
         refreshOscillatorModeUI();
-        refreshLfoAssignmentUI();
         refreshLfoUI();
     }
     else if (clamped == kSectionMod)
     {
-        refreshLfoAssignmentUI();
-        refreshEnvelopeAssignmentUI();
         refreshEnvelopeGraphUI();
     }
     else if (clamped == kSectionAmp)

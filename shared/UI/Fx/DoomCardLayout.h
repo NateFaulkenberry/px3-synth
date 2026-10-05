@@ -47,15 +47,17 @@ inline void declareRows(FxCardComponent& card,
                         { "loopMode", "LOOP", "What the micro-looper does", loopModeChoices } });
 
     // The wet channel's pair.
-    card.addKnobRow({ { "wetTime", "WET TIME", "Wet channel time: reverb decay, delay time or slip lag, depending on WET mode",
+    card.addKnobRow({ { "wetTime", "WET TIME", "Wet channel time. SOUP: decay time; RELAY: delay time; FLIP: lag before the harmonies arrive",
                         "cross", "INTERFERE", "Cross-modulation: how much one channel (or your input) disturbs the other. Source set by the CROSS switch" },
-                      { "wetModify", "WET CHAR", "Wet character. REVERB: synthetic to natural; DELAY: number of repeats; SLIP: number of voices",
+                      { "wetModify", "WET CHAR", "Wet character. SOUP: how synthetic the resynthesis is; RELAY: number of repeats, endless at the top; "
+                        "FLIP: which harmony, wider as it rises",
                         "eq", "TILT", "Output tilt EQ: left darkens (removes highs), right thins (removes lows)" } });
 
     // The micro-looper's pair.
     card.addKnobRow({ { "loopLength", "LOOP LEN", "Micro-looper length (or pace, depending on LOOP mode)",
                         "fade", "DECAY", "Overdub decay: how much of the loop survives each lap" },
-                      { "loopModify", "LOOP CHAR", "Loop character. ENV: trigger threshold; TAPE: fills; STRETCH: station",
+                      { "loopModify", "LOOP CHAR", "Loop character. BURST: how easily your playing reorders the slices; RADIO: scans between stations; "
+                        "MASK: how much of the loop is disguised (zero leaves it untouched, full always masks)",
                         "blend", "DRY LOOP", "How much of the clean micro-loop bypasses the wet channel" } });
 
     // The machine's pair, and the two that are not on the pedal's face.

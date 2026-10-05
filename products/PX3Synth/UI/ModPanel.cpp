@@ -8,14 +8,9 @@
 
 ModPanel::ModPanel(PX3SynthAudioProcessor& processorIn,
                    juce::ToggleButton& lfoEnabledButton,
-                   juce::Label& lfoAssignLabel,
-                   juce::ComboBox& lfoAssignBox,
                    juce::Slider& lfoRateKnob,
                    juce::Label& lfoRateLabel,
                    juce::Label& lfoRateValueLabel,
-                                     juce::Slider& lfoAmountKnob,
-                                     juce::Label& lfoAmountLabel,
-                                     juce::Label& lfoAmountValueLabel,
                    juce::ComboBox& lfoWaveformBox,
                    juce::Label& lfoWaveformLabel,
                  juce::LookAndFeel* sharedLfoKnobLookAndFeel,
@@ -27,14 +22,9 @@ ModPanel::ModPanel(PX3SynthAudioProcessor& processorIn,
         lfoKnobLookAndFeel(sharedLfoKnobLookAndFeel)
 {
     lfoComponent = std::make_unique<LfoComponent>(lfoEnabledButton,
-                                                  lfoAssignLabel,
-                                                  lfoAssignBox,
                                                   lfoRateKnob,
                                                   lfoRateLabel,
                                                   lfoRateValueLabel,
-                                                      lfoAmountKnob,
-                                                      lfoAmountLabel,
-                                                      lfoAmountValueLabel,
                                                   lfoWaveformBox,
                                                   lfoWaveformLabel,
                                                   lfoAccent);
@@ -101,13 +91,6 @@ void ModPanel::configureOwnedLfoBundle(int lfoIndex, LfoBundle& bundle)
 {
     bundle.enabledButton.setSectionName("LFO " + juce::String(lfoIndex + 1));
 
-    bundle.assignLabel.setText("ASSIGN", juce::dontSendNotification);
-    bundle.assignLabel.setJustificationType(juce::Justification::centred);
-    bundle.assignLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
-    bundle.assignLabel.setFont(juce::FontOptions(11.5f));
-    bundle.assignLabel.setInterceptsMouseClicks(true, false);
-    bundle.assignLabel.setTooltip("LFO Assignment");
-
     bundle.rateLabel.setText("RATE", juce::dontSendNotification);
     bundle.rateLabel.setJustificationType(juce::Justification::centred);
     bundle.rateLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
@@ -128,26 +111,6 @@ void ModPanel::configureOwnedLfoBundle(int lfoIndex, LfoBundle& bundle)
     bundle.waveformLabel.setInterceptsMouseClicks(true, false);
     bundle.waveformLabel.setTooltip("Waveform");
 
-    bundle.amountKnob.setCentreDetent(0.06);
-    bundle.amountKnob.setExtremeDetent(0.0);
-    bundle.amountLabel.setText("AMOUNT", juce::dontSendNotification);
-    bundle.amountLabel.setJustificationType(juce::Justification::centred);
-    bundle.amountLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
-    bundle.amountLabel.setFont(juce::FontOptions(11.0f));
-    bundle.amountLabel.setInterceptsMouseClicks(false, false);
-    bundle.amountLabel.setColour(juce::Label::backgroundColourId, juce::Colours::transparentBlack);
-
-    bundle.amountValueLabel.setJustificationType(juce::Justification::centred);
-    bundle.amountValueLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(218, 218, 228));
-    bundle.amountValueLabel.setColour(juce::Label::backgroundColourId, juce::Colours::transparentBlack);
-    bundle.amountValueLabel.setFont(juce::FontOptions(11.0f));
-    bundle.amountValueLabel.setInterceptsMouseClicks(false, false);
-
-
-    bundle.assignBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour::fromRGBA(34, 34, 34, 210));
-    bundle.assignBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
-    bundle.assignBox.setColour(juce::ComboBox::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 105));
-
     bundle.waveformBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour::fromRGBA(34, 34, 34, 210));
     bundle.waveformBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
     bundle.waveformBox.setColour(juce::ComboBox::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 105));
@@ -162,14 +125,6 @@ void ModPanel::configureOwnedLfoBundle(int lfoIndex, LfoBundle& bundle)
         bundle.rateKnob.setLookAndFeel(lfoKnobLookAndFeel);
     }
 
-    bundle.amountKnob.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
-    bundle.amountKnob.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
-    bundle.amountKnob.setRange(-1.0, 1.0, 0.0);
-    if (lfoKnobLookAndFeel != nullptr)
-    {
-        bundle.amountKnob.setLookAndFeel(lfoKnobLookAndFeel);
-    }
-
     const auto& lfoWaveformParam = processor.getLfoWaveformParam(lfoIndex);
     for (int i = 0; i < lfoWaveformParam.choices.size(); ++i)
     {
@@ -177,48 +132,20 @@ void ModPanel::configureOwnedLfoBundle(int lfoIndex, LfoBundle& bundle)
     }
     bundle.waveformBox.setSelectedItemIndex(lfoWaveformParam.getIndex(), juce::dontSendNotification);
 
-    const auto& assignments = processor.getLfoAssignmentDisplayNames();
-    for (int i = 0; i < assignments.size(); ++i)
-    {
-        bundle.assignBox.addItem(assignments[i], i + 1);
-    }
-    bundle.lastAssignmentIndex = processor.getLfoAssignmentIndex(lfoIndex);
-    bundle.assignBox.setSelectedId(bundle.lastAssignmentIndex + 1, juce::dontSendNotification);
-
-    bundle.assignBox.onChange = [this, lfoIndex, &bundle]()
-    {
-        const auto selected = juce::jmax(0, bundle.assignBox.getSelectedId() - 1);
-        processor.setLfoAssignmentIndex(lfoIndex, selected);
-    };
-
     bundle.rateKnob.onValueChange = [&bundle]()
     {
         const auto hz = juce::jlimit(0.01f, 20.0f, static_cast<float>(bundle.rateKnob.getValue()));
         bundle.rateValueLabel.setText(juce::String(hz, 2) + " Hz", juce::dontSendNotification);
     };
 
-    bundle.amountKnob.onValueChange = [&bundle]()
-    {
-        const auto amount = juce::jlimit(-1.0f, 1.0f, static_cast<float>(bundle.amountKnob.getValue()));
-        const auto amountPercent = static_cast<int>(std::lround(amount * 100.0f));
-        const auto prefix = amountPercent > 0 ? juce::String("+") : juce::String();
-        bundle.amountValueLabel.setText(prefix + juce::String(amountPercent) + "%", juce::dontSendNotification);
-    };
-
     bundle.enabledAttachment = std::make_unique<juce::ButtonParameterAttachment>(processor.getLfoEnabledParam(lfoIndex), bundle.enabledButton, nullptr);
     bundle.rateAttachment = px3::ui::makeParameterKnobAttachment(processor.getLfoFrequencyParam(lfoIndex), bundle.rateKnob);
-    bundle.amountAttachment = px3::ui::makeParameterKnobAttachment(processor.getLfoAmountParam(lfoIndex), bundle.amountKnob);
     bundle.waveformAttachment = std::make_unique<juce::ComboBoxParameterAttachment>(processor.getLfoWaveformParam(lfoIndex), bundle.waveformBox, nullptr);
 
     bundle.component = std::make_unique<LfoComponent>(bundle.enabledButton,
-                                                      bundle.assignLabel,
-                                                      bundle.assignBox,
                                                       bundle.rateKnob,
                                                       bundle.rateLabel,
                                                       bundle.rateValueLabel,
-                                                      bundle.amountKnob,
-                                                      bundle.amountLabel,
-                                                      bundle.amountValueLabel,
                                                       bundle.waveformBox,
                                                       bundle.waveformLabel,
                                                       lfoHeaderAccent,
@@ -233,65 +160,7 @@ void ModPanel::configureOwnedEnvBundle(int envIndex, EnvBundle& bundle)
 {
     bundle.enabledButton.setSectionName("ENV " + juce::String(envIndex + 1));
 
-    bundle.assignLabel.setText("ASSIGN", juce::dontSendNotification);
-    bundle.assignLabel.setJustificationType(juce::Justification::centred);
-    bundle.assignLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
-    bundle.assignLabel.setFont(juce::FontOptions(11.5f));
-    bundle.assignLabel.setInterceptsMouseClicks(true, false);
-    bundle.assignLabel.setTooltip("Envelope Assignment");
-
-
-    bundle.assignBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour::fromRGBA(34, 34, 34, 210));
-    bundle.assignBox.setColour(juce::ComboBox::textColourId, juce::Colour::fromRGB(232, 232, 232));
-    bundle.assignBox.setColour(juce::ComboBox::outlineColourId, juce::Colour::fromRGBA(255, 255, 255, 105));
-
-    bundle.amountKnob.setCentreDetent(0.06);
-    bundle.amountKnob.setExtremeDetent(0.0);
-    bundle.amountLabel.setText("AMOUNT", juce::dontSendNotification);
-    bundle.amountLabel.setJustificationType(juce::Justification::centred);
-    bundle.amountLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(232, 232, 232));
-    bundle.amountLabel.setFont(juce::FontOptions(11.0f));
-    bundle.amountLabel.setInterceptsMouseClicks(false, false);
-    bundle.amountLabel.setColour(juce::Label::backgroundColourId, juce::Colours::transparentBlack);
-
-    bundle.amountValueLabel.setJustificationType(juce::Justification::centred);
-    bundle.amountValueLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(218, 218, 228));
-    bundle.amountValueLabel.setColour(juce::Label::backgroundColourId, juce::Colours::transparentBlack);
-    bundle.amountValueLabel.setFont(juce::FontOptions(11.0f));
-    bundle.amountValueLabel.setInterceptsMouseClicks(false, false);
-
-    bundle.amountKnob.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
-    bundle.amountKnob.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
-    bundle.amountKnob.setRange(-1.0, 1.0, 0.0);
-    if (lfoKnobLookAndFeel != nullptr)
-    {
-        bundle.amountKnob.setLookAndFeel(lfoKnobLookAndFeel);
-    }
-
-    const auto& assignments = processor.getEnvelopeAssignmentDisplayNames();
-    for (int i = 0; i < assignments.size(); ++i)
-    {
-        bundle.assignBox.addItem(assignments[i], i + 1);
-    }
-    bundle.lastAssignmentIndex = processor.getEnvelopeAssignmentIndex(envIndex);
-    bundle.assignBox.setSelectedId(bundle.lastAssignmentIndex + 1, juce::dontSendNotification);
-
-    bundle.assignBox.onChange = [this, envIndex, &bundle]()
-    {
-        const auto selected = juce::jmax(0, bundle.assignBox.getSelectedId() - 1);
-        processor.setEnvelopeAssignmentIndex(envIndex, selected);
-    };
-
-    bundle.amountKnob.onValueChange = [&bundle]()
-    {
-        const auto amount = juce::jlimit(-1.0f, 1.0f, static_cast<float>(bundle.amountKnob.getValue()));
-        const auto amountPercent = static_cast<int>(std::lround(amount * 100.0f));
-        const auto prefix = amountPercent > 0 ? juce::String("+") : juce::String();
-        bundle.amountValueLabel.setText(prefix + juce::String(amountPercent) + "%", juce::dontSendNotification);
-    };
-
     bundle.enabledAttachment = std::make_unique<juce::ButtonParameterAttachment>(processor.getEnvelopeEnabledParam(envIndex), bundle.enabledButton, nullptr);
-    bundle.amountAttachment = px3::ui::makeParameterKnobAttachment(processor.getEnvelopeAmountParam(envIndex), bundle.amountKnob);
 
     bundle.component = std::make_unique<EnvelopeComponent>(processor.getEnvelopeAttackParam(envIndex),
                                                            processor.getEnvelopeDecayParam(envIndex),
@@ -299,15 +168,10 @@ void ModPanel::configureOwnedEnvBundle(int envIndex, EnvBundle& bundle)
                                                            processor.getEnvelopeReleaseParam(envIndex),
                                                            processor.getEnvelopeEnabledParam(envIndex),
                                                            bundle.enabledButton,
-                                                           bundle.assignLabel,
-                                                           bundle.assignBox,
-                                                           &bundle.amountKnob,
-                                                           &bundle.amountLabel,
-                                                           &bundle.amountValueLabel,
                                                            accent,
                                                            juce::String("mod.env") + juce::String(envIndex + 1));
 
-    // LOOP and KEY TRACK, either side of AMOUNT.
+    // LOOP and KEY TRACK.
     if (auto* loop = dynamic_cast<juce::AudioParameterBool*>(
             processor.findRangedParameterById("mod.env" + juce::String(envIndex + 1) + ".loop")))
     {
@@ -458,12 +322,7 @@ void ModPanel::setUIConfig(std::shared_ptr<const UIConfig> configIn)
         const auto comboStyle = uiConfig->getObject("styles.combos.default");
         for (auto& bundle : extraLfos)
         {
-            uiConfig->applyComboStyle(comboStyle, bundle.assignBox);
             uiConfig->applyComboStyle(comboStyle, bundle.waveformBox);
-        }
-        for (auto& bundle : envelopes)
-        {
-            uiConfig->applyComboStyle(comboStyle, bundle.assignBox);
         }
     }
 
@@ -534,17 +393,9 @@ void ModPanel::refreshFromParameters()
 {
     for (int i = 0; i < static_cast<int>(envelopes.size()); ++i)
     {
-        const auto envIndex = i;
         auto& bundle = envelopes[static_cast<std::size_t>(i)];
         if (bundle.component != nullptr)
         {
-            const auto assignment = processor.getEnvelopeAssignmentIndex(envIndex);
-            if (assignment != bundle.lastAssignmentIndex)
-            {
-                bundle.lastAssignmentIndex = assignment;
-                bundle.assignBox.setSelectedId(assignment + 1, juce::dontSendNotification);
-            }
-
             bundle.component->refreshFromParameters();
 
             // Rebuilt from the parameters while the shape is still ADSR, so a
@@ -574,7 +425,6 @@ void ModPanel::refreshLfoFromParameters()
     {
         lfoComponent->refreshFromParameters(processor.getLfoEnabledParam(0).get(),
                                             processor.getLfoFrequencyParam(0).get(),
-                                            processor.getLfoAmountParam(0).get(),
                                             processor.getLfoWaveformParam(0).getIndex());
                             lfoComponent->setClockAvailable(processor.isLfoClockAvailable(0));
     }
@@ -585,16 +435,8 @@ void ModPanel::refreshLfoFromParameters()
         auto& bundle = extraLfos[static_cast<std::size_t>(i)];
         if (bundle.component != nullptr)
         {
-            const auto assignment = processor.getLfoAssignmentIndex(lfoIndex);
-            if (assignment != bundle.lastAssignmentIndex)
-            {
-                bundle.lastAssignmentIndex = assignment;
-                bundle.assignBox.setSelectedId(assignment + 1, juce::dontSendNotification);
-            }
-
             bundle.component->refreshFromParameters(processor.getLfoEnabledParam(lfoIndex).get(),
                                                     processor.getLfoFrequencyParam(lfoIndex).get(),
-                                                    processor.getLfoAmountParam(lfoIndex).get(),
                                                     processor.getLfoWaveformParam(lfoIndex).getIndex());
             bundle.component->setClockAvailable(processor.isLfoClockAvailable(lfoIndex));
         }

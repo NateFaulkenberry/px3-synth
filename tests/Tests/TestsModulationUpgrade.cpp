@@ -444,11 +444,10 @@ void testRampsAndKeySyncUpgrade()
         makePlainPatch(processor);
         setParam(processor, "mod.lfo1.enabled", 1.0f);
         setParam(processor, "mod.lfo1.frequency", 0.5f);
-        setParam(processor, "mod.lfo1.amount", 1.0f);
         setChoice(processor, "mod.lfo1.waveform", waveform);
         setParam(processor, "mod.lfo1.ramp.time", 1.0f);
         setParam(processor, "mod.lfo1.key.sync", keySync ? 1.0f : 0.0f);
-        processor.setLfoAssignmentByParameterId(0, "voice.filter1.cutoff", false);
+        routeModulation(processor, 0, 0, "voice.filter1.cutoff", 1.0f);
         findParameter(processor, "voice.filter1.cutoff")->setValueNotifyingHost(0.5f);
         prepareUpgrade(processor);
     };
@@ -557,7 +556,6 @@ void testModulationRuleUpgrade()
         makePlainPatch(processor);
         setParam(processor, "mod.lfo1.enabled", 1.0f);
         setParam(processor, "mod.lfo1.frequency", 0.01f);   // stays in the square's high half throughout
-        setParam(processor, "mod.lfo1.amount", 1.0f);
         setChoice(processor, "mod.lfo1.waveform", 3);
         prepareUpgrade(processor);
 
@@ -569,7 +567,11 @@ void testModulationRuleUpgrade()
             if (ranged == nullptr) { continue; }
 
             const auto id = ranged->getParameterID();
-            if (! processor.setLfoAssignmentByParameterId(0, id, false)) { continue; }
+            // Sound destinations only: a modulator's own settings (LFO rates,
+            // envelope times) are routable too, but are not what this audits.
+            const auto* entry = processor.getParameterCatalog().find(id);
+            if (entry == nullptr || entry->sourceControl) { continue; }
+            if (! routeModulation(processor, 0, 0, id, 1.0f)) { continue; }
 
             const auto original = ranged->getValue();
             ranged->setValueNotifyingHost(0.5f);
@@ -604,9 +606,8 @@ void testModulationRuleUpgrade()
         cutoff->setValueNotifyingHost(cutoff->getDefaultValue());
         setParam(processor, "mod.lfo1.enabled", 1.0f);
         setParam(processor, "mod.lfo1.frequency", 2.0f);
-        setParam(processor, "mod.lfo1.amount", 1.0f);
         setChoice(processor, "mod.lfo1.waveform", 0);
-        processor.setLfoAssignmentByParameterId(0, "voice.filter1.cutoff", false);
+        routeModulation(processor, 0, 0, "voice.filter1.cutoff", 1.0f);
         prepareUpgrade(processor);
 
         auto lowHz = 1.0e9f, highHz = 0.0f;
@@ -631,9 +632,8 @@ void testModulationRuleUpgrade()
             makePlainPatch(processor);
             setParam(processor, "mod.lfo1.enabled", 1.0f);
             setParam(processor, "mod.lfo1.frequency", 0.01f);
-            setParam(processor, "mod.lfo1.amount", amount);
             setChoice(processor, "mod.lfo1.waveform", 3);
-            processor.setLfoAssignmentByParameterId(0, "voice.osc1.pitch.mod", false);
+            routeModulation(processor, 0, 0, "voice.osc1.pitch.mod", amount);
             prepareUpgrade(processor);
             runUpgradeBlocks(processor, 2);
             auto* pitchMod = findParameter(processor, "voice.osc1.pitch.mod");
@@ -868,10 +868,9 @@ void testModulationUpgrade()
             setChoice(processor, "voice.filter1.type", 1);   // LP24
             setParam(processor, "voice.filter1.cutoff", 200.0f);
             setParam(processor, "mod.env1.enabled", 1.0f);
-            setParam(processor, "mod.env1.amount", 1.0f);
             setParam(processor, "mod.env1.attack", 2.0f);
             setParam(processor, "mod.env1.sustain", 1.0f);
-            processor.setEnvelopeAssignmentByParameterId(0, "voice.filter1.cutoff", false);
+            routeModulation(processor, 0, PX3SynthAudioProcessor::kLfoSourceCount, "voice.filter1.cutoff", 1.0f);
             std::vector<NoteEvent> events { { aStartSample, true, 45, 0.9f } };
             if (playB) events.push_back({ 48000, true, 84, 0.9f });
             const auto capture = render(processor, 48000 * 3 / 2, events);
@@ -1132,9 +1131,8 @@ void testModulationUpgrade()
         PX3SynthAudioProcessor processor;
         makePlainPatch(processor);
         setParam(processor, "mod.lfo1.enabled", 1.0f);
-        setParam(processor, "mod.lfo1.amount", 1.0f);
         setChoice(processor, "mod.lfo1.clock.mode", 2);
-        processor.setLfoAssignmentByParameterId(0, "voice.filter1.cutoff", false);
+        routeModulation(processor, 0, 0, "voice.filter1.cutoff", 1.0f);
         auto* cutoff = findParameter(processor, "voice.filter1.cutoff");
         cutoff->setValueNotifyingHost(0.5f);
         processor.setPlayHead(&playHead);
