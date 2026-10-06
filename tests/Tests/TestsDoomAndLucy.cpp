@@ -3298,67 +3298,188 @@ void testLucy()
               restored.getFxProcessingOrder() == order, "");
     }
 
+    // ---- LUCY is a master insert --------------------------------------------
+    //
+    // It used to sit in the send chain, where its output reached the master as
+    // a (stage - send) difference: the dry stayed at full level, everything
+    // LUCY replaced was subtracted from the return, so engaging it cost ~5 dB
+    // and its own output sat ~5 dB under a dry signal no LUCY control could
+    // touch (measured through the real AU, 0.8.1 and 0.8.2 alike). On the
+    // master the whole mix goes through it.
     {
-        // LUCY and DOOM in both orders. Position has to change the audio, or
-        // the chain is not really a chain.
-        //
-        // Both are switched on explicitly. LUCY starts off in the Synth, so this
-        // used to compare two chains with LUCY bypassed - and passed only because
-        // two processors started their notes at different random phases, which
-        // made any two renders differ. Voices start deterministically now.
-        auto renderWithOrder = [](const px3::FxOrder& order)
+        auto saw = [](PX3SynthAudioProcessor& processor)
+        {
+            makePlainPatch(processor);   // every source send closed, every FX off
+            setChoice(processor, "voice.osc1.mode", 1);   // SAW
+        };
+        auto chord = std::vector<NoteEvent> { { 0, true, 48, 0.9f }, { 0, true, 55, 0.9f }, { 0, true, 60, 0.9f } };
+        constexpr int kLength = 48000 * 2;
+        constexpr int kFrom = 48000 / 2;
+        auto lucyRender = [&](const std::function<void(PX3SynthAudioProcessor&)>& configure)
         {
             PX3SynthAudioProcessor processor;
-            for (auto* param : processor.getParameters())
-            {
-                if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(param))
-                {
-                    if (ranged->paramID == "fx.lucy.enabled")  ranged->setValueNotifyingHost(1.0f);
-                    if (ranged->paramID == "fx.doom.enabled")  ranged->setValueNotifyingHost(1.0f);
-                    if (ranged->paramID == "fx.lucy.global")   ranged->setValueNotifyingHost(0.7f);
-                    if (ranged->paramID == "fx.lucy.loss")     ranged->setValueNotifyingHost(0.7f);
-                    if (ranged->paramID == "fx.doom.mix")      ranged->setValueNotifyingHost(0.6f);
-                    if (ranged->paramID == "fx.reverb.amount") ranged->setValueNotifyingHost(0.6f);
-                }
-            }
-            processor.setFxProcessingOrder(order);
-            return render(processor, 48000, { { 2000, true, 60, 0.9f } });
+            saw(processor);
+            configure(processor);
+            return render(processor, kLength, chord);
         };
-
-        auto moveTo = [](px3::FxOrder order, int stage, int position)
+        auto differenceDb = [&](const Capture& a, const Capture& b)
         {
-            std::vector<int> v(order.begin(), order.end());
-            const auto it = std::find(v.begin(), v.end(), stage);
-            const auto from = static_cast<int>(std::distance(v.begin(), it));
-            const auto moved = v[static_cast<std::size_t>(from)];
-            v.erase(v.begin() + from);
-            v.insert(v.begin() + position, moved);
-            std::copy(v.begin(), v.end(), order.begin());
-            return order;
-        };
-
-        const auto lucyBeforeDoom = moveTo(moveTo(px3::kDefaultFxOrder, px3::fxStageLucy, 0),
-                                           px3::fxStageDoom, 1);
-        const auto doomBeforeLucy = moveTo(moveTo(px3::kDefaultFxOrder, px3::fxStageDoom, 0),
-                                           px3::fxStageLucy, 1);
-
-        const auto a = renderWithOrder(lucyBeforeDoom);
-        const auto b = renderWithOrder(doomBeforeLucy);
-
-        auto differs = false;
-        const auto count = juce::jmin(a.left.size(), b.left.size());
-        for (std::size_t i = 0; i < count; ++i)
-        {
-            if (std::abs(a.left[i] - b.left[i]) > 1.0e-5f)
+            double e = 0.0, ref = 0.0;
+            for (std::size_t i = static_cast<std::size_t>(kFrom); i < a.left.size() && i < b.left.size(); ++i)
             {
-                differs = true;
-                break;
+                const auto dl = static_cast<double>(a.left[i]) - b.left[i];
+                const auto dr = static_cast<double>(a.right[i]) - b.right[i];
+                e += dl * dl + dr * dr;
+                ref += static_cast<double>(a.left[i]) * a.left[i] + static_cast<double>(a.right[i]) * a.right[i];
             }
+            return juce::Decibels::gainToDecibels(std::sqrt(e / juce::jmax(1.0e-30, ref)), -300.0);
+        };
+        auto levelDb = [&](const Capture& c) { return juce::Decibels::gainToDecibels(c.rmsOver(kFrom, kLength), -300.0); };
+
+        const auto off = lucyRender([](PX3SynthAudioProcessor&) {});
+
+        // With every send closed the FX chain hears nothing - and LUCY still
+        // processes the instrument.
+        const auto on = lucyRender([](PX3SynthAudioProcessor& p)
+        {
+            setParam(p, "fx.lucy.enabled", 1.0f);
+            setParam(p, "fx.lucy.global", 1.0f);
+            setParam(p, "fx.lucy.loss", 0.8f);
+        });
+        // Against LUCY on at LOSS 0 rather than LUCY off: both are equally
+        // late, so the difference is the coding and not LUCY's latency.
+        const auto transparent = lucyRender([](PX3SynthAudioProcessor& p)
+        {
+            setParam(p, "fx.lucy.enabled", 1.0f);
+            setParam(p, "fx.lucy.global", 1.0f);
+            setParam(p, "fx.lucy.loss", 0.0f);
+        });
+        check("Lucy_ProcessesTheMasterWithEveryFxSendClosed",
+              on.isFinite() && differenceDb(transparent, on) > -12.0,
+              "LOSS 0.8 vs LOSS 0 differs by " + fmt(differenceDb(transparent, on), 1)
+                  + " dB with all four sends at 0");
+
+        // Above the bottom of GLOBAL nothing reaches the output except LUCY:
+        // with its own output turned all the way down (LOSS GAIN -36 dB) the
+        // instrument goes quiet. In the send chain the dry passed underneath.
+        // Sends open and the return up, so the FX return has its chance too.
+        const auto muted = lucyRender([](PX3SynthAudioProcessor& p)
+        {
+            for (const auto* id : { "sub", "osc1", "osc2", "osc3" })
+                setParam(p, juce::String("mix.") + id + ".send.fx", 1.0f);
+            setParam(p, "mix.fx.level", 1.0f);
+            setParam(p, "fx.lucy.enabled", 1.0f);
+            setParam(p, "fx.lucy.global", 1.0f);
+            setParam(p, "fx.lucy.loss.gain", -36.0f);
+        });
+        check("Lucy_AtFullGlobalWhatYouHearIsItsOutput",
+              levelDb(muted) < levelDb(off) - 30.0,
+              "LUCY's own output at -36 dB leaves the mix at " + fmt(levelDb(muted) - levelDb(off), 1)
+                  + " dB re LUCY off");
+
+        // The slot a saved order gives LUCY no longer means anything: it always
+        // runs on the master, so moving it to the front of the chain - or in
+        // front of DOOM - changes nothing beyond what two identical renders
+        // already differ by.
+        auto withOrder = [&](const px3::FxOrder& order)
+        {
+            return lucyRender([&order](PX3SynthAudioProcessor& p)
+            {
+                for (const auto* id : { "sub", "osc1", "osc2", "osc3" })
+                    setParam(p, juce::String("mix.") + id + ".send.fx", 1.0f);
+                setParam(p, "fx.lucy.enabled", 1.0f);
+                setParam(p, "fx.lucy.global", 0.7f);
+                setParam(p, "fx.lucy.loss", 0.7f);
+                setParam(p, "fx.doom.enabled", 1.0f);
+                setParam(p, "fx.doom.mix", 0.6f);
+                setParam(p, "fx.reverb.enabled", 1.0f);
+                setParam(p, "fx.reverb.amount", 0.6f);
+                p.setFxProcessingOrder(order);
+            });
+        };
+        auto lucyFirst = px3::kDefaultFxOrder;
+        {
+            std::vector<int> v(lucyFirst.begin(), lucyFirst.end());
+            v.erase(std::find(v.begin(), v.end(), static_cast<int>(px3::fxStageLucy)));
+            v.insert(v.begin(), px3::fxStageLucy);
+            std::copy(v.begin(), v.end(), lucyFirst.begin());
         }
+        const auto standard = withOrder(px3::kDefaultFxOrder);
+        const auto again = withOrder(px3::kDefaultFxOrder);
+        const auto moved = withOrder(lucyFirst);
+        const auto floorDb = differenceDb(standard, again);
+        const auto movedDb = differenceDb(standard, moved);
+        check("Lucy_ItsSlotInASavedOrderDoesNotMoveIt",
+              standard.isFinite() && movedDb <= juce::jmax(-100.0, floorDb + 1.0),
+              "LUCY first vs default order " + fmt(movedDb, 1) + " dB (two identical renders: "
+                  + fmt(floorDb, 1) + " dB)");
+    }
 
-        check("Lucy_PositionRelativeToDoomChangesTheAudio", differs,
-              "LUCY->DOOM rms " + juce::String(a.rms(), 5) + ", DOOM->LUCY "
-                  + juce::String(b.rms(), 5));
+    // Engaged at its own defaults on the shipping patch, LUCY no longer takes
+    // the level down: AUTO GAIN holds the coder's output near its input, and
+    // nothing subtracts it from a dry it never reached.
+    {
+        auto renderDefault = [](bool lucy)
+        {
+            PX3SynthAudioProcessor processor;
+            setParam(processor, "fx.lucy.enabled", lucy ? 1.0f : 0.0f);
+            return render(processor, 48000 * 2,
+                          { { 0, true, 48, 0.8f }, { 0, true, 55, 0.8f }, { 0, true, 60, 0.8f }, { 0, true, 64, 0.8f } });
+        };
+        const auto off = renderDefault(false);
+        const auto on = renderDefault(true);
+        const auto changeDb = juce::Decibels::gainToDecibels(on.rmsOver(24000, 96000) / juce::jmax(1.0e-12, off.rmsOver(24000, 96000)));
+        check("Lucy_EngagingItAtItsDefaultsKeepsTheLevel",
+              on.isFinite() && std::abs(changeDb) < 2.0,
+              "default patch, LUCY on vs off: " + fmt(changeDb, 2) + " dB (was about -5 dB in the send chain)");
+    }
+
+    // SEPARATE FX OUTPUT splits the mixer's own buses into stems. LUCY is a
+    // non-linear coder on the SUM - LUCY(dry) + LUCY(fx) is not LUCY(dry + fx)
+    // - so, like SPREAD, the analog master and the ceiling, it is on neither
+    // stem.
+    {
+        auto renderStems = [](bool lucy)
+        {
+            PX3SynthAudioProcessor processor;
+            makePlainPatch(processor);
+            setChoice(processor, "voice.osc1.mode", 1);
+            for (const auto* id : { "sub", "osc1", "osc2", "osc3" })
+                setParam(processor, juce::String("mix.") + id + ".send.fx", 1.0f);
+            setParam(processor, "fx.reverb.enabled", 1.0f);
+            setParam(processor, "fx.lucy.enabled", lucy ? 1.0f : 0.0f);
+            setParam(processor, "fx.lucy.global", 1.0f);
+            juce::AudioProcessor::BusesLayout layout;
+            layout.outputBuses.add(juce::AudioChannelSet::stereo());
+            layout.outputBuses.add(juce::AudioChannelSet::stereo());
+            processor.setBusesLayout(layout);
+            processor.getFxSeparateOutputParam().setValueNotifyingHost(1.0f);
+            processor.prepareToPlay(kSampleRate, kBlockSize);
+            std::vector<float> stems;
+            juce::AudioBuffer<float> buffer(4, kBlockSize);
+            for (int block = 0; block < 120; ++block)
+            {
+                buffer.clear();
+                juce::MidiBuffer midi;
+                if (block == 0) { midi.addEvent(juce::MidiMessage::noteOn(1, 52, 0.9f), 0); }
+                processor.processBlock(buffer, midi);
+                if (block < 40) { continue; }   // past the split crossfade
+                for (int ch = 0; ch < 4; ++ch)
+                    for (int i = 0; i < kBlockSize; ++i) { stems.push_back(buffer.getSample(ch, i)); }
+            }
+            return stems;
+        };
+        const auto withoutLucy = renderStems(false);
+        const auto withLucy = renderStems(true);
+        auto worst = 0.0f, level = 0.0f;
+        for (std::size_t i = 0; i < withLucy.size() && i < withoutLucy.size(); ++i)
+        {
+            worst = juce::jmax(worst, std::abs(withLucy[i] - withoutLucy[i]));
+            level = juce::jmax(level, std::abs(withoutLucy[i]));
+        }
+        check("Lucy_IsOnNeitherSeparateFxOutputStem",
+              level > 1.0e-3f && worst <= 1.0e-6f * juce::jmax(1.0f, level),
+              "stems with LUCY on differ by at most " + fmt(worst, 8) + " (peak " + fmt(level, 4) + ")");
     }
 }
 

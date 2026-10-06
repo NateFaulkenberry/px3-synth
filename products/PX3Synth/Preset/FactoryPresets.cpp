@@ -95,7 +95,7 @@ std::vector<FactoryPreset> factoryPresets()
         { "mix.master.level", 0.429f } } },
 
     { "Dial Tone", "BASS", "P(X3)",
-      "A hard FM bass with LUCY set low and slow behind it. The loss is barely a texture at "
+      "A hard FM bass run through LUCY set low and slow. The loss is barely a texture at "
       "this depth - just enough to make it sound like it arrived over a wire.",
       { { "voice.osc1.mode", fm }, { "voice.osc1.macro.a", 0.34f }, { "voice.osc1.macro.b", 0.58f }, { "voice.osc1.macro.c", 0.24f },
         { "fx.analog.enabled", 0 }, { "fx.delay.enabled", 0 }, { "fx.reverb.enabled", 0 }, { "fx.mood.enabled", 0 },
@@ -107,7 +107,7 @@ std::vector<FactoryPreset> factoryPresets()
         { "voice.amp.attack", 0.002f }, { "voice.amp.decay", 0.26f }, { "voice.amp.sustain", 0.55f }, { "voice.amp.release", 0.14f },
         { "fx.lucy.global", 0.26f }, { "fx.lucy.mode", standard }, { "fx.lucy.loss", 0.44f }, { "fx.lucy.speed", 0.62f },
         { "fx.lucy.filter", 0.22f }, { "fx.lucy.freq", 0.62f }, { "fx.lucy.slope", slope24 },
-        { "fx.lucy.weighting", weightDark }, { "fx.lucy.loss.gain", 3.0f },
+        { "fx.lucy.weighting", weightDark }, { "fx.lucy.loss.gain", 12.0f },
         { "mix.master.level", 0.60f } } },
 
     { "Tar Kiln", "BASS", "P(X3)",
@@ -190,7 +190,7 @@ std::vector<FactoryPreset> factoryPresets()
         { "fx.lucy.global", 0.42f }, { "fx.lucy.mode", inverse }, { "fx.lucy.loss", 0.62f }, { "fx.lucy.speed", 0.44f },
         { "fx.lucy.filter", 0.34f }, { "fx.lucy.freq", 0.72f }, { "fx.lucy.slope", slope24 },
         { "fx.lucy.verb", 0.30f }, { "fx.lucy.decay", 0.50f }, { "fx.lucy.weighting", weightBright },
-        { "fx.lucy.limiter.threshold", 0.70f }, { "fx.lucy.loss.gain", 6.0f },
+        { "fx.lucy.limiter.threshold", 0.70f }, { "fx.lucy.loss.gain", 24.7f },
         { "fx.spread.amount", 0.35f }, { "fx.spread.mode", classic },
         { "mix.master.level", 0.56f } } },
 
@@ -308,7 +308,7 @@ std::vector<FactoryPreset> factoryPresets()
         { "voice.amp.attack", 0.001f }, { "voice.amp.decay", 0.20f }, { "voice.amp.sustain", 0.08f }, { "voice.amp.release", 0.22f },
         { "fx.lucy.global", 0.50f }, { "fx.lucy.packets", packetRepeat }, { "fx.lucy.mode", standard },
         { "fx.lucy.loss", 0.58f }, { "fx.lucy.speed", 0.68f }, { "fx.lucy.spread", 0.85f },
-        { "fx.lucy.filter", 0.26f }, { "fx.lucy.freq", 0.66f }, { "fx.lucy.limiter.threshold", 0.68f }, { "fx.lucy.loss.gain", 9.0f },
+        { "fx.lucy.filter", 0.26f }, { "fx.lucy.freq", 0.66f }, { "fx.lucy.limiter.threshold", 0.68f }, { "fx.lucy.loss.gain", 6.8f },
         { "fx.delay.amount", 0.26f }, { "fx.delay.algorithm", stereoDelay }, { "fx.delay.time", 0.22f }, { "fx.delay.feedback", 0.30f },
         { "fx.reverb.amount", 0.09f }, { "fx.reverb.algorithm", room },
         { "mix.master.level", 0.95f } } },
@@ -357,10 +357,10 @@ std::vector<FactoryPreset> factoryPresets()
         { "voice.amp.attack", 0.02f }, { "voice.amp.decay", 0.40f }, { "voice.amp.sustain", 0.80f }, { "voice.amp.release", 0.40f },
         { "fx.lucy.global", 0.78f }, { "fx.lucy.mode", jitter }, { "fx.lucy.packets", packetLoss },
         { "fx.lucy.loss", 0.72f }, { "fx.lucy.speed", 0.42f },
-        { "fx.lucy.gate", 1 }, { "fx.lucy.gate.threshold", 0.30f },
+        { "fx.lucy.gate", 1 }, { "fx.lucy.gate.threshold", 0.12f },
         { "fx.lucy.filter", 0.40f }, { "fx.lucy.freq", 0.55f }, { "fx.lucy.slope", slope96 },
         { "fx.lucy.verb", 0.38f }, { "fx.lucy.decay", 0.55f }, { "fx.lucy.spread", 0.90f },
-        { "fx.lucy.limiter.threshold", 0.62f }, { "fx.lucy.loss.gain", 11.0f },
+        { "fx.lucy.limiter.threshold", 0.62f }, { "fx.lucy.loss.gain", 27.8f },
         { "mix.master.level", 0.95f } } },
 
     { "Splinter Choir", "EXPERIMENTAL", "P(X3)",

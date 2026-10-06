@@ -25,7 +25,8 @@ For PX3 Synth v0.8.2.
 P(X3) is a 64-voice polyphonic synthesiser. Every note you play is given its
 own voice, and every voice contains four sound sources, two filters, an
 amplitude envelope, and modulation of its own. Those voices are mixed, sent
-through eight effects in an order you choose, and delivered to the output.
+through seven effects in an order you choose, then through LUCY and SPREAD on
+the master, and delivered to the output.
 
 Four things shape the way you work with it.
 
@@ -171,7 +172,7 @@ It also carries messages when the instrument has something to tell you.
           └────────────┬─────────────┘
                      MASTER
                        │
-          CONSOLE ENGINE → SPREAD → OUTPUT
+          CONSOLE ENGINE → LUCY → SPREAD → OUTPUT
 ```
 
 Each note gets a voice of its own. Inside it, the four sources are coloured by
@@ -182,7 +183,8 @@ the **dry bus**.
 Each source channel also has a **send** into the FX bus. The effects process only
 what is sent to them, and their output returns on its own channel with its own
 level and pan. The dry bus and the FX return meet at the master, which passes
-through the console engine and SPREAD on its way out.
+through the console engine, LUCY and SPREAD on its way out. LUCY and SPREAD work
+on the whole instrument, so they do not depend on the sends.
 
 Because sends are independent, you can push one oscillator deep into the effects
 while another stays completely dry.
@@ -823,11 +825,11 @@ Several routes on one control add together.
 
 # FX — Effects
 
-Eight effects process the FX bus in a chain whose order you choose: **VIBE**,
-**DRIVE**, **CHORUS**, **DOOM**, **LUCY**, **DELAY**, **MOOD** and **REVERB**
-(that is the default order). Two more cards sit on the same page but outside the
-chain: **ANALOG**, which works inside the voices, and **SPREAD**, which works on
-the master.
+Seven effects process the FX bus in a chain whose order you choose: **VIBE**,
+**DRIVE**, **CHORUS**, **DOOM**, **DELAY**, **MOOD** and **REVERB** (that is
+the default order). Three more cards sit on the same page but outside the chain:
+**ANALOG**, which works inside the voices, and **LUCY** and **SPREAD**, which
+work on the master, in that order, after everything else.
 
 Each card has a power button in its corner; clicking the card's background does
 the same.
@@ -996,6 +998,19 @@ spreads them across time.
 
 **What it is:** Not a bitcrusher. LUCY models what a low-bitrate encoder throws
 away.
+
+**Where it sits:** On the master, after the dry and FX buses are summed and
+before SPREAD — the whole instrument goes through it, whatever the sends are set
+to, and above the bottom of AMOUNT what you hear is LUCY's output. Its card sits
+after the FX chain and is not in the reorder strip. (Up to 0.8.2 it was in the
+send chain, where the dry signal passed underneath it untouched: switching it on
+made the patch quieter and most of its controls hard to hear.)
+
+**Latency:** LUCY's output is about 17 ms late at 48 kHz (about 28 ms with SLOW
+on) — one analysis frame plus its timing line and limiter look-ahead. P(X3) does
+not report this to the host, so it is not compensated: with LUCY on, the
+instrument plays slightly behind the beat. LUCY is a degradation effect and
+usually sounds fine like that; if timing matters, nudge the track earlier.
 
 LUCY's card works like DOOM's: six knobs, five of them with a second function
 under it, and a **MAIN / SHIFT** switch to choose between them.
@@ -1299,9 +1314,11 @@ for example, create the instrument as **Multi-Output (2xStereo)** and add the
 extra channel strip. With it off, P(X3) sounds the same in every host however
 many outputs the host has enabled.
 
-The two outputs carry the fixed output boost but not the console engine or the
-output ceiling, which act on the sum. Summing 1/2 and 3/4 in your DAW is close to
-the stereo output but not identical to it.
+The two outputs carry the fixed output boost but not the master stages — the
+console engine, LUCY, SPREAD and the output ceiling — which act on the sum. LUCY
+in particular cannot be split: it codes the mix as a whole, so with Separate FX
+Output on it is not heard on either pair. Summing 1/2 and 3/4 in your DAW is close
+to the stereo output but not identical to it.
 
 The setting is saved with your session. Switching it while notes sound
 crossfades rather than clicking.

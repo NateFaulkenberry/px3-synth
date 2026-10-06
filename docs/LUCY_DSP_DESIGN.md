@@ -317,12 +317,43 @@ that a pluck's transient survives. 1024 doubles the frequency resolution and the
 frame length, which is precisely the documented "bigger, darker, slower, and
 with more latency".
 
-**Latency, honestly:** the wet path is one frame late — 10.7 ms, or 21 ms in
-SLOW. The **dry path is not delayed**, so no host latency is reported and no comb
-is created against the FX bus's dry sum. On a degradation effect whose wet signal
-deliberately bears little resemblance to its input, a frame of offset reads as a
-short pre-delay. SLOW's doubling of it is a documented characteristic of the
-mode, not a defect.
+**Latency, honestly:** the wet path is late by one frame plus the jitter line's
+nominal half and the limiter look-ahead (`wetLatencySamples()`): 512 + 240 + 64
+= 816 samples, 17 ms at 48 kHz, or 1328 samples (28 ms) in SLOW. The **dry path
+is not delayed**, and no host latency is reported — by either the Synth or the
+standalone PX3 Lucy.
+
+In the Synth, LUCY is a **master insert** (after the console's master stage,
+before SPREAD), so above the bottom 8% of GLOBAL the whole instrument is that
+late while LUCY is on. That is a deliberate trade, not an oversight:
+
+- Reporting it would make the host delay the *instrument* by 17 ms all the time
+  (PDC compensates playback, but live playing through a reported-latency
+  instrument is delayed by it) — or the reported latency would have to change
+  as LUCY is switched, which hosts handle badly (they typically pick a new value up only on a
+  transport restart, and a mid-playback change is a skip).
+- Delaying the dry to match while LUCY is off would cost the same 17 ms on every
+  patch that never uses it.
+- On a degradation effect whose output deliberately bears little resemblance to
+  its input, a frame of offset reads as a short pre-delay. SLOW's doubling of it
+  is a documented characteristic of the mode.
+
+The cost: with LUCY on, sequenced parts sound ~17 ms behind the grid, and in the
+bottom 8% of GLOBAL — the crossfade that lets the effect reach clean — the
+undelayed dry and the late wet briefly overlap. Both are documented in the user
+manual.
+
+**Why a master insert (after 0.8.2).** Until 0.8.2 LUCY sat in the FX send chain.
+The chain's return is a *difference* — `(stage − send)` — which is exact for an
+effect that adds to its input (a delay, a reverb) and wrong for one that
+*replaces* it: everything LUCY discarded was subtracted from the return while
+the dry bus carried the original at full level. Measured through the real AU on
+the default patch: dry −18.0 dBFS, LUCY on −23.3 dBFS, of which the untouched
+residual dry was −22.4 dBFS and LUCY's own output −27.2 dBFS. Engaging it cost
+5 dB and no LUCY control could reach the louder part of what you heard. On the
+master the sum goes in and LUCY's output comes out. With SEPARATE FX OUTPUT on
+the stems carry no master stage, LUCY included — a coder is non-linear, so
+LUCY(dry) + LUCY(fx) is not LUCY(dry + fx) and cannot be split honestly.
 
 **Phase:** magnitude-only manipulation wherever possible, with the input's own
 phase carried through. Spectral processing that rewrites phase carelessly turns
@@ -482,7 +513,8 @@ produce peaks the input never had. Lowering the threshold increases limiting and
 
 1. Footswitch gestures become parameters: freeze state, gate on/off.
 2. Presets, MIDI, ramping and CV are the host's job; the synth has them already.
-3. `ALL WET`'s true-analog dry thru has no meaning inside a plugin's FX bus.
+3. `ALL WET`'s true-analog dry thru has no meaning for a master insert that is
+   all wet above the bottom of GLOBAL.
 4. `TRAILS`, `MISO` and `DRY KILL` are pedal-in-a-chain concerns.
 5. The critical-band model is a simplified Bark-scale spreading function, not a
    full ISO/IEC psychoacoustic model — enough to produce coder-like behaviour at

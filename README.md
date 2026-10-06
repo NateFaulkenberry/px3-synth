@@ -70,9 +70,9 @@ and a glossary.
 - **Six Macros** (M1-M6) down the left of every page, each able to move any
   number of parameters, with a depth panel per Macro.
 - **MIDI Learn** on any knob: Shift-click, move a hardware control.
-- **Effects:** VIBE, DRIVE, CHORUS, DOOM, LUCY, DELAY, MOOD and REVERB in a
-  user-ordered send chain; SPREAD on the master; and ANALOG, per-voice drift
-  inside the voices.
+- **Effects:** VIBE, DRIVE, CHORUS, DOOM, DELAY, MOOD and REVERB in a
+  user-ordered send chain; LUCY and SPREAD on the master; and ANALOG,
+  per-voice drift inside the voices.
 - **Mixer:** level, pan, send, mute, solo and a meter per channel (SUB, OSC 1-3,
   FX return), and EQ / COMP bus inserts on the dry and FX buses — a four-band EQ
   with a playable graph and an 1176-style FET compressor with a VU meter.
@@ -404,7 +404,7 @@ clean rather than releasing an old tail.
 | **DRIVE** | SOFT / HARD / ASYM clipping with TIGHT, TONE and automatic level matching, oversampled with anti-derivative anti-aliasing | — | — |
 | **CHORUS** | Hardware topologies: JUNO-60 I / II / I+II, Dimension D (DIM 1-4, 1+4, 2+4, 3+4), BOSS CE-1 and a Solina-style ENSEMBLE | PX3 Chorus | [CHORUS_DSP_DESIGN.md](docs/CHORUS_DSP_DESIGN.md) |
 | **DOOM** | Two-channel ambient processor: an always-listening micro-looper (BURST / RADIO / MASK) and a wet channel (SOUP / RELAY / FLIP); six knobs, twelve functions | PX3 Doom | [DOOM_DSP_DESIGN.md](docs/DOOM_DSP_DESIGN.md) |
-| **LUCY** | Spectral degradation built on a masking coder: low-bitrate artifacts, packet loss, spectral freeze and jitter | PX3 Lucy | [LUCY_DSP_DESIGN.md](docs/LUCY_DSP_DESIGN.md) |
+| **LUCY** | Spectral degradation built on a masking coder: low-bitrate artifacts, packet loss, spectral freeze and jitter. A master insert on the whole mix, before SPREAD; not in the reorder strip | PX3 Lucy | [LUCY_DSP_DESIGN.md](docs/LUCY_DSP_DESIGN.md) |
 | **DELAY** | Seven algorithms — Granular, Tape, Analog/BBD, Ping-Pong, Stereo, Modulated, Diffusion — with tempo sync; FEEDBACK sets a decay time | PX3 Delay | — |
 | **MOOD** | Micro-looper (ENV / TAPE / STRETCH) and wet channel (REVERB / DELAY / SLIP) tied together by CLOCK, the engine's sample rate | PX3 Mood | [MOOD_DSP_DESIGN.md](docs/MOOD_DSP_DESIGN.md) |
 | **REVERB** | Six algorithmic types - ROOM (image-source reflections), PLATE (Dattorro), HALL (16-line FDN), CLOUD (with octave-up SHIMMER), SPRING (dispersive chirps) and GATED - each with its own presets | PX3 Reverb | [REVERB_DSP_DESIGN.md](docs/REVERB_DSP_DESIGN.md) |
@@ -467,10 +467,10 @@ MIDI / on-screen keyboard
        -> AMP ENV
   -> Source stems -> DRY BUS (channel level/pan/mute/solo)
                   -> FX SEND BUS (channel sends)
-  -> FX chain (user order: VIBE / DRIVE / CHORUS / DOOM / LUCY / DELAY / MOOD / REVERB)
+  -> FX chain (user order: VIBE / DRIVE / CHORUS / DOOM / DELAY / MOOD / REVERB)
   -> FX RETURN (return level/pan/mute/solo)
   -> MASTER BUS (DRY + FX RETURN, fixed output boost)
-  -> console master -> SPREAD -> output ceiling -> output
+  -> console master -> LUCY -> SPREAD -> output ceiling -> output
 ```
 
 Important routing rules:
@@ -479,7 +479,10 @@ Important routing rules:
   audio bus.
 - The send is pre-pan; mute kills a channel's send as well as its dry signal.
 - With the separate FX output on (and enabled by the host), the dry and FX
-  buses leave on separate stereo pairs.
+  buses leave on separate stereo pairs. Those are stems: the master stages
+  (console master, LUCY, SPREAD, ceiling) act on the sum and are on neither.
+- LUCY's wet path is ~17 ms late (816 samples at 48 kHz; ~28 ms in SLOW) and
+  is not reported to the host as latency.
 
 Bus architecture notes:
 
@@ -752,7 +755,8 @@ not need to know anything about their internals:
 - `shared/DSP/Core/StftEngine.*` (shared spectral analysis/synthesis)
 - `products/PX3Synth/DSP/FxChain.h`
   - Stage ids (permanent; new effects are appended), the default order, and
-    the stages that are not reorderable (ANALOG, SPREAD).
+    the stages that are not reorderable (ANALOG upstream; LUCY, SPREAD on the
+    master).
 - `getFxProcessingOrder` / `setFxProcessingOrder`
   - Sanitized user order storage and retrieval.
 

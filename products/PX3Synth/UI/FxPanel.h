@@ -80,13 +80,12 @@ public:
     void setDelayAlgorithmControls(const DelayComponent::AlgorithmControls& controls);
     void setDelayAlgorithm(int algorithmIndex);
 
-    // Whether a stage is part of the reorderable FX send chain. Spread runs on
-    // the master bus after everything, so it is shown after the chain; ANALOG
-    // runs inside the voices before anything, so it is shown before it. Neither
-    // is in the strip.
-    static bool isReorderable(int sectionId) noexcept
-    { return sectionId != px3::fxStageStereoSpread && sectionId != px3::fxStageAnalog; }
-    static bool isUpstreamOfChain(int sectionId) noexcept { return sectionId == px3::fxStageAnalog; }
+    // Whether a stage is part of the reorderable FX send chain. LUCY and
+    // SPREAD run on the master bus after everything, so they are shown after
+    // the chain (in that order); ANALOG runs inside the voices before
+    // anything, so it is shown before it. None of them is in the strip.
+    static bool isReorderable(int sectionId) noexcept { return px3::isSendChainFxStage(sectionId); }
+    static bool isUpstreamOfChain(int sectionId) noexcept { return px3::isUpstreamFxStage(sectionId); }
     // The stage ids the signal-flow strip shows, in order.
     std::vector<int> debugStripStages() const
     {

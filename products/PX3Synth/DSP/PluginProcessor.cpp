@@ -3093,8 +3093,7 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
                     if (doom != nullptr) { doom->processSampleFrame(stageL, stageR, stageL, stageR); }
                     break;
 
-                case 5: // Lucy
-                    if (lucy != nullptr) { lucy->processSampleFrame(stageL, stageR, stageL, stageR); }
+                case 5: // LUCY (a master insert - applied to the dry + FX sum below)
                     break;
 
                 case 6: // Chorus
@@ -3193,6 +3192,21 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         auto masterR = (dryR + fxR) * outputBoostGain;
         analogEngine.processBusSample(px3::AnalogEngine::Context::master, masterL, masterR);
 
+        // LUCY. A mix-bus insert on the whole instrument, dry and FX together,
+        // after the console's output stage and before SPREAD, which then sizes
+        // what LUCY produced. In the send chain its output was a (stage -
+        // send) difference: everything LUCY replaced was subtracted from the
+        // return while the dry stayed at full level, so engaging it dropped the
+        // mix ~5 dB and its own output sat ~5 dB under a dry signal no LUCY
+        // control could reach. Here, above the bottom of GLOBAL, what you hear
+        // IS its output. Its wet path is ~17 ms late (one 512 frame, the jitter
+        // line's nominal half and the limiter lookahead); that is not reported
+        // to the host - see docs/LUCY_DSP_DESIGN.md, "Latency, honestly".
+        if (lucy != nullptr)
+        {
+            lucy->processSampleFrame(masterL, masterR, masterL, masterR);
+        }
+
         // STEREO SPREAD. A stereo-field stage on the whole instrument, dry and
         // FX together. In the send chain it could only widen the wet return -
         // the return is a (stage - send) difference - so on a dry patch it did
@@ -3253,7 +3267,8 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     // WHAT LEAVES THE PLUGIN.
     //
     // Outputs 1/2 carry the master mix - dry, FX return, the analog master
-    // stage and the output ceiling - unless SEPARATE FX OUTPUT is on.
+    // stage, LUCY, SPREAD and the output ceiling - unless SEPARATE FX OUTPUT
+    // is on.
     //
     // A host enabling the second pair is deliberately NOT enough to split the
     // mix. It used to be, and JUCE's AU wrapper enables every bus on
@@ -3264,8 +3279,10 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     //
     // With SEPARATE FX OUTPUT on and the second pair enabled: the mixer's own
     // buses, dry on 1/2 and FX on 3/4, as stems. They carry the fixed output
-    // boost but not the analog master stage or the output ceiling - those act
-    // on the SUM and are not divisible between two stems.
+    // boost but not the master stages - analog master, LUCY, SPREAD, the
+    // output ceiling - which act on the SUM and are not divisible between two
+    // stems. LUCY in particular is a non-linear spectral coder: LUCY(dry) +
+    // LUCY(fx) is not LUCY(dry + fx), so it cannot be split honestly.
     //
     // Switching crossfades rather than jumping. Once settled, each case is the
     // same block copy it always was.

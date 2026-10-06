@@ -300,10 +300,22 @@ void testVisualRedesign()
         const auto strip = panel != nullptr ? panel->debugStripStages() : std::vector<int> {};
         const auto has = [&strip](int id) { return std::find(strip.begin(), strip.end(), id) != strip.end(); };
         check("FxCards_SpreadIsNotInTheReorderableStrip",
-              strip.size() == static_cast<std::size_t>(px3::kFxStageCount - 2)
+              strip.size() == static_cast<std::size_t>(px3::kFxStageCount - 3)
                   && ! has(px3::fxStageStereoSpread) && ! has(px3::fxStageAnalog) && has(px3::fxStageDistortion)
                   && has(px3::fxStageVibe));
+        // LUCY is a master insert now, like SPREAD: no node in the strip, a
+        // card after the send chain, and LUCY before SPREAD because that is
+        // the order they process in.
+        auto* lucy = panel != nullptr ? panel->cardForSection(px3::fxStageLucy) : nullptr;
         auto* spread = panel != nullptr ? panel->cardForSection(px3::fxStageStereoSpread) : nullptr;
+        auto* reverbCard = panel != nullptr ? panel->cardForSection(px3::fxStageReverb) : nullptr;
+        const auto readingOrder = [](const juce::Component* c)
+        { return c->getY() * 100000 + c->getX(); };   // the cards share one grid parent
+        check("FxCards_LucyIsAMasterStageAfterTheChain",
+              ! has(px3::fxStageLucy) && ! FxPanel::isReorderable(px3::fxStageLucy)
+                  && lucy != nullptr && spread != nullptr && reverbCard != nullptr && showingIn(*lucy, *editor)
+                  && readingOrder(reverbCard) < readingOrder(lucy) && readingOrder(lucy) < readingOrder(spread),
+              "LUCY in strip " + juce::String(has(px3::fxStageLucy) ? "YES" : "no"));
         check("FxCards_SpreadStillHasItsCardAfterTheChain", spread != nullptr && showingIn(*spread, *editor));
 
         // Spread's basic view is the essentials; ADVANCED unfolds the rest.

@@ -77,9 +77,12 @@ void testFxProducts()
               "synth lucyEnabled " + fmt(synthEnabled, 0) + ", lucyGlobal " + fmt(synthGlobal, 2)
                   + "; standalone lucyGlobal " + fmt(standaloneGlobal, 2));
 
-        // The FX return on its own - every source fader down, every other effect
-        // off - so the only thing that can make a sound is LUCY.
-        const auto returnLevel = [](bool switchLucyOn)
+        // LUCY is a master insert, so it is heard on the whole mix - with every
+        // other effect off, so nothing else can move the output. Its coded
+        // output is late by its wet latency; compared at that alignment the
+        // number left is the coding itself, reported for the record (at the
+        // defaults LOSS only reaches a narrow upper-mid strip, so it is small).
+        const auto render1 = [](bool switchLucyOn)
         {
             PX3SynthAudioProcessor processor;
             setParam(processor, "voice.amp.release", 0.05f);
@@ -88,17 +91,30 @@ void testFxProducts()
             {
                 setParam(processor, id, 0.0f);
             }
-            for (const auto* id : { "sub", "osc1", "osc2", "osc3" })
-            {
-                setParam(processor, juce::String("mix.") + id + ".level", 0.0f);
-            }
             if (switchLucyOn) { setParam(processor, "fx.lucy.enabled", 1.0f); }
-            return render(processor, 24000, { { 1000, true, 57, 0.9f } }).rmsOver(6000, 24000);
+            const auto capture = render(processor, 24000, { { 1000, true, 57, 0.9f } });
+            return std::make_pair(capture, processor.debugIsLucyEngineBuilt());
         };
-        const auto off = returnLevel(false);
-        const auto on = returnLevel(true);
-        check("Lucy_SwitchingItOnAtDefaultsIsHeard", off < 1.0e-5 && on > 1.0e-3,
-              "FX return with LUCY at defaults: off " + fmt(off, 6) + ", switched on " + fmt(on, 6));
+        const auto [off, offBuilt] = render1(false);
+        const auto [on, onBuilt] = render1(true);
+        constexpr int kLucyLatency = 816;   // Lucy::wetLatencySamples() at 48 kHz, fast transform
+        double moved = 0.0, coded = 0.0, level = 0.0;
+        for (std::size_t i = 6000; i + kLucyLatency < on.left.size(); ++i)
+        {
+            const auto d = static_cast<double>(on.left[i]) - off.left[i];
+            const auto a = static_cast<double>(on.left[i + kLucyLatency]) - off.left[i];
+            moved += d * d;
+            coded += a * a;
+            level += static_cast<double>(off.left[i]) * off.left[i];
+        }
+        const auto movedDb = juce::Decibels::gainToDecibels(std::sqrt(moved / juce::jmax(1.0e-30, level)), -300.0);
+        const auto codedDb = juce::Decibels::gainToDecibels(std::sqrt(coded / juce::jmax(1.0e-30, level)), -300.0);
+        const auto levelDb = juce::Decibels::gainToDecibels(on.rmsOver(6000, 24000) / juce::jmax(1.0e-12, off.rmsOver(6000, 24000)));
+        check("Lucy_SwitchingItOnAtDefaultsIsHeard",
+              ! offBuilt && onBuilt && on.isFinite() && movedDb > -20.0 && std::abs(levelDb) < 2.0,
+              "master with LUCY at defaults vs off: " + fmt(movedDb, 1) + " dB different, level "
+                  + fmt(levelDb, 2) + " dB; aligned for its " + juce::String(kLucyLatency)
+                  + "-sample latency the coding is " + fmt(codedDb, 1) + " dB");
     }
 
     // ---- INIT starts with every effect off ----------------------------------

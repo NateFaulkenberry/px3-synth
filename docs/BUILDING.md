@@ -426,7 +426,7 @@ git push origin v0.1.0
 - Build and install are separate operations.
 - Notarization and stapling are not performed by this script.
 - Internal audio routing is explicitly staged as source stems -> DRY -> FX -> MASTER.
-- FX chain modules are VIBE, DRIVE, CHORUS, DOOM, LUCY, Delay, Mood and Reverb
-  (user-reorderable), with SPREAD on the master and ANALOG (per-voice drift)
-  inside the voices. VIBE, Chorus, Doom, Lucy, Delay, Mood, Reverb and Spread
+- FX chain modules are VIBE, DRIVE, CHORUS, DOOM, Delay, Mood and Reverb
+  (user-reorderable), with LUCY and SPREAD on the master and ANALOG (per-voice
+  drift) inside the voices. VIBE, Chorus, Doom, Lucy, Delay, Mood, Reverb and Spread
   also ship as plug-ins of their own — see `docs/ECOSYSTEM_ARCHITECTURE.md`.
