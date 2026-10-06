@@ -1042,6 +1042,42 @@ void testEditorLayout()
               unplacedPath.getBounds().getX() > 5.0f,
               "left edge at " + juce::String(unplacedPath.getBounds().getX(), 1));
     }
+
+    // ---- the FX page is one scrolling page at every size ---------------------
+    {
+        // No separate ordering strip, no horizontal scroll, and the page always
+        // at least fills its view (so nothing paints below it).
+        PX3SynthAudioProcessor processor;
+        std::unique_ptr<juce::AudioProcessorEditor> base(processor.createEditor());
+        auto* editor = dynamic_cast<PX3SynthAudioProcessorEditor*>(base.get());
+        UIConfigManager manager;
+        manager.setConfigFile(shippingUiConfigFile());
+        manager.loadInitial();
+        juce::String detail;
+        auto ok = editor != nullptr && editor->debugFxPanel() != nullptr;
+        if (ok)
+        {
+            auto* panel = editor->debugFxPanel();
+            panel->setUIConfig(manager.getConfig());
+            editor->debugSelectSection(4);
+            for (const auto [w, h] : { std::pair { 1100, 700 }, std::pair { 1300, 800 }, std::pair { 1488, 884 },
+                                       std::pair { 1800, 1100 }, std::pair { 2400, 1400 } })
+            {
+                editor->setSize(w, h);
+                auto& view = panel->debugViewport();
+                auto& rack = panel->debugRack();
+                const auto fits = panel->getNumChildComponents() == 1
+                                  && panel->getLocalBounds().contains(view.getBounds())
+                                  && rack.getWidth() <= view.getMaximumVisibleWidth()
+                                  && ! view.getHorizontalScrollBar().isVisible()
+                                  && rack.getHeight() >= view.getMaximumVisibleHeight();
+                ok = ok && fits;
+                detail << w << "x" << h << ": page " << rack.getWidth() << "x" << rack.getHeight() << " in "
+                       << view.getMaximumVisibleWidth() << "x" << view.getMaximumVisibleHeight() << (fits ? "" : " BAD") << "  ";
+            }
+        }
+        check("FxPage_IsOneVerticallyScrollingPageAtEverySize", ok, detail);
+    }
 }
 
 } // namespace px3tests

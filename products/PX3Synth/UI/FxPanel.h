@@ -7,7 +7,7 @@
 
 #include <JuceHeader.h>
 
-#include "FxSignalFlow.h"
+#include "FxRack.h"
 
 #include "DelayComponent.h"
 #include "MoodComponent.h"
@@ -59,14 +59,13 @@ public:
 
     void paint(juce::Graphics& g) override;
 
-    // The chain order to display. The panel lays its cards out in this order
-    // and hands the same order to the signal-flow strip, so the two views
-    // cannot disagree - they are the same list read twice.
+    // The chain order to display. The send section lays its cards out in this
+    // order; the INSTRUMENT and MASTER sections are fixed and ignore it.
     void setChainOrder(const px3::FxOrder& order);
 
     // Cards that own their own controls are handed over whole, rather than
     // having every knob passed through this constructor. The panel parents them
-    // into the scrolling grid and places them by chain order like the rest.
+    // into the scrolling rack and places them by domain and chain order.
     void addCard(int sectionId, std::unique_ptr<px3::ui::FxCardComponent> card);
     px3::ui::FxCardComponent* cardForSection(int sectionId) const;
     // The component a stage shows, card or not, so a test can hold the Synth's
@@ -80,25 +79,28 @@ public:
     void setDelayAlgorithmControls(const DelayComponent::AlgorithmControls& controls);
     void setDelayAlgorithm(int algorithmIndex);
 
-    // Whether a stage is part of the reorderable FX send chain. LUCY and
-    // SPREAD run on the master bus after everything, so they are shown after
-    // the chain (in that order); ANALOG runs inside the voices and VIBE on the
-    // instrument ahead of the dry/send split, so they are shown before it (in
-    // that order). None of them is in the strip.
+    // The page is three sections, one per processing domain (FxRack.h):
+    // INSTRUMENT (ANALOG inside the voices, then VIBE on the whole instrument),
+    // SEND FX (the reorderable FX bus chain) and MASTER (LUCY then SPREAD on
+    // the finished mix). Only the send section can be reordered.
     static bool isReorderable(int sectionId) noexcept { return px3::isSendChainFxStage(sectionId); }
     static bool isUpstreamOfChain(int sectionId) noexcept { return px3::isUpstreamFxStage(sectionId); }
-    // The stage ids the signal-flow strip shows, in order.
-    std::vector<int> debugStripStages() const
+    static px3::ui::FxDomain domainOf(int sectionId) noexcept
     {
-        std::vector<int> ids;
-        for (const auto& node : signalFlow.nodeList()) { ids.push_back(node.id); }
-        return ids;
+        if (px3::isUpstreamFxStage(sectionId)) return px3::ui::FxDomain::instrument;
+        if (px3::isMasterFxStage(sectionId)) return px3::ui::FxDomain::master;
+        return px3::ui::FxDomain::send;
     }
     static juce::String debugSectionName(int sectionId) { return sectionName(sectionId); }
 
-    // Raised when the user drags the strip into a new order. The panel does not
-    // apply it: the editor writes it to the processor, which feeds it back
-    // through setChainOrder.
+    // The single bus send in the SEND FX header (mix.send.fx.level).
+    juce::Slider& busSendKnob() noexcept { return rack.busSendKnob(); }
+    px3::ui::FxRackCanvas& debugRack() noexcept { return rack; }
+    juce::Viewport& debugViewport() noexcept { return viewport; }
+
+    // Raised when the user drags a send card into a new place. The panel does
+    // not apply it: the editor writes it to the processor, which feeds it
+    // back through setChainOrder.
     std::function<void(const px3::FxOrder&)> onChainOrderChanged;
 
     void setActive(bool delayEnabled,
@@ -110,23 +112,23 @@ public:
     void resized() override;
 
 private:
-    void refreshSignalFlowNodes();
+    void refreshSections();
+    void layoutRack(bool animate);
     juce::Component* componentForSection(int sectionId) const;
-    juce::Colour sectionAccent(int sectionId) const;
     static juce::String sectionName(int sectionId);
+    static juce::String styleKeyFor(int sectionId);
 
+    // Declared before the rack: the rack is destroyed first and unhooks its
+    // hover listener from cards that still exist.
     std::unique_ptr<DelayComponent> delayPanelComponent;
     std::unique_ptr<MoodComponent> moodComponent;
+    std::map<int, std::unique_ptr<px3::ui::FxCardComponent>> ownedCards;
 
     juce::Colour accent;
 
-    // The strip lives above the cards and never scrolls with them: it is the
-    // ordering control, so it has to stay reachable however far the grid runs.
-    px3::ui::FxSignalFlow signalFlow;
-    juce::Viewport gridViewport;
-    juce::Component gridContent;
+    px3::ui::FxRackCanvas rack;
+    juce::Viewport viewport;
     px3::FxOrder chainOrder { px3::kDefaultFxOrder };
-    std::map<int, std::unique_ptr<px3::ui::FxCardComponent>> ownedCards;
     std::array<bool, px3::kFxStageCount> sectionActive { {} };
     std::shared_ptr<const UIConfig> uiConfig;
 };

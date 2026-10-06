@@ -87,7 +87,6 @@
 #include "FltPanel.h"
 #include "MixPanel.h"
 #include "SettingsPanel.h"
-#include "FxSignalFlow.h"
 #include "UIConfigManager.h"
 #include "BusEqGraph.h"
 #include "BusInsertOverlay.h"

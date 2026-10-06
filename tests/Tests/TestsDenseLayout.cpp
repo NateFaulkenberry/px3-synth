@@ -794,5 +794,22 @@ void testDenseLayout()
             check("Dense_WaveDisplaysRedrawOnChangeWithAnimationsOff", false, "a wave card was not found");
         }
     }
+
+    // ---- the FX page's bus send survives the refresh tick ---------------------
+    {
+        editor->debugSelectSection(4);
+        auto* panel = editor->debugFxPanel();
+        auto ok = panel != nullptr;
+        if (ok)
+        {
+            auto& knob = panel->busSendKnob();
+            knob.setValue(0.4, juce::sendNotificationSync);
+            for (int tick = 0; tick < 4; ++tick) { editor->debugTimerTick(); }
+            ok = std::abs(knob.getValue() - 0.4) < 1.0e-3
+                 && std::abs(processor.getFxSendGainParam().get() - 0.4f) < 1.0e-3f;
+            knob.setValue(1.0, juce::sendNotificationSync);
+        }
+        check("Dense_FxBusSendSurvivesTheRefreshTick", ok);
+    }
 }
 } // namespace px3tests

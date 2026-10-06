@@ -348,7 +348,7 @@ along the bottom on every page.
 | --- | --- |
 | **VOICE** | SUB and OSC 1-3, the two filters and AMP ENV side by side; below them two tabbed panels, LFO 1-4 and ENV 1-4, each source's patch jack on its tab |
 | **MOD** | Every modulation route with its depth, polarity, curve and delete, beside a searchable destination browser |
-| **FX** | The effect cards, and the signal-flow strip that sets the chain order |
+| **FX** | The effect cards in three sections laid out as the signal flows - INSTRUMENT (ANALOG, VIBE), SEND FX (the reorderable FX bus chain, with the bus SEND) and MASTER (LUCY, SPREAD) |
 | **MIX** | Channel strips for SUB, OSC 1-3 and the FX return, and the EQ / COMP bus inserts |
 
 The keyboard also carries notices — Macro and MIDI Learn prompts, and a message
@@ -392,20 +392,25 @@ notes in [docs/macro-system-design.md](docs/macro-system-design.md) and
 
 ### Effects
 
-The send chain runs in the order set by dragging nodes in the FX page's
-signal-flow strip; the cards themselves are editors, not ordering controls.
-Each card's power button is its bypass, and bypassing clears the effect's
+The FX page is a scrolling rack in three sections, top to bottom in the order
+the signal meets them: **INSTRUMENT** (ANALOG per voice, then VIBE on the whole
+instrument), **SEND FX** (the FX bus: DRIVE, CHORUS, DOOM, DELAY, MOOD, REVERB in
+series, wrapping onto further rows without changing order, ending in FX BUS EQ /
+COMP and the FX RETURN) and **MASTER** (LUCY then SPREAD on the finished mix).
+Only the send cards reorder: drag one by the ⋮⋮ handle on its tab. The SEND FX
+header carries the one bus send, **SEND → FX BUS** (`mix.send.fx.level`, a master
+trim over the per-source sends on the MIX page). Each card's power button is its bypass, and bypassing clears the effect's
 buffers (after its fade, so the bypass never clicks), so re-enabling starts
 clean rather than releasing an old tail.
 
 | Effect | What it is | Standalone | Design notes |
 | --- | --- | --- | --- |
-| **ANALOG** | Per-voice analog drift, saturation, supply sag and hiss, inside each voice before the sources are summed. STYLE and AMOUNT. Not in the reorder strip | — | — |
-| **VIBE** | A Uni-Vibe model: four staggered phase stages swept by one lamp through four photocells, CHORUS / VIBRATO modes, STEREO LINKED / INVERTED. On the instrument ahead of the dry/send split (one pedal, dry and send); not in the reorder strip | PX3 Vibe | [VIBE_DSP_DESIGN.md](docs/VIBE_DSP_DESIGN.md) |
+| **ANALOG** | Per-voice analog drift, saturation, supply sag and hiss, inside each voice before the sources are summed. STYLE and AMOUNT. INSTRUMENT section, fixed | — | — |
+| **VIBE** | A Uni-Vibe model: four staggered phase stages swept by one lamp through four photocells, CHORUS / VIBRATO modes, STEREO LINKED / INVERTED. On the instrument ahead of the dry/send split (one pedal, dry and send); INSTRUMENT section, fixed | PX3 Vibe | [VIBE_DSP_DESIGN.md](docs/VIBE_DSP_DESIGN.md) |
 | **DRIVE** | SOFT / HARD / ASYM clipping with TIGHT, TONE and automatic level matching, oversampled with anti-derivative anti-aliasing | — | — |
 | **CHORUS** | Hardware topologies: JUNO-60 I / II / I+II, Dimension D (DIM 1-4, 1+4, 2+4, 3+4), BOSS CE-1 and a Solina-style ENSEMBLE | PX3 Chorus | [CHORUS_DSP_DESIGN.md](docs/CHORUS_DSP_DESIGN.md) |
 | **DOOM** | Two-channel ambient processor: an always-listening micro-looper (BURST / RADIO / MASK) and a wet channel (SOUP / RELAY / FLIP); six knobs, twelve functions | PX3 Doom | [DOOM_DSP_DESIGN.md](docs/DOOM_DSP_DESIGN.md) |
-| **LUCY** | Spectral degradation built on a masking coder: low-bitrate artifacts, packet loss, spectral freeze and jitter. A master insert on the whole mix, before SPREAD; not in the reorder strip | PX3 Lucy | [LUCY_DSP_DESIGN.md](docs/LUCY_DSP_DESIGN.md) |
+| **LUCY** | Spectral degradation built on a masking coder: low-bitrate artifacts, packet loss, spectral freeze and jitter. A master insert on the whole mix, before SPREAD; MASTER section, fixed | PX3 Lucy | [LUCY_DSP_DESIGN.md](docs/LUCY_DSP_DESIGN.md) |
 | **DELAY** | Seven algorithms — Granular, Tape, Analog/BBD, Ping-Pong, Stereo, Modulated, Diffusion — with tempo sync; FEEDBACK sets a decay time | PX3 Delay | — |
 | **MOOD** | Micro-looper (ENV / TAPE / STRETCH) and wet channel (REVERB / DELAY / SLIP) tied together by CLOCK, the engine's sample rate | PX3 Mood | [MOOD_DSP_DESIGN.md](docs/MOOD_DSP_DESIGN.md) |
 | **REVERB** | Six algorithmic types - ROOM (image-source reflections), PLATE (Dattorro), HALL (16-line FDN), CLOUD (with octave-up SHIMMER), SPRING (dispersive chirps) and GATED - each with its own presets | PX3 Reverb | [REVERB_DSP_DESIGN.md](docs/REVERB_DSP_DESIGN.md) |
@@ -777,9 +782,10 @@ document.
   - Changes visible PARAM knobs and labels by oscillator mode.
 - `refreshFxBypassUI`
   - Syncs bypass states and the disabled look of bypassed cards.
-- `FxSignalFlow` (`shared/UI/Fx/FxSignalFlow.*`)
-  - The drag-to-reorder strip on the FX page; order is committed to DSP and
-    saved in state.
+- `FxPanel` + `FxRackCanvas` (`products/PX3Synth/UI/FxPanel.*`, `FxRack.*`)
+  - The FX page: three sections built from the `FxChain.h` stage lists, the
+    send cards' drag-to-reorder (order is committed to DSP and saved in state),
+    and the bus SEND. Layout arithmetic is in `shared/UI/Fx/FxChainLayout.*`.
 - `timerCallback` in editor
   - Periodic UI refresh, displays, MIDI status, notices and UIConfig hot reload.
 
@@ -791,8 +797,9 @@ document.
   rejected by design; see Presets And State above.
 - **An effect does nothing:** check its power button, and for send effects that
   the source channel's send is up.
-- **FX order seems wrong:** the order is set only in the FX page's signal-flow
-  strip, by dragging its nodes.
+- **FX order seems wrong:** the send chain's order is set on the FX page by
+  dragging a SEND FX card by its tab; the cards are numbered SEND 1, 2, ... in
+  processing order. INSTRUMENT and MASTER cards are fixed.
 
 More in the manual's [Troubleshooting](docs/USER_MANUAL.md#troubleshooting)
 section.

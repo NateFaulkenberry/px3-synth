@@ -1,6 +1,5 @@
 #include "FxPanel.h"
 
-#include "FxChainLayout.h"
 
 #include <algorithm>
 
@@ -48,37 +47,39 @@ FxPanel::FxPanel(juce::ToggleButton& delayBypass,
 {
     sectionActive.fill(true);
 
-    addAndMakeVisible(signalFlow);
-    gridViewport.setViewedComponent(&gridContent, false);
-    gridViewport.setScrollBarsShown(true, false);
-    gridViewport.setScrollBarThickness(10);
-    addAndMakeVisible(gridViewport);
+    viewport.setViewedComponent(&rack, false);
+    viewport.setScrollBarsShown(true, false);
+    viewport.setScrollBarThickness(10);
+    viewport.setSingleStepSizes(16, 24);
+    addAndMakeVisible(viewport);
 
-    // Reported upward. The panel never writes the order itself - it is handed
-    // one and displays it.
-    signalFlow.onOrderChanged = [this](const std::vector<int>& order)
+    // Reported upward. The rack only knows the send stages; the processor's
+    // order is a permutation of every stage, so the fixed stages are put back
+    // where they were and the send stages fill the send slots in their new
+    // order. The panel never writes the order itself - it is handed one.
+    rack.onSendOrderChanged = [this](const std::vector<int>& sendOrder)
     {
         if (onChainOrderChanged == nullptr)
         {
             return;
         }
 
-        // The strip shows only the reorderable send chain. LUCY and SPREAD run
-        // on the master bus, ANALOG in the voices and VIBE ahead of the split,
-        // so they are put back at the end - the
-        // processor's order is always a permutation of every stage.
-        std::vector<int> full(order.begin(), order.end());
-        for (const auto stage : chainOrder)
+        auto next = chainOrder;
+        auto source = sendOrder.begin();
+        for (auto& stage : next)
         {
-            if (std::find(full.begin(), full.end(), stage) == full.end()) { full.push_back(stage); }
+            if (! isReorderable(stage) || componentForSection(stage) == nullptr) { continue; }
+            if (source == sendOrder.end()) { return; }
+            stage = *source++;
         }
-        if (full.size() != chainOrder.size())
-        {
-            return;
-        }
+        if (source != sendOrder.end()) { return; }
 
-        px3::FxOrder next {};
-        std::copy(full.begin(), full.end(), next.begin());
+        auto sorted = next;
+        auto original = chainOrder;
+        std::sort(sorted.begin(), sorted.end());
+        std::sort(original.begin(), original.end());
+        if (sorted != original) { return; }
+
         onChainOrderChanged(next);
     };
 
@@ -124,26 +125,20 @@ FxPanel::FxPanel(juce::ToggleButton& delayBypass,
                                                     moodLoopModeLabel,
                                                     juce::Colour::fromRGB(202, 150, 98));
 
-    // Into the grid, or they are built and never seen. Reverb used to be added
-    // here beside them and now adds itself as a card, and removing its line
-    // took the others with it: the deletion ran from Reverb's construction to
-    // its addAndMakeVisible, and the others sat in between.
-    gridContent.addAndMakeVisible(*delayPanelComponent);
-    gridContent.addAndMakeVisible(*moodComponent);
-
-    refreshSignalFlowNodes();
+    refreshSections();
 }
 
-// The FX section cards are drawn by the components themselves - see
-// DelayComponent::paint and its siblings. They were briefly drawn here, moved out
-// of the editor; owning them in each component is a step further and is what
-// makes drag-and-drop reordering free, because a card that follows its own
-// component's bounds needs no separate bookkeeping when the order changes.
+// The page furniture (section headers, arrows, rails) is painted by the rack,
+// and every card draws its own faceplate.
 void FxPanel::paint(juce::Graphics& g)
 {
     const auto fillAlpha = uiConfig != nullptr ? uiConfig->getFloat("fx.panel.fillAlpha", 0.14f) : 0.14f;
     const auto strokeAlpha = uiConfig != nullptr ? uiConfig->getFloat("fx.panel.strokeAlpha", 0.75f) : 0.75f;
     const auto radius = uiConfig != nullptr ? uiConfig->getFloat("fx.panel.cornerRadius", 10.0f) : 10.0f;
+    if (fillAlpha <= 0.0f && strokeAlpha <= 0.0f)
+    {
+        return;
+    }
 
     const auto area = getLocalBounds().toFloat().reduced(2.0f);
     g.setColour(accent.withAlpha(fillAlpha));
@@ -155,9 +150,11 @@ void FxPanel::paint(juce::Graphics& g)
 
 void FxPanel::setChainOrder(const px3::FxOrder& order)
 {
+    const auto changed = order != chainOrder;
     chainOrder = order;
-    refreshSignalFlowNodes();
-    resized();
+    refreshSections();
+    // A new order slides the cards into place; anything else is a re-layout.
+    layoutRack(changed && isShowing());
 }
 
 void FxPanel::addCard(int sectionId, std::unique_ptr<px3::ui::FxCardComponent> card)
@@ -167,10 +164,9 @@ void FxPanel::addCard(int sectionId, std::unique_ptr<px3::ui::FxCardComponent> c
         return;
     }
 
-    gridContent.addAndMakeVisible(*card);
     ownedCards[sectionId] = std::move(card);
-    refreshSignalFlowNodes();
-    resized();
+    refreshSections();
+    layoutRack(false);
 }
 
 px3::ui::FxCardComponent* FxPanel::cardForSection(int sectionId) const
@@ -199,36 +195,44 @@ void FxPanel::setSectionActive(int sectionId, bool active)
     }
 
     sectionActive[slot] = active;
-    signalFlow.setNodeActive(sectionId, active);
+    rack.setStageActive(sectionId, active);
 }
 
-void FxPanel::refreshSignalFlowNodes()
+void FxPanel::refreshSections()
 {
-    // Built from the order the panel was given, so the strip and the grid are
-    // two readings of one list rather than two lists that have to be kept in
-    // step.
-    std::vector<px3::ui::FxSignalFlow::Node> flowNodes;
-    flowNodes.reserve(chainOrder.size());
-
-    for (const auto sectionId : chainOrder)
+    // Built from the stage lists in FxChain.h, not from a list of cards: a new
+    // stage lands in the right section by being classified there, and a
+    // section grows and wraps without this changing.
+    const auto stageFor = [this](int sectionId)
     {
-        // A stage with no card yet is not in the chain the user can see, so it
-        // does not get a node. Reordering still carries it - the processor owns
-        // the order, and it is a permutation of every stage either way.
-        if (componentForSection(sectionId) == nullptr || ! isReorderable(sectionId))
-        {
-            continue;
-        }
-
         const auto slot = static_cast<std::size_t>(
             juce::jlimit(0, static_cast<int>(sectionActive.size()) - 1, sectionId));
-        flowNodes.push_back({ sectionId,
-                              sectionName(sectionId),
-                              sectionAccent(sectionId),
-                              sectionActive[slot] });
+        return px3::ui::FxRackCanvas::Stage { sectionId, componentForSection(sectionId), sectionName(sectionId),
+                                              styleKeyFor(sectionId), sectionActive[slot] };
+    };
+
+    std::vector<px3::ui::FxRackCanvas::Stage> instrument;
+    std::vector<px3::ui::FxRackCanvas::Stage> send;
+    std::vector<px3::ui::FxRackCanvas::Stage> master;
+
+    for (const auto sectionId : px3::kUpstreamFxStageOrder)
+    {
+        if (componentForSection(sectionId) != nullptr) { instrument.push_back(stageFor(sectionId)); }
+    }
+    // The send chain in the processor's order. A stage with no component yet
+    // still processes; it simply has nothing to show.
+    for (const auto sectionId : chainOrder)
+    {
+        if (isReorderable(sectionId) && componentForSection(sectionId) != nullptr) { send.push_back(stageFor(sectionId)); }
+    }
+    // The master stages in the order they process, whatever slot a saved
+    // order happens to give them.
+    for (const auto sectionId : px3::kMasterFxStageOrder)
+    {
+        if (componentForSection(sectionId) != nullptr) { master.push_back(stageFor(sectionId)); }
     }
 
-    signalFlow.setNodes(std::move(flowNodes));
+    rack.setSections(std::move(instrument), std::move(send), std::move(master));
 }
 
 juce::String FxPanel::sectionName(int sectionId)
@@ -250,30 +254,25 @@ juce::String FxPanel::sectionName(int sectionId)
     return "FX";
 }
 
-juce::Colour FxPanel::sectionAccent(int sectionId) const
+juce::String FxPanel::styleKeyFor(int sectionId)
 {
-    // Read from the same card blocks the FX cards use, so a node and its card
-    // are the same colour without either being told about the other.
-    if (uiConfig == nullptr)
-    {
-        return accent;
-    }
-
+    // The cards.<key> block each stage's card is styled from, which is also
+    // the key of its height in fx.rack.cardHeight.
     switch (sectionId)
     {
-        case px3::fxStageVibe:         return uiConfig->getColour("cards.vibe.border.color", accent);
-        case px3::fxStageDelay:        return uiConfig->getColour("cards.delay.border.color", accent);
-        case px3::fxStageReverb:       return uiConfig->getColour("cards.reverb.border.color", accent);
-        case px3::fxStageMood:         return uiConfig->getColour("cards.mood.border.color", accent);
-        case px3::fxStageDoom:         return uiConfig->getColour("cards.doom.border.color", accent);
-        case px3::fxStageLucy:         return uiConfig->getColour("cards.lucy.border.color", accent);
-        case px3::fxStageChorus:       return uiConfig->getColour("cards.chorus.border.color", accent);
-        case px3::fxStageStereoSpread: return uiConfig->getColour("cards.stereoSpread.border.color", accent);
-        case px3::fxStageDistortion:   return uiConfig->getColour("cards.drive.border.color", accent);
-        case px3::fxStageAnalog:       return uiConfig->getColour("cards.analog.border.color", accent);
+        case px3::fxStageVibe:         return "vibe";
+        case px3::fxStageDelay:        return "delay";
+        case px3::fxStageReverb:       return "reverb";
+        case px3::fxStageMood:         return "mood";
+        case px3::fxStageDoom:         return "doom";
+        case px3::fxStageLucy:         return "lucy";
+        case px3::fxStageChorus:       return "chorus";
+        case px3::fxStageStereoSpread: return "stereoSpread";
+        case px3::fxStageDistortion:   return "drive";
+        case px3::fxStageAnalog:       return "analog";
         default: break;
     }
-    return accent;
+    return {};
 }
 
 juce::Component* FxPanel::componentForSection(int sectionId) const
@@ -292,112 +291,39 @@ juce::Component* FxPanel::componentForSection(int sectionId) const
     return nullptr;
 }
 
+void FxPanel::layoutRack(bool animate)
+{
+    const auto viewWidth = viewport.getWidth();
+    const auto viewHeight = viewport.getHeight();
+    if (viewWidth <= 0 || viewHeight <= 0)
+    {
+        return;
+    }
+
+    // The scrollbar takes width from the page, so whether it is needed has to
+    // be decided before the cards are measured - otherwise the first layout
+    // sizes the rack for a bar that then appears and overlaps it. Laid out at
+    // the width the last layout settled on; only if that guess turns out wrong
+    // is it laid out again at the other width (placed, not slid).
+    const auto narrow = juce::jmax(1, viewWidth - viewport.getScrollBarThickness() - 2);
+    const auto guessScroll = rack.getWidth() == narrow || rack.getWidth() == 0;
+    auto width = guessScroll ? narrow : viewWidth;
+    auto height = rack.layoutForWidth(width, animate);
+    const auto needsScroll = height > viewHeight;
+    if (needsScroll != guessScroll)
+    {
+        width = needsScroll ? narrow : viewWidth;
+        height = rack.layoutForWidth(width, false);
+    }
+    rack.setSize(width, juce::jmax(height, viewHeight));
+}
+
 void FxPanel::resized()
 {
     const auto padX = uiConfig != nullptr ? uiConfig->getInt("fx.panel.layout.padX", 0) : 0;
     const auto padY = uiConfig != nullptr ? uiConfig->getInt("fx.panel.layout.padY", 0) : 0;
-    auto area = getLocalBounds().reduced(padX, padY);
-
-    // The strip is fixed at the top and outside the viewport: it is how the
-    // chain is reordered, so scrolling through a long grid must not take it
-    // away.
-    const auto stripHeight = uiConfig != nullptr ? uiConfig->getInt("fx.signalFlow.height", 46) : 46;
-    signalFlow.setBounds(area.removeFromTop(stripHeight));
-
-    const auto stripGap = uiConfig != nullptr ? uiConfig->getInt("fx.signalFlow.gapBelow", 8) : 8;
-    area.removeFromTop(stripGap);
-
-    gridViewport.setBounds(area);
-
-    // ---- the grid ---------------------------------------------------------
-    // A wrapping grid whose cell order IS the chain order, so the grid is a
-    // second reading of the strip rather than a second list to keep in step.
-    // Columns follow the width: as many as fit at the minimum module width, up
-    // to the configured count. A narrow window gets fewer, wider modules and a
-    // scrolling rack rather than crushed ones.
-    const auto maxColumns = uiConfig != nullptr ? uiConfig->getInt("fx.grid.columns", 4) : 4;
-    const auto minCardWidth = uiConfig != nullptr ? uiConfig->getInt("fx.grid.minCardWidth", 260) : 260;
-    const auto columns = juce::jlimit(1, juce::jmax(1, maxColumns),
-                                      (gridViewport.getWidth() + 8) / juce::jmax(1, minCardWidth + 8));
-    const auto gap = uiConfig != nullptr ? uiConfig->getInt("fx.grid.gap", 8) : 8;
-    auto rowHeight = uiConfig != nullptr ? uiConfig->getInt("fx.grid.rowHeight", 400) : 400;
-
-    // Only the stages that have a card take a cell. A stage without one is
-    // still in the chain and still processes; it simply has nothing to show.
-    // ANALOG and VIBE first (inside the voices, then ahead of the split), then
-    // the send chain in its order, then the master-bus stages (LUCY, SPREAD) in the order they
-    // process, which always sit last because that is where they are in the
-    // signal - whatever slot a saved order happens to give them.
-    std::vector<juce::Component*> cards;
-    cards.reserve(chainOrder.size());
-    for (const auto sectionId : px3::kUpstreamFxStageOrder)
-    {
-        if (auto* component = componentForSection(sectionId))
-        {
-            cards.push_back(component);
-        }
-    }
-    for (const auto sectionId : chainOrder)
-    {
-        if (! isReorderable(sectionId)) { continue; }
-        if (auto* component = componentForSection(sectionId))
-        {
-            cards.push_back(component);
-        }
-    }
-    for (const auto sectionId : px3::kMasterFxStageOrder)
-    {
-        if (auto* component = componentForSection(sectionId))
-        {
-            cards.push_back(component);
-        }
-    }
-
-    const auto count = static_cast<int>(cards.size());
-
-    // The rack fills the page: rows share the visible height, so every module
-    // is on screen without scrolling, down to a minimum row height below which
-    // the grid scrolls instead of crushing the cards.
-    {
-        const auto rows = juce::jmax(1, (count + juce::jmax(1, columns) - 1) / juce::jmax(1, columns));
-        const auto minRow = uiConfig != nullptr ? uiConfig->getInt("fx.grid.minRowHeight", 300) : 300;
-        const auto fit = (gridViewport.getHeight() - gap * (rows - 1)) / rows;
-        rowHeight = juce::jmax(minRow, fit);
-    }
-    const auto neededHeight = px3::ui::fxGridContentHeight(count, columns, gap, rowHeight);
-
-    // The scrollbar takes width from the cells, so whether it is needed has to
-    // be decided before they are measured - otherwise the first layout sizes
-    // cells for a bar that then appears and overlaps them.
-    const auto needsScrollBar = neededHeight > gridViewport.getHeight();
-    const auto gutter = needsScrollBar ? gridViewport.getScrollBarThickness() + 4 : 0;
-    const auto contentWidth = juce::jmax(1, gridViewport.getWidth() - gutter);
-
-    gridContent.setBounds(0, 0, contentWidth, juce::jmax(gridViewport.getHeight(), neededHeight));
-
-    auto cells = px3::ui::fxGridCells(contentWidth, count, columns, gap, rowHeight);
-
-    // Dense layout: a partial last row spreads across the full width, so the
-    // rack has no empty slot at its end.
-    if (const auto inLastRow = count % juce::jmax(1, columns); inLastRow > 0 && static_cast<int>(cells.size()) == count)
-    {
-        const auto first = count - inLastRow;
-        const auto width = (static_cast<float>(contentWidth) - static_cast<float>(gap * (inLastRow - 1)))
-                           / static_cast<float>(inLastRow);
-        for (int i = 0; i < inLastRow; ++i)
-        {
-            auto& cell = cells[static_cast<std::size_t>(first + i)];
-            const auto x = static_cast<float>(i) * (width + static_cast<float>(gap));
-            // Edges, as fxGridCells does, so every seam is exactly the gap.
-            cell = juce::Rectangle<int>::leftTopRightBottom(static_cast<int>(std::floor(x + 0.5f)), cell.getY(),
-                                                            static_cast<int>(std::floor(x + width + 0.5f)), cell.getBottom());
-        }
-    }
-
-    for (int i = 0; i < count && i < static_cast<int>(cells.size()); ++i)
-    {
-        cards[static_cast<std::size_t>(i)]->setBounds(cells[static_cast<std::size_t>(i)]);
-    }
+    viewport.setBounds(getLocalBounds().reduced(padX, padY));
+    layoutRack(false);
 }
 
 void FxPanel::setActive(bool delayEnabled,
@@ -415,7 +341,6 @@ void FxPanel::setActive(bool delayEnabled,
         moodComponent->setActive(moodEnabled);
     }
 
-
     setSectionActive(px3::fxStageDelay, delayEnabled);
     setSectionActive(px3::fxStageReverb, reverbEnabled);
     setSectionActive(px3::fxStageMood, moodEnabled);
@@ -424,7 +349,7 @@ void FxPanel::setActive(bool delayEnabled,
 void FxPanel::setUIConfig(std::shared_ptr<const UIConfig> configIn)
 {
     uiConfig = std::move(configIn);
-    signalFlow.setUIConfig(uiConfig);
+    rack.setUIConfig(uiConfig);
 
     for (auto& entry : ownedCards)
     {
@@ -440,15 +365,8 @@ void FxPanel::setUIConfig(std::shared_ptr<const UIConfig> configIn)
         moodComponent->setUIConfig(uiConfig);
     }
 
-    // The strip's node colours are READ from the config, in sectionAccent, at
-    // the moment the nodes are built - and that build happens in the panel's
-    // constructor, before any config exists. Without this the nodes kept
-    // sectionAccent's fallback, so every node in the strip drew the same blue
-    // bar until something unrelated rebuilt them; clicking one reordered the
-    // chain, which called setChainOrder, which refreshed them, and the whole
-    // strip snapped to its real colours at once. This is also what makes a
-    // live config reload repaint the strip in the new colours.
-    refreshSignalFlowNodes();
-
+    // The rack's geometry and every card height come from the config, so a
+    // live reload re-lays the page out rather than only repainting it.
+    resized();
     repaint();
 }

@@ -1340,203 +1340,95 @@ void testFxChain()
               "all 16 from/to pairs preserve the set of effects");
     }
 
-    // ---- signal-flow slots -------------------------------------------------
+    // ---- the FX page rack: columns, card width, wrapping --------------------
     {
-        const juce::Rectangle<float> area { 0.0f, 0.0f, 424.0f, 34.0f };
-        const auto slots = signalFlowSlots(area, 4, 26, 48);
+        check("FxRack_ColumnsFitTheMinimumCardWidth",
+              fxRackColumns(1389, 236, 18) == 5 && fxRackColumns(2330, 236, 18) == 9
+                  && fxRackColumns(1000, 236, 18) == 4 && fxRackColumns(100, 236, 18) == 1,
+              juce::String(fxRackColumns(1389, 236, 18)) + " / " + juce::String(fxRackColumns(2330, 236, 18))
+                  + " / " + juce::String(fxRackColumns(1000, 236, 18)));
 
-        check("FxChain_SlotsSpanTheStripWithGapsBetween",
-              slots.size() == 4
-                  && juce::approximatelyEqual(slots[0].getWidth(), 86.5f)
-                  && juce::approximatelyEqual(slots[1].getX(), 112.5f)
-                  && juce::approximatelyEqual(slots[3].getRight(), 424.0f),
-              "424 wide, 3 gaps of 26 -> 4 nodes of "
-                  + juce::String(slots.empty() ? 0.0f : slots[0].getWidth(), 1));
+        // Never below the minimum (a narrow window wraps, it does not crush),
+        // never above the maximum (a wide window does not stretch cards).
+        check("FxRack_CardWidthStaysBetweenItsLimits",
+              fxRackCardWidth(1389, 5, 18, 236, 292) == (1389 - 4 * 18) / 5
+                  && fxRackCardWidth(2330, 9, 18, 236, 292) == 242
+                  && fxRackCardWidth(100, 1, 18, 236, 292) == 236
+                  && fxRackCardWidth(4000, 2, 18, 236, 292) == 292,
+              juce::String(fxRackCardWidth(1389, 5, 18, 236, 292)));
 
-        const auto narrow = signalFlowSlots({ 0.0f, 0.0f, 100.0f, 34.0f }, 4, 26, 48);
-        check("FxChain_SlotsNeverGoBelowTheMinimumWidth",
-              narrow.size() == 4 && narrow[0].getWidth() >= 48.0f,
-              "100px for 4 nodes -> width " + juce::String(narrow.empty() ? 0.0f : narrow[0].getWidth(), 1));
-
-        check("FxChain_NoNodesMeansNoSlots",
-              signalFlowSlots(area, 0, 26, 48).empty(), "");
-
-        // Insertion follows slot centres, so a node swaps at the halfway point.
-        check("FxChain_InsertionIndexTracksSlotCentres",
-              insertionIndexForCentre(slots, 0.0f) == 0
-                  && insertionIndexForCentre(slots, slots[1].getCentreX() + 1.0f) == 1
-                  && insertionIndexForCentre(slots, slots[1].getCentreX() - 1.0f) == 0
-                  && insertionIndexForCentre(slots, 9999.0f) == 3,
-              "");
-    }
-
-    // ---- the wrapping grid -------------------------------------------------
-    {
-        const auto cells = fxGridCells(800, 4, 4, 8, 300);
-        check("FxChain_GridPlacesFourEffectsOnOneRow",
-              cells.size() == 4
-                  && cells[0].getY() == 0 && cells[3].getY() == 0
-                  && cells[0].getWidth() == 194 && cells[3].getRight() == 800,
-              "800 wide, 4 columns, 8px gaps -> cell width "
-                  + juce::String(cells.empty() ? 0 : cells[0].getWidth()));
-
-        const auto wrapped = fxGridCells(800, 6, 4, 8, 300);
-        check("FxChain_GridWrapsPastTheColumnCount",
-              wrapped.size() == 6
-                  && wrapped[3].getY() == 0
-                  && wrapped[4].getY() == 308
-                  && wrapped[4].getX() == wrapped[0].getX(),
-              "6 effects in 4 columns -> row 2 starts at y "
-                  + juce::String(wrapped.size() > 4 ? wrapped[4].getY() : -1));
-
-        // The grid must survive counts it was not designed around, because the
-        // effect list is meant to grow without the layout being revisited.
-        auto scalesCleanly = true;
-        for (int count = 0; count <= 9; ++count)
-        {
-            const auto scaled = fxGridCells(800, count, 4, 8, 300);
-            scalesCleanly = scalesCleanly && static_cast<int>(scaled.size()) == count;
-            for (const auto& cell : scaled)
-            {
-                scalesCleanly = scalesCleanly && cell.getX() >= 0 && cell.getRight() <= 800;
-            }
-        }
-        check("FxChain_GridHandlesZeroThroughNineEffects", scalesCleanly,
-              "cells stay inside the content width at every count");
-
-        check("FxChain_GridContentHeightGrowsARowAtATime",
-              fxGridContentHeight(0, 4, 8, 300) == 0
-                  && fxGridContentHeight(4, 4, 8, 300) == 300
-                  && fxGridContentHeight(5, 4, 8, 300) == 608
-                  && fxGridContentHeight(8, 4, 8, 300) == 608,
-              "5 effects need two rows: "
-                  + juce::String(fxGridContentHeight(5, 4, 8, 300)) + "px");
-
-        // Scrolling exists precisely when the content is taller than the view.
-        check("FxChain_ContentTallerThanTheViewportIsWhatScrolls",
-              fxGridContentHeight(8, 4, 8, 300) > 400 && fxGridContentHeight(4, 4, 8, 300) <= 400,
-              "");
-
-        check("FxChain_SingleColumnIsAVerticalStack",
-              fxGridCells(300, 3, 1, 8, 200).size() == 3
-                  && fxGridCells(300, 3, 1, 8, 200)[2].getY() == 416
-                  && fxGridCells(300, 3, 1, 8, 200)[2].getWidth() == 300,
-              "");
-
-        check("FxChain_ZeroColumnsIsTreatedAsOne",
-              fxGridCells(300, 2, 0, 8, 200).size() == 2
-                  && fxGridCells(300, 2, 0, 8, 200)[1].getY() == 208,
-              "a bad config must not divide by zero");
-    }
-
-    // ---- the strip's style is real configuration ---------------------------
-    {
-        juce::String error;
-        const auto config = UIConfig::fromJsonText(R"({"fx":{"signalFlow":{
-            "nodeGap":40,"minNodeWidth":10,"insetX":12,"insetY":9,"cornerRadius":3,
-            "reflowRate":0.5,"fontSize":17,"accentBarHeight":6,"hoverBrighten":0.4,
-            "dragBrighten":0.6,"inactiveSaturation":0.5,
-            "nodeColour":"#101112","textColour":"#ABCDEF","inactiveTextColour":"#123456",
-            "connectorColour":"#FF000080","borderColour":"#00FF0040","dropHighlightColour":"#0000FF20"}}})",
-                                                 error);
-
-        FxSignalFlow strip;
-        strip.setUIConfig(config);
-        const auto& style = strip.style();
-
-        check("FxChain_SignalFlowStyleComesFromConfig",
-              style.nodeGap == 40 && style.minNodeWidth == 10 && style.insetX == 12 && style.insetY == 9
-                  && juce::approximatelyEqual(style.cornerRadius, 3.0f)
-                  && juce::approximatelyEqual(style.reflowRate, 0.5f)
-                  && juce::approximatelyEqual(style.fontSize, 17.0f)
-                  && juce::approximatelyEqual(style.accentBarHeight, 6.0f)
-                  && juce::approximatelyEqual(style.hoverBrighten, 0.4f)
-                  && juce::approximatelyEqual(style.dragBrighten, 0.6f)
-                  && juce::approximatelyEqual(style.inactiveSaturation, 0.5f)
-                  && style.nodeColour == juce::Colour::fromRGB(0x10, 0x11, 0x12)
-                  && style.textColour == juce::Colour::fromRGB(0xAB, 0xCD, 0xEF)
-                  && style.inactiveTextColour == juce::Colour::fromRGB(0x12, 0x34, 0x56)
-                  && style.connectorColour == juce::Colour::fromRGBA(0xFF, 0x00, 0x00, 0x80)
-                  && style.borderColour == juce::Colour::fromRGBA(0x00, 0xFF, 0x00, 0x40)
-                  && style.dropHighlightColour == juce::Colour::fromRGBA(0x00, 0x00, 0xFF, 0x20),
-              "all 17 fx.signalFlow properties reach the style");
-
-        // The inset and gap are not decoration: they have to move the slots.
-        strip.setNodes({ { 0, "A", juce::Colours::red, true },
-                         { 1, "B", juce::Colours::green, true } });
-        strip.setBounds(0, 0, 200, 40);
-        strip.resized();
-
-        const auto& slots = strip.slotBounds();
-        check("FxChain_SignalFlowStyleMovesTheSlots",
-              slots.size() == 2
-                  && juce::approximatelyEqual(slots[0].getX(), 12.0f)
-                  && juce::approximatelyEqual(slots[0].getY(), 9.0f)
-                  && juce::approximatelyEqual(slots[1].getX(), slots[0].getRight() + 40.0f),
-              "insetX 12, insetY 9, nodeGap 40 -> first slot at "
-                  + juce::String(slots.empty() ? -1.0f : slots[0].getX(), 1));
-    }
-
-    {
-        // The strip's nodes take their colour from the card blocks in the
-        // config, read in sectionAccent at the moment the nodes are BUILT - and
-        // they are built in the panel's constructor, from addCard, and from
-        // setChainOrder, every one of which runs before any config exists. When
-        // sectionAccent has no config it returns the panel's own accent, so all
-        // eight nodes came out the same blue.
-        //
-        // setUIConfig used to store the config without rebuilding them, so they
-        // stayed blue until something unrelated rebuilt them: clicking a node
-        // reordered the chain, which called setChainOrder, which refreshed the
-        // nodes, and the whole strip snapped to its real colours at once. That
-        // is the "they all reset when I click one" half of the report.
-        //
-        // Driven through FxPanel rather than the editor because in this build
-        // resolveUiConfigFile only probes the bundle - the source-tree and cwd
-        // candidates are behind JUCE_DEBUG || PX3_DEBUG_PANEL - so the editor
-        // under test never loads a config at all and every node would be blue
-        // for a reason that has nothing to do with this bug.
-        UIConfigManager manager;
-        manager.setConfigFile(shippingUiConfigFile());
-        manager.loadInitial();
-        const auto config = manager.getConfig();
-
-        PX3SynthAudioProcessor processor;
-        std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
-
-        FxPanel* panel = nullptr;
-        px3::ui::FxSignalFlow* strip = nullptr;
-        std::function<void(juce::Component&)> walk = [&](juce::Component& c)
-        {
-            if (auto* p = dynamic_cast<FxPanel*>(&c)) panel = p;
-            if (auto* f = dynamic_cast<px3::ui::FxSignalFlow*>(&c)) strip = f;
-            for (auto* child : c.getChildren()) walk(*child);
-        };
-        if (editor != nullptr) walk(*editor);
-
-        if (panel != nullptr)
-        {
-            panel->setUIConfig(config);
-        }
-
+        // Six cards at three column counts: the order never changes, rows run
+        // left to right, and a wrapped row starts back at the left.
+        auto wrapsInOrder = true;
         juce::String detail;
-        auto distinct = panel != nullptr && strip != nullptr && strip->nodeList().size() >= 2;
-
-        if (strip != nullptr)
+        for (const auto columns : { 6, 4, 2 })
         {
-            const auto& list = strip->nodeList();
-            for (std::size_t i = 0; i < list.size(); ++i)
+            const auto flow = fxRackFlow({ 30, 10 }, 240, columns, 18, 24, std::vector<int>(6, 300));
+            wrapsInOrder = wrapsInOrder && flow.cells.size() == 6;
+            for (std::size_t i = 0; i < flow.cells.size(); ++i)
             {
-                detail << list[i].name << " " << list[i].accent.toDisplayString(false) << "  ";
-                for (std::size_t j = i + 1; j < list.size(); ++j)
+                const auto row = static_cast<int>(i) / columns;
+                const auto column = static_cast<int>(i) % columns;
+                wrapsInOrder = wrapsInOrder && flow.rowOfCell[i] == row
+                               && flow.cells[i].getX() == 30 + column * 258
+                               && flow.cells[i].getY() == 10 + row * 324;
+                if (i > 0)
                 {
-                    distinct = distinct && list[i].accent != list[j].accent;
+                    // Reading order: later cells are right of, or below, earlier ones.
+                    const auto& a = flow.cells[i - 1];
+                    const auto& b = flow.cells[i];
+                    wrapsInOrder = wrapsInOrder && (b.getY() > a.getY() || (b.getY() == a.getY() && b.getX() > a.getRight()));
                 }
             }
+            detail << columns << " cols -> " << flow.rowCount << " rows, h " << flow.height << "  ";
         }
+        check("FxRack_WrappingKeepsTheOrder", wrapsInOrder, detail);
 
-        check("FxChain_EveryStripNodeKeepsItsOwnColour", distinct,
-              panel == nullptr ? "no FX panel found in the editor" : detail);
+        const auto mixed = fxRackFlow({ 0, 0 }, 200, 3, 10, 20, { 100, 300, 200, 150 });
+        check("FxRack_ARowIsAsTallAsItsTallestCard",
+              mixed.cells.size() == 4 && mixed.cells[0].getHeight() == 300 && mixed.cells[2].getHeight() == 300
+                  && mixed.cells[3].getY() == 320 && mixed.cells[3].getHeight() == 150 && mixed.height == 470,
+              "height " + juce::String(mixed.height));
+
+        check("FxRack_NoCardsIsNoRows",
+              fxRackFlow({ 0, 0 }, 200, 3, 10, 20, {}).cells.empty()
+                  && fxRackFlow({ 0, 0 }, 200, 3, 10, 20, {}).height == 0, "");
+
+        // The drop target is the nearest cell in 2D, so a card dragged down
+        // onto the second row lands there rather than at the end of row one.
+        const auto grid = fxRackFlow({ 0, 0 }, 200, 3, 10, 20, std::vector<int>(6, 100)).cells;
+        check("FxRack_InsertionFollowsTheNearestCellAcrossRows",
+              fxRackInsertionIndex(grid, grid[4].getCentre().translated(30, 20)) == 4
+                  && fxRackInsertionIndex(grid, { -50, -50 }) == 0
+                  && fxRackInsertionIndex(grid, grid[2].getCentre()) == 2
+                  && fxRackInsertionIndex({}, { 0, 0 }) == -1,
+              "");
+    }
+
+    // ---- the rack's style is real configuration ----------------------------
+    {
+        juce::String error;
+        const auto config = UIConfig::fromJsonText(R"({"fx":{"rack":{
+            "padX":20,"padTop":3,"leadIn":30,"gap":40,"rowGap":50,"headerHeight":44,"railHeight":12,
+            "minCardWidth":300,"maxCardWidth":310,"cardHeight":{"default":222}}}})",
+                                                 error);
+        FxRackCanvas canvas;
+        canvas.setUIConfig(config);
+        const auto& style = canvas.style();
+        check("FxRack_StyleComesFromConfig",
+              style.padX == 20 && style.padTop == 3 && style.leadIn == 30 && style.gap == 40 && style.rowGap == 50
+                  && style.headerHeight == 44 && style.railHeight == 12 && style.minCardWidth == 300
+                  && style.maxCardWidth == 310 && style.defaultCardHeight == 222,
+              error);
+
+        juce::Component a, b, c;
+        canvas.setSections({}, { { 1, &a, "A", "", true }, { 2, &b, "B", "", true }, { 3, &c, "C", "", true } }, {});
+        const auto height = canvas.layoutForWidth(700, false);
+        check("FxRack_StyleMovesTheCards",
+              a.getX() == 50 && a.getY() == 3 + 44 + canvas.style().headerGap + 12 && a.getHeight() == 222
+                  && b.getX() == 50 && b.getY() == a.getY() + 222 + 12 + 50 && a.getWidth() == 310   // one column, filled up to the max
+                  && height > b.getBottom(),
+              "a " + a.getBounds().toString() + " b " + b.getBounds().toString());
     }
 
     // ---- the shipping config parses and is complete ------------------------
@@ -1547,12 +1439,13 @@ void testFxChain()
         manager.setConfigFile(shippingUiConfigFile());
         manager.loadInitial();
         const auto config = manager.getConfig();
-        check("FxChain_ShippingConfigDefinesTheStripAndGrid",
+        check("FxChain_ShippingConfigDefinesTheRack",
               config != nullptr
-                  && config->getInt("fx.signalFlow.height", -1) > 0
-                  && config->getInt("fx.signalFlow.nodeGap", -1) > 0
-                  && config->getInt("fx.grid.columns", -1) == 5  // the 0.8.0 rack: five modules across
-                  && config->getInt("fx.grid.rowHeight", -1) > 0,
+                  && config->getInt("fx.rack.minCardWidth", -1) >= 220
+                  && config->getInt("fx.rack.minCardWidth", -1) <= 280
+                  && config->getInt("fx.rack.maxCardWidth", -1) >= config->getInt("fx.rack.minCardWidth", -1)
+                  && config->getInt("fx.rack.cardHeight.default", -1) > 0
+                  && config->getInt("fx.grid.rowHeight", -1) > 0,   // the standalone effects' window
               "");
     }
 

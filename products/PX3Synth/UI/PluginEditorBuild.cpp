@@ -936,6 +936,11 @@ void PX3SynthAudioProcessorEditor::buildSettingsAndOverlays()
                                          &delaySlipKnob, &delaySlipLabel, &delayModDepthKnob, &delayModDepthLabel });
     fxPanel->setDelayAlgorithm(audioProcessor.getDelayAlgorithmParam().getIndex());
 
+    // The one bus send, in the SEND FX header: how much source signal goes
+    // into the FX bus (a master trim over every source's send on the MIX page).
+    fxPanel->busSendKnob().setLookAndFeel(&knobLookAndFeel);
+    attachSlider(audioProcessor.getFxSendGainParam(), fxPanel->busSendKnob());
+
     fxPanel->onChainOrderChanged = [this](const px3::FxOrder& order)
     {
         applyFxChainOrder(order, "USER", "USER_DRAG_END", -1, -1);

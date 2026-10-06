@@ -280,6 +280,15 @@ int runNativeUiBenchmark()
         const auto requestedWidth = juce::SystemStats::getEnvironmentVariable("PX3_BENCH_UI_WIDTH", "0").getIntValue();
         const auto requestedHeight = juce::SystemStats::getEnvironmentVariable("PX3_BENCH_UI_HEIGHT", "0").getIntValue();
         if (requestedWidth > 0 && requestedHeight > 0) { editor->setSize(requestedWidth, requestedHeight); }
+        // PX3_BENCH_UI_SECTION=N opens on that page (4 = FX) without persisting
+        // it, so a page's idle cost can be measured on its own.
+        if (const auto section = juce::SystemStats::getEnvironmentVariable("PX3_BENCH_UI_SECTION", {}); section.isNotEmpty())
+        {
+            if (auto* synthEditor = dynamic_cast<PX3SynthAudioProcessorEditor*>(editor.get()))
+            {
+                synthEditor->debugSelectSection(section.getIntValue());
+            }
+        }
         window->setContentNonOwned(editor.get(), true);
         window->setVisible(true);
         const auto paintStart = Clock::now();

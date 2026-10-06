@@ -84,7 +84,6 @@ set(PX3_SHARED_SOURCES
         shared/DSP/Core/FetCompressor.cpp
         shared/DSP/StereoSpread/StereoSpread.cpp
         shared/DSP/Distortion/Distortion.cpp
-        shared/UI/Fx/FxSignalFlow.cpp
         shared/UI/Fx/FxChainLayout.cpp
         shared/UI/Components/BypassButton.cpp
         shared/UI/Components/ToggleChipButton.cpp
@@ -140,6 +139,7 @@ set(PX3_SYNTH_SOURCES
         products/PX3Synth/UI/AmpPanel.cpp
         products/PX3Synth/UI/FltPanel.cpp
         products/PX3Synth/UI/FxPanel.cpp
+        products/PX3Synth/UI/FxRack.cpp
         products/PX3Synth/UI/MixPanel.cpp
     products/PX3Synth/UI/BusInsertOverlay.cpp
     products/PX3Synth/UI/BusEqGraph.cpp

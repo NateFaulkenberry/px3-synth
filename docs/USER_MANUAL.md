@@ -100,8 +100,8 @@ sweeps with the LFO; a coloured ring on the knob shows how far.
 ### 6. Add space
 
 Open **FX** and make sure **REVERB** is switched on. Set its **MODE** to `HALL`
-and bring **MIX** up. Bring **DELAY**'s **AMOUNT** up too, then drag the nodes in
-the strip above the cards to change which comes first.
+and bring **MIX** up. Bring **DELAY**'s **AMOUNT** up too, then drag either card
+by the ⋮⋮ handle on its tab to change which comes first.
 
 ### 7. Keep it
 
@@ -121,7 +121,7 @@ Four buttons across the top switch the main area between pages:
 | --- | --- |
 | **VOICE** | SUB OSC and OSC 1–3, FILTER 1 and FILTER 2, and AMP ENV side by side; beneath them two tabbed panels, LFO 1–4 and ENV 1–4 |
 | **MOD** | The modulation matrix: every source's jack, every route, and a searchable list of destinations |
-| **FX** | The effect cards, and the signal-flow strip that sets their order |
+| **FX** | The effect cards in three sections - INSTRUMENT, SEND FX, MASTER - laid out in the order the signal meets them; drag a send card to reorder the chain |
 | **MIX** | Channel strips for SUB, OSC 1–3, the DRY bus and the FX return, with the EQ and COMP inserts |
 
 The rest of the top bar, left to right after the page buttons:
@@ -839,6 +839,37 @@ which works inside the voices, **VIBE**, which works on the whole instrument
 ahead of the mixer's dry/send split, and **LUCY** and **SPREAD**, which work on
 the master, in that order, after everything else.
 
+**The page is laid out the way the signal flows.** It scrolls vertically and has
+three sections, top to bottom:
+
+* **INSTRUMENT** — *processes the complete instrument.* **ANALOG** (tagged
+  PER VOICE: it runs inside every voice) then **VIBE** (tagged INSTRUMENT
+  INSERT: one pedal on the summed instrument, before the dry/send split). These
+  two are fixed: they have no drag handle and cannot join the send chain.
+* **SEND FX** (the **FX BUS**) — *processes signal sent to the FX bus.* The six
+  send effects, each tagged with its position (SEND 1, SEND 2, ...). Cards run
+  left to right with a small arrow between them; when a row is full the chain
+  continues on the next row from the left (a ↓ under the last card of the row
+  marks where it continues), so wrapping never changes the order. After the last
+  card, **↓ FX BUS EQ / COMP › FX RETURN** marks where the bus leaves the chain:
+  through its fixed EQ and compressor (set on the MIX page) and the FX RETURN
+  fader, to be mixed with the dry signal.
+* **MASTER** — *processes the finished mix: dry signal + FX return.* **LUCY**
+  then **SPREAD**, ending in the main output (**OUT**). Fixed, like INSTRUMENT.
+
+**SEND → FX BUS**, at the right of the SEND FX header, is how much of the source
+signal is routed into the FX bus: a master trim over every source's own FX send
+(the per-source sends are on the MIX page). It does not touch the dry signal.
+There is no per-effect send:
+every send effect processes the same bus, one after another.
+
+**Reordering.** Hover a send card and the ⋮⋮ handle on its tab lights up; drag
+the tab. The card lifts, a dashed outline shows where it will land, and the other
+cards slide aside; the chain only accepts send cards, and a lifted card stays
+inside the SEND FX section. Let go and the new order is what the audio uses, and
+it is saved with the preset and the session. A bypassed card stays in its place
+(its tab says BYPASSED) and can still be moved.
+
 Each card has a power button in its corner; clicking the card's background does
 the same.
 
@@ -854,9 +885,8 @@ hear. DRIVE is different: distortion has no dry signal in it, so adding it on
 top of the dry would make it parallel distortion. It keeps its crossfade for
 now. (VIBE is not on the send at all - see below.)
 
-**Order matters, and you choose it.** Drag the nodes in the signal-flow strip
-above the cards. The cards themselves are editors, not ordering controls, so they
-can scroll freely while the strip stays in view.
+**Order matters, and you choose it.** Drag a send card by its tab, as above. The
+INSTRUMENT and MASTER cards always run where they are shown.
 
 > **Note:** Bypassing an effect clears it out. Switching it back on starts clean
 > rather than releasing whatever was caught inside when you switched it off.
@@ -866,7 +896,8 @@ can scroll freely while the strip stays in view.
 **What it is:** The instrument's own analogue imperfection. It runs *inside each
 voice*, before the sources are summed, because saturating four signals
 separately does not sound like saturating their sum. It is not an insert, so its
-card sits ahead of the FX chain and is not in the reorder strip.
+card is the first in the INSTRUMENT section (tagged PER VOICE), ahead of VIBE,
+and cannot be reordered.
 
 **Sound:** Every voice drifts in pitch and filter at its own rate, so a held
 chord thickens rather than wobbling in unison. Supply sag follows how loud the
@@ -892,8 +923,8 @@ stages add a little grit when driven hard. Off in a new patch.
 - like a pedal between the synth and the desk. The dry signal and what is sent to
 the effects go through one pedal (one lamp, one sweep), so the reverb and delay
 hear the vibe, VIBRATO is the phase-shifted signal alone, and switching VIBE on
-does not make the patch quieter. Its card sits first after ANALOG and it is not
-in the reorder strip. (Up to 0.8.2 it was in the send chain, where the dry signal
+does not make the patch quieter. Its card sits in the INSTRUMENT section after
+ANALOG (tagged INSTRUMENT INSERT) and cannot be reordered. (Up to 0.8.2 it was in the send chain, where the dry signal
 passed underneath it: VIBRATO was never pure, and engaging it cost up to 3 dB.)
 
 **Controls:**
@@ -1035,8 +1066,8 @@ away.
 
 **Where it sits:** On the master, after the dry and FX buses are summed and
 before SPREAD — the whole instrument goes through it, whatever the sends are set
-to, and above the bottom of AMOUNT what you hear is LUCY's output. Its card sits
-after the FX chain and is not in the reorder strip. (Up to 0.8.2 it was in the
+to, and above the bottom of AMOUNT what you hear is LUCY's output. Its card is
+the first in the MASTER section (tagged MASTER INSERT) and cannot be reordered. (Up to 0.8.2 it was in the
 send chain, where the dry signal passed underneath it untouched: switching it on
 made the patch quieter and most of its controls hard to hear.)
 
@@ -1360,14 +1391,16 @@ Off by default. P(X3) has a second stereo output pair that a host can enable.
 | Separate FX Output | Outputs 1/2 | Outputs 3/4 |
 | --- | --- | --- |
 | **Off** (default) | The full mix: dry and FX | Silent |
-| **On**, second pair enabled in the host | Dry only | The FX return |
+| **On**, second pair enabled in the host | Dry only | The FX return (the send chain) |
 
 Turn it on when you want the dry and FX signals on separate tracks — in Logic,
 for example, create the instrument as **Multi-Output (2xStereo)** and add the
 extra channel strip. With it off, P(X3) sounds the same in every host however
 many outputs the host has enabled.
 
-The two outputs carry the fixed output boost but not the master stages — the
+VIBE runs on the instrument before the dry/send split, so both pairs carry it:
+3/4 is the send chain processing a vibed FX bus. The two outputs carry the fixed
+output boost but not the master stages — the
 console engine, LUCY, SPREAD and the output ceiling — which act on the sum. LUCY
 in particular cannot be split: it codes the mix as a whole, so with Separate FX
 Output on it is not heard on either pair. Summing 1/2 and 3/4 in your DAW is close
@@ -1775,7 +1808,7 @@ the M1 knob, move a hardware knob, and that transformation is under your hand.
 | Double-click the pitch wheel | Return it to centre |
 | Double-click the mod wheel | Return it to zero |
 | Double-click a mixer fader | Return it to 0 dB |
-| Drag a node in the FX strip | Reorder the effects |
+| Drag a send card's ⋮⋮ tab on the FX page | Reorder the send chain |
 | Click an effect's corner button, or its card background | Bypass or enable it |
 
 Only one assignment mode is active at a time. Starting a MIDI selection leaves

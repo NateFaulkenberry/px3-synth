@@ -80,6 +80,27 @@ int runUISnapshot(const juce::String& outDir, int width, int height)
         dumpComponent(*editor, *editor, 0, text);
         dir.getChildFile("section" + juce::String(section) + ".txt").replaceWithText(text);
     }
+    // The whole FX page, scrolled region included: the rack rendered at its
+    // full height on the chassis colour, with a send card bypassed and the
+    // first send card hovered so the rail states show.
+    if (auto* fx = editor->debugFxPanel())
+    {
+        editor->debugSelectSection(4);   // FX
+        auto& rack = fx->debugRack();
+        const auto send = rack.stagesIn(px3::ui::FxDomain::send);
+        if (! send.empty()) { rack.setHoveredStage(send.front()); }
+        juce::Image page(juce::Image::ARGB, rack.getWidth(), rack.getHeight(), true);
+        {
+            juce::Graphics g(page);
+            g.fillAll(juce::Colour(0xff121417));
+            g.drawImageAt(rack.createComponentSnapshot(rack.getLocalBounds()), 0, 0);
+        }
+        rack.setHoveredStage(-1);
+        auto png = dir.getChildFile("fx-rack.png");
+        png.deleteFile();
+        juce::FileOutputStream stream(png);
+        juce::PNGImageFormat().writeImageToStream(page, stream);
+    }
     // The two insert sheets, each live and bypassed, at 2x for detail work.
     for (const auto wantsEq : { true, false })
     {

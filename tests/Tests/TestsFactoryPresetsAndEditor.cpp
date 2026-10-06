@@ -799,22 +799,16 @@ void testEditorLifecycle()
     }
 
     {
-        // The default window has to be tall enough to show a whole first row of
-        // FX cards without scrolling. FxPanel spends its height on the signal
-        // flow strip, the gap under it, and then the grid, so the requirement is
-        // read from the same config keys the panel lays out from rather than
-        // written down here - raise fx.grid.rowHeight and this test says so.
+        // The default window has to be tall enough to show the whole first
+        // section of the FX page (INSTRUMENT: header, rails and cards) and the
+        // SEND FX header under it without scrolling. Read from the rack's own
+        // layout, so raising a card height in fx.rack says so here.
         UIConfigManager manager;
         manager.setConfigFile(shippingUiConfigFile());
         manager.loadInitial();
         const auto config = manager.getConfig();
 
         const auto padY = config->getInt("fx.panel.layout.padY", 0);
-        const auto strip = config->getInt("fx.signalFlow.height", 46);
-        const auto stripGap = config->getInt("fx.signalFlow.gapBelow", 8);
-        const auto rowHeight = config->getInt("fx.grid.rowHeight", 400);
-        const auto required = 2 * padY + strip + stripGap + rowHeight;
-
         PX3SynthAudioProcessor processor;
         std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
         editor->setVisible(true);
@@ -837,15 +831,18 @@ void testEditorLifecycle()
               editor->getWidth() == 1488 && editor->getHeight() == 884,
               juce::String(editor->getWidth()) + "x" + juce::String(editor->getHeight()));
             const auto defaultPanel = panel != nullptr ? panel->getHeight() : 0;
+        if (panel != nullptr) { panel->setUIConfig(config); }
+        const auto required = panel != nullptr
+                                  ? 2 * padY + panel->debugRack().headerBounds(px3::ui::FxDomain::send).getBottom()
+                                  : 1 << 20;
         const auto defaultHeight = editor->getHeight();
         const auto defaultKeys = keys != nullptr ? keys->getHeight() : 0;
         const auto defaultHeader = header != nullptr ? header->getHeight() : 0;
 
             check("Editor_DefaultSizeFitsAWholeRowOfFxCards",
               panel != nullptr && defaultPanel >= required,
-              "panel " + juce::String(defaultPanel) + "px, a row needs " + juce::String(required)
-                  + "px (strip " + juce::String(strip) + " + gap " + juce::String(stripGap)
-                  + " + rowHeight " + juce::String(rowHeight) + ")");
+              "panel " + juce::String(defaultPanel) + "px, INSTRUMENT + the SEND FX header need "
+                  + juce::String(required) + "px");
 
         // Resizing must spend every pixel on the panels. The keyboard used to be
         // a fraction of the window height, so it quietly took a share of any

@@ -1,6 +1,7 @@
 #include "FxChainLayout.h"
 
 #include <cmath>
+#include <limits>
 
 namespace px3::ui
 {
@@ -19,95 +20,81 @@ std::vector<int> moveChainEntry(std::vector<int> order, int fromIndex, int toInd
     return order;
 }
 
-std::vector<juce::Rectangle<float>> signalFlowSlots(juce::Rectangle<float> area,
-                                                    int count,
-                                                    int gap,
-                                                    int minWidth)
+int fxRackColumns(int availableWidth, int minCardWidth, int gap)
 {
-    std::vector<juce::Rectangle<float>> slots;
-    if (count <= 0 || area.getWidth() <= 0.0f)
-    {
-        return slots;
-    }
-
-    slots.reserve(static_cast<std::size_t>(count));
-
-    const auto totalGap = static_cast<float>(gap * juce::jmax(0, count - 1));
-    const auto nodeWidth = juce::jmax(static_cast<float>(minWidth),
-                                      (area.getWidth() - totalGap) / static_cast<float>(count));
-
-    auto x = area.getX();
-    for (int i = 0; i < count; ++i)
-    {
-        slots.push_back({ x, area.getY(), nodeWidth, area.getHeight() });
-        x += nodeWidth + static_cast<float>(gap);
-    }
-
-    return slots;
+    const auto step = juce::jmax(1, minCardWidth + gap);
+    return juce::jmax(1, (availableWidth + gap) / step);
 }
 
-int insertionIndexForCentre(const std::vector<juce::Rectangle<float>>& slots, float centreX)
+int fxRackCardWidth(int availableWidth, int columns, int gap, int minCardWidth, int maxCardWidth)
 {
-    int index = 0;
-    for (std::size_t i = 0; i < slots.size(); ++i)
+    const auto safeColumns = juce::jmax(1, columns);
+    const auto fill = (availableWidth - gap * (safeColumns - 1)) / safeColumns;
+    return juce::jmax(minCardWidth, juce::jmin(juce::jmax(minCardWidth, maxCardWidth), fill));
+}
+
+FxRackFlow fxRackFlow(juce::Point<int> origin,
+                      int cardWidth,
+                      int columns,
+                      int gap,
+                      int rowGap,
+                      const std::vector<int>& cardHeights)
+{
+    FxRackFlow flow;
+    const auto count = static_cast<int>(cardHeights.size());
+    if (count == 0)
     {
-        if (centreX > slots[i].getCentreX())
+        return flow;
+    }
+
+    const auto safeColumns = juce::jmax(1, columns);
+    flow.rowCount = (count + safeColumns - 1) / safeColumns;
+    flow.cells.reserve(cardHeights.size());
+    flow.rowOfCell.reserve(cardHeights.size());
+
+    auto y = origin.y;
+    for (int row = 0; row < flow.rowCount; ++row)
+    {
+        const auto first = row * safeColumns;
+        const auto last = juce::jmin(count, first + safeColumns);
+
+        auto rowHeight = 0;
+        for (int i = first; i < last; ++i)
         {
-            index = static_cast<int>(i);
+            rowHeight = juce::jmax(rowHeight, cardHeights[static_cast<std::size_t>(i)]);
+        }
+
+        for (int i = first; i < last; ++i)
+        {
+            const auto column = i - first;
+            flow.cells.push_back({ origin.x + column * (cardWidth + gap), y, cardWidth, rowHeight });
+            flow.rowOfCell.push_back(row);
+        }
+
+        y += rowHeight + (row + 1 < flow.rowCount ? rowGap : 0);
+    }
+
+    flow.height = y - origin.y;
+    return flow;
+}
+
+int fxRackInsertionIndex(const std::vector<juce::Rectangle<int>>& cells, juce::Point<int> point)
+{
+    auto best = -1;
+    auto bestDistance = std::numeric_limits<double>::max();
+    for (std::size_t i = 0; i < cells.size(); ++i)
+    {
+        const auto centre = cells[i].getCentre();
+        const auto dx = static_cast<double>(centre.x - point.x);
+        const auto dy = static_cast<double>(centre.y - point.y);
+        const auto distance = dx * dx + dy * dy;
+        if (distance < bestDistance)
+        {
+            bestDistance = distance;
+            best = static_cast<int>(i);
         }
     }
-    return index;
-}
-
-int fxGridContentHeight(int count, int columns, int gap, int rowHeight)
-{
-    if (count <= 0)
-    {
-        return 0;
-    }
-
-    const auto safeColumns = juce::jmax(1, columns);
-    const auto rows = (count + safeColumns - 1) / safeColumns;
-    return rows * rowHeight + (rows - 1) * gap;
-}
-
-std::vector<juce::Rectangle<int>> fxGridCells(int contentWidth,
-                                              int count,
-                                              int columns,
-                                              int gap,
-                                              int rowHeight)
-{
-    std::vector<juce::Rectangle<int>> cells;
-    if (count <= 0 || contentWidth <= 0)
-    {
-        return cells;
-    }
-
-    cells.reserve(static_cast<std::size_t>(count));
-
-    const auto safeColumns = juce::jmax(1, columns);
-    // Computed rather than laid out by FlexBox: FlexBox will not shrink an
-    // explicitly-sized item, so a column count that does not divide the width
-    // evenly would overflow instead of fitting.
-    const auto cellWidth = (static_cast<float>(contentWidth) - static_cast<float>(gap * (safeColumns - 1)))
-                           / static_cast<float>(safeColumns);
-
-    for (int i = 0; i < count; ++i)
-    {
-        const auto column = i % safeColumns;
-        const auto row = i / safeColumns;
-        const auto x = static_cast<float>(column) * (cellWidth + static_cast<float>(gap));
-        const auto y = row * (rowHeight + gap);
-
-        // Edges rounded, not position and size: rounding x and the width each
-        // on their own left gaps of 0, 1 or 2 px between neighbours and let the
-        // last card overrun the panel by a pixel.
-        const auto left = static_cast<int>(std::floor(x + 0.5f));
-        const auto right = static_cast<int>(std::floor(x + cellWidth + 0.5f));
-        cells.push_back(juce::Rectangle<int>::leftTopRightBottom(left, y, right, y + rowHeight));
-    }
-
-    return cells;
+    return best;
 }
 
 } // namespace px3::ui

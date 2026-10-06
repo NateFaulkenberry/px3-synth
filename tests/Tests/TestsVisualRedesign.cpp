@@ -297,7 +297,9 @@ void testVisualRedesign()
                   && drive->choice("type") != nullptr && drive->choice("type")->getNumItems() == 3
                   && FxPanel::debugSectionName(px3::fxStageDistortion) == "DRIVE");
 
-        const auto strip = panel != nullptr ? panel->debugStripStages() : std::vector<int> {};
+        // The send section is the reorderable chain; SPREAD, ANALOG, VIBE and
+        // LUCY have their own sections.
+        const auto strip = panel != nullptr ? panel->debugRack().stagesIn(px3::ui::FxDomain::send) : std::vector<int> {};
         const auto has = [&strip](int id) { return std::find(strip.begin(), strip.end(), id) != strip.end(); };
         check("FxCards_SpreadIsNotInTheReorderableStrip",
               strip.size() == static_cast<std::size_t>(px3::kFxStageCount - 4)
@@ -398,6 +400,284 @@ void testVisualRedesign()
             if (captions.contains(old)) { stale.add(old); }
         }
         check("FxCards_UnclearLabelsAreRenamed", stale.isEmpty(), stale.joinIntoString(", "));
+    }
+
+    // ---- the FX page mirrors the signal flow ----------------------------------
+    //
+    // Three sections in processing order (INSTRUMENT, SEND FX, MASTER); only
+    // the send cards have a drag handle and only they reorder; dragging one
+    // writes the processor's order; wrapping never changes the order; nothing
+    // overlaps or clips at the minimum, default and maximum window sizes.
+    {
+        using px3::ui::FxDomain;
+        UIConfigManager manager;
+        manager.setConfigFile(shippingUiConfigFile());
+        manager.loadInitial();
+        const auto config = manager.getConfig();
+        const auto minCard = config != nullptr ? config->getInt("fx.rack.minCardWidth", 0) : 0;
+
+        const auto sendStagesOf = [](const px3::FxOrder& order)
+        {
+            std::vector<int> ids;
+            for (const auto stage : order)
+                if (px3::isSendChainFxStage(stage)) ids.push_back(stage);
+            return ids;
+        };
+
+        struct Size { int w; int h; int columnsAtLeast; };
+        for (const auto size : { Size { 1100, 700, 3 }, Size { 1488, 884, 4 }, Size { 2400, 1400, 6 } })
+        {
+            const auto at = " @" + juce::String(size.w) + "x" + juce::String(size.h);
+            PX3SynthAudioProcessor processor;
+            auto base = makeEditor(processor, size.w, size.h);
+            auto* editor = dynamic_cast<PX3SynthAudioProcessorEditor*>(base.get());
+            editor->debugTimerTick();
+            editor->debugSelectSection(4);
+            auto* panel = editor->debugFxPanel();
+            if (panel == nullptr || config == nullptr) { check(juce::String("FxPage_PanelExists" + at).toRawUTF8(), false); continue; }
+            panel->setUIConfig(config);
+            auto& rack = panel->debugRack();
+            rack.setMotionEnabled(false);
+
+            // -- sections, in the order the signal meets them --
+            const auto hi = rack.headerBounds(FxDomain::instrument);
+            const auto hs = rack.headerBounds(FxDomain::send);
+            const auto hm = rack.headerBounds(FxDomain::master);
+            check(juce::String("FxPage_ThreeSectionsInProcessingOrder" + at).toRawUTF8(),
+                  ! hi.isEmpty() && ! hs.isEmpty() && ! hm.isEmpty()
+                      && rack.sectionBounds(FxDomain::instrument).getBottom() <= hs.getY()
+                      && rack.sectionBounds(FxDomain::send).getBottom() <= hm.getY(),
+                  hi.toString() + " | " + hs.toString() + " | " + hm.toString());
+
+            check(juce::String("FxPage_AnalogThenVibeAreTheInstrumentSection" + at).toRawUTF8(),
+                  rack.stagesIn(FxDomain::instrument) == std::vector<int>({ px3::fxStageAnalog, px3::fxStageVibe })
+                      && rack.stagesIn(FxDomain::master) == std::vector<int>({ px3::fxStageLucy, px3::fxStageStereoSpread }));
+            check(juce::String("FxPage_SendSectionIsTheProcessorsChainInOrder" + at).toRawUTF8(),
+                  rack.stagesIn(FxDomain::send) == sendStagesOf(processor.getFxProcessingOrder())
+                      && rack.stagesIn(FxDomain::send).size() == 6);
+
+            // -- affordances: a handle on send cards, a tag on the rest --
+            juce::StringArray wrongAffordance;
+            for (const auto stage : px3::kDefaultFxOrder)
+            {
+                auto* rail = rack.railFor(stage);
+                if (rail == nullptr) { wrongAffordance.add("no rail " + FxPanel::debugSectionName(stage)); continue; }
+                const auto shouldHandle = px3::isSendChainFxStage(stage);
+                if (rail->hasHandle() != shouldHandle || rail->handleBounds().isEmpty() == shouldHandle)
+                    wrongAffordance.add(FxPanel::debugSectionName(stage));
+            }
+            check(juce::String("FxPage_OnlySendCardsHaveADragHandle" + at).toRawUTF8(), wrongAffordance.isEmpty(), wrongAffordance.joinIntoString(", "));
+            check(juce::String("FxPage_FixedCardsSayWhereTheyRun" + at).toRawUTF8(),
+                  rack.railFor(px3::fxStageAnalog)->tagText() == "PER VOICE"
+                      && rack.railFor(px3::fxStageVibe)->tagText() == "INSTRUMENT INSERT"
+                      && rack.railFor(px3::fxStageLucy)->tagText() == "MASTER INSERT"
+                      && rack.railFor(px3::fxStageStereoSpread)->tagText() == "MASTER INSERT"
+                      && rack.railFor(rack.stagesIn(FxDomain::send).front())->tagText() == "SEND 1");
+
+            // -- one footprint, never below the minimum, wrapping keeps order --
+            juce::String widths;
+            auto footprint = minCard > 0;
+            for (const auto stage : px3::kDefaultFxOrder)
+            {
+                auto* card = panel->debugComponentForSection(stage);
+                footprint = footprint && card != nullptr && card->getWidth() >= minCard && card->getWidth() == rack.cardWidth();
+                if (card != nullptr) widths << card->getWidth() << " ";
+            }
+            check(juce::String("FxPage_EveryCardSharesOneWidthAboveTheMinimum" + at).toRawUTF8(), footprint,
+                  widths + "(min " + juce::String(minCard) + ")");
+
+            auto readingOrder = true;
+            const auto send = rack.stagesIn(FxDomain::send);
+            for (std::size_t i = 1; i < send.size(); ++i)
+            {
+                const auto a = rack.restingSlot(send[i - 1]);
+                const auto b = rack.restingSlot(send[i]);
+                readingOrder = readingOrder && (b.getY() > a.getBottom() || (b.getY() == a.getY() && b.getX() > a.getRight()));
+            }
+            check(juce::String("FxPage_WrappingKeepsTheChainInReadingOrder" + at).toRawUTF8(),
+                  readingOrder && rack.columns() >= size.columnsAtLeast,
+                  juce::String(rack.columns()) + " columns");
+
+            const auto lastSend = rack.restingSlot(send.back());
+            check(juce::String("FxPage_FxReturnFollowsTheLastSendCard" + at).toRawUTF8(),
+                  ! rack.fxReturnBounds().isEmpty() && rack.fxReturnBounds().getY() >= lastSend.getBottom()
+                      && rack.fxReturnBounds().getBottom() <= hm.getY()
+                      && rack.fxReturnBounds().getX() <= lastSend.getCentreX()
+                      && rack.fxReturnBounds().getRight() >= lastSend.getCentreX(),
+                  rack.fxReturnBounds().toString() + " after " + lastSend.toString());
+            check(juce::String("FxPage_MasterEndsInTheOutputCap" + at).toRawUTF8(),
+                  ! rack.endCapBounds().isEmpty()
+                      && rack.endCapBounds().getBottom() <= rack.getHeight()
+                      && rack.endCapBounds().getRight() <= rack.getWidth());
+
+            // -- the bus send lives in the SEND FX header --
+            auto& knob = panel->busSendKnob();
+            check(juce::String("FxPage_HeaderSendIsTheBusSend" + at).toRawUTF8(),
+                  px3::ui::parameterIdOf(knob) == "mix.send.fx.level" && knob.isVisible()
+                      && hs.contains(knob.getBounds()) && hs.contains(rack.busSendLabelBounds())
+                      && px3::ui::FxRackCanvas::busSendTooltip().containsIgnoreCase("FX bus"),
+                  px3::ui::parameterIdOf(knob) + " at " + knob.getBounds().toString());
+
+            // -- nothing overlaps, nothing clips --
+            juce::StringArray overlaps;
+            std::vector<std::pair<juce::String, juce::Rectangle<int>>> boxes;
+            for (const auto stage : px3::kDefaultFxOrder)
+            {
+                const auto name = FxPanel::debugSectionName(stage);
+                auto* card = panel->debugComponentForSection(stage);
+                auto* rail = rack.railFor(stage);
+                if (card == nullptr || rail == nullptr) { continue; }
+                boxes.push_back({ name, card->getBounds() });
+                boxes.push_back({ name + " rail", rail->getBounds() });
+                if (rail->getBottom() != card->getY() || rail->getX() != card->getX() || rail->getWidth() != card->getWidth())
+                    overlaps.add(name + " rail is not on its card");
+
+                // Inside the card: every visible control on the card, in it,
+                // and clear of the others.
+                std::vector<juce::Component*> controls;
+                for (auto* child : card->getChildren())
+                    if (child->isVisible() && ! child->getBounds().isEmpty()) controls.push_back(child);
+                for (std::size_t i = 0; i < controls.size(); ++i)
+                {
+                    const juce::Component& control = *controls[i];
+                    // Cramped knobs are a fit failure too: a rotary drawn smaller
+                    // than this is a card squeezed below its usable size.
+                    if (auto* rotary = dynamic_cast<const juce::Slider*>(&control);
+                        rotary != nullptr && rotary->isRotary() && juce::jmin(rotary->getWidth(), rotary->getHeight()) < 24)
+                        overlaps.add(name + " knob crushed to " + rotary->getBounds().toString());
+                    if (! card->getLocalBounds().contains(control.getBounds()))
+                        overlaps.add(name + " clips " + juce::String(typeid(control).name()) + " " + control.getBounds().toString());
+                    for (std::size_t j = i + 1; j < controls.size(); ++j)
+                    {
+                        const auto both = controls[i]->getBounds().getIntersection(controls[j]->getBounds());
+                        if (both.getWidth() > 2 && both.getHeight() > 2)
+                            overlaps.add(name + ": " + controls[i]->getBounds().toString() + " x " + controls[j]->getBounds().toString());
+                    }
+                }
+            }
+            boxes.push_back({ "send header", hs });
+            boxes.push_back({ "instrument header", hi });
+            boxes.push_back({ "master header", hm });
+            boxes.push_back({ "fx return", rack.fxReturnBounds() });
+            for (std::size_t i = 0; i < boxes.size(); ++i)
+            {
+                if (! rack.getLocalBounds().contains(boxes[i].second)) overlaps.add(boxes[i].first + " outside the page");
+                for (std::size_t j = i + 1; j < boxes.size(); ++j)
+                    if (boxes[i].second.intersects(boxes[j].second))
+                        overlaps.add(boxes[i].first + " x " + boxes[j].first);
+            }
+            auto& view = panel->debugViewport();
+            if (rack.getWidth() > view.getMaximumVisibleWidth())
+                overlaps.add("page wider than its view: " + juce::String(rack.getWidth()) + " > " + juce::String(view.getMaximumVisibleWidth()));
+            check(juce::String("FxPage_NothingOverlapsOrClips" + at).toRawUTF8(), overlaps.isEmpty(), overlaps.joinIntoString("; "));
+
+            if (size.w != 1488) { continue; }
+
+            // ---- dragging -------------------------------------------------------
+            const auto mouse = [](juce::Component& on, juce::Point<int> p)
+            {
+                const auto at2 = p.toFloat();
+                return juce::MouseEvent(juce::Desktop::getInstance().getMainMouseSource(), at2, juce::ModifierKeys(),
+                                        1.0f, 0.0f, 0.0f, 0.0f, 0.0f, &on, &on, juce::Time::getCurrentTime(), at2,
+                                        juce::Time::getCurrentTime(), 1, false);
+            };
+            const auto drag = [&](int stage, juce::Point<int> to)
+            {
+                auto* rail = rack.railFor(stage);
+                const auto start = rail->getLocalBounds().getCentre();
+                const auto delta = to - rack.restingSlot(stage).getPosition();
+                rail->mouseDown(mouse(*rail, start));
+                rail->mouseDrag(mouse(*rail, start + delta / 2));
+                const auto dragging = rack.isDragging();
+                rail->mouseDrag(mouse(*rail, start + delta));
+                rail->mouseUp(mouse(*rail, start + delta));
+                return dragging;
+            };
+
+            {
+                // DOOM (third) onto the first slot.
+                const auto before = rack.stagesIn(FxDomain::send);
+                const auto firstCell = rack.restingSlot(before.front());
+                const auto lifted = drag(px3::fxStageDoom, rack.restingSlot(before.front()).getPosition());
+                const auto after = sendStagesOf(processor.getFxProcessingOrder());
+                auto expected = before;
+                expected.erase(std::find(expected.begin(), expected.end(), px3::fxStageDoom));
+                expected.insert(expected.begin(), px3::fxStageDoom);
+                const auto full = processor.getFxProcessingOrder();
+                check("FxPage_DraggingASendCardReordersTheDsp",
+                      lifted && after == expected && rack.stagesIn(FxDomain::send) == expected
+                          && full[0] == px3::kDefaultFxOrder[0] && full[1] == px3::kDefaultFxOrder[1]
+                          && full[8] == px3::fxStageLucy && full[9] == px3::fxStageStereoSpread,
+                      "send order now " + juce::String(static_cast<int>(after.size())) + " stages, first "
+                          + FxPanel::debugSectionName(after.empty() ? -1 : after.front()));
+                check("FxPage_TheDroppedCardRestsInItsNewSlot",
+                      panel->debugComponentForSection(px3::fxStageDoom)->getPosition()
+                              == firstCell.getPosition().translated(0, rack.style().railHeight)
+                          && rack.restingSlot(px3::fxStageDoom) == firstCell,
+                      panel->debugComponentForSection(px3::fxStageDoom)->getBounds().toString());
+            }
+            {
+                // Across a wrap: the last card (second row) to the second slot.
+                const auto before = rack.stagesIn(FxDomain::send);
+                drag(before.back(), rack.restingSlot(before[1]).getPosition());
+                const auto after = sendStagesOf(processor.getFxProcessingOrder());
+                check("FxPage_DragAcrossAWrappedRow", after.size() == 6 && after[1] == before.back() && after[0] == before[0]);
+            }
+            {
+                // Fixed stages have no handle: pressing and dragging their rail
+                // into the middle of the chain does nothing.
+                const auto before = processor.getFxProcessingOrder();
+                const auto target = rack.restingSlot(rack.stagesIn(FxDomain::send)[2]).getPosition();
+                auto anyLifted = false;
+                for (const auto stage : { px3::fxStageVibe, px3::fxStageAnalog, px3::fxStageLucy, px3::fxStageStereoSpread })
+                {
+                    anyLifted = drag(stage, target) || anyLifted;
+                    rack.railPressed(stage, rack.restingSlot(stage).getCentre());   // even asked directly
+                    rack.railDragged(target);
+                    anyLifted = rack.isDragging() || anyLifted;
+                    rack.railReleased(target);
+                }
+                check("FxPage_FixedStagesCannotBeDroppedIntoTheChain",
+                      ! anyLifted && processor.getFxProcessingOrder() == before
+                          && rack.stagesIn(FxDomain::instrument) == std::vector<int>({ px3::fxStageAnalog, px3::fxStageVibe }));
+            }
+            {
+                // A send card dragged down onto MASTER stays in the send
+                // section and only reorders the chain.
+                const auto first = rack.stagesIn(FxDomain::send).front();
+                auto* rail = rack.railFor(first);
+                const auto start = rail->getLocalBounds().getCentre();
+                const auto far = rack.headerBounds(FxDomain::master).getCentre() - rack.restingSlot(first).getPosition();
+                rail->mouseDown(mouse(*rail, start));
+                rail->mouseDrag(mouse(*rail, start + far));
+                auto* card = panel->debugComponentForSection(first);
+                const auto held = rack.sectionBounds(FxDomain::send).contains(card->getBounds().withHeight(1));
+                rail->mouseUp(mouse(*rail, start + far));
+                const auto full = processor.getFxProcessingOrder();
+                check("FxPage_ADraggedCardIsHeldInTheSendSection",
+                      held && full[8] == px3::fxStageLucy && full[9] == px3::fxStageStereoSpread
+                          && rack.stagesIn(FxDomain::master) == std::vector<int>({ px3::fxStageLucy, px3::fxStageStereoSpread }),
+                      card->getBounds().toString());
+            }
+            {
+                // The header SEND writes the bus send.
+                knob.setValue(0.25, juce::sendNotificationSync);
+                check("FxPage_HeaderSendWritesTheBusSendParameter",
+                      std::abs(processor.getFxSendGainParam().get() - 0.25f) < 1.0e-3f,
+                      juce::String(processor.getFxSendGainParam().get(), 3));
+            }
+            {
+                // Bypass keeps a send card in place, says so, and leaves it draggable.
+                const auto stage = rack.stagesIn(FxDomain::send)[1];
+                const auto slot = rack.restingSlot(stage);
+                panel->setSectionActive(stage, false);
+                rack.layoutForWidth(rack.getWidth(), false);
+                check("FxPage_BypassedSendCardStaysPutAndDraggable",
+                      rack.restingSlot(stage) == slot && rack.railFor(stage)->hasHandle()
+                          && rack.stagesIn(FxDomain::send)[1] == stage);
+                panel->setSectionActive(stage, true);
+            }
+        }
     }
 
     // ---- ENV cards carry SYNC --------------------------------------------------
