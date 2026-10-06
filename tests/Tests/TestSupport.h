@@ -1264,6 +1264,7 @@ void testCardInner();
 void testDelay();
 void testMood();
 void testEffectIndependence();
+void testSendEffectsAreAdditive();
 void testPresets();
 void testIntegration();
 void testFxChain();

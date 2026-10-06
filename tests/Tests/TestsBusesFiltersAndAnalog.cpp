@@ -1335,12 +1335,21 @@ void testBusInserts()
 
         const auto before = juce::Decibels::gainToDecibels(plain.rmsOver(4000, 50000), -200.0);
         const auto after = juce::Decibels::gainToDecibels(cut.rmsOver(4000, 50000), -200.0);
-        // Not asserted as a level DROP: the delay return partly cancels against
-        // the dry signal here, so removing its top end raises the total. What
-        // matters is that the insert demonstrably reached the return at all.
-        check("BusInsert_FxEqReachesTheReturn", std::abs(after - before) > 1.0,
-              "a 4 kHz high pass on the return with the send open: "
-              + fmt(before, 3) + " dB -> " + fmt(after, 3) + " dB");
+        // Measured as what the insert changed, not as a level change of the
+        // whole mix: the delay ADDS its repeats on top of an intact dry, so
+        // the return is a small part of the total and high-passing it moves
+        // the overall level by a fraction of a dB. (While the delay crossfaded,
+        // its return cancelled part of the dry and the level moved > 1 dB.)
+        Capture difference;
+        for (std::size_t i = 0; i < plain.left.size() && i < cut.left.size(); ++i)
+        {
+            difference.left.push_back(plain.left[i] - cut.left[i]);
+            difference.right.push_back(plain.right[i] - cut.right[i]);
+        }
+        const auto changedDb = juce::Decibels::gainToDecibels(difference.rmsOver(4000, 50000), -200.0) - before;
+        check("BusInsert_FxEqReachesTheReturn", changedDb > -40.0,
+              "a 4 kHz high pass on the return with the send open changes the output by " + fmt(changedDb, 1)
+                  + " dB re the mix (" + fmt(before, 3) + " dB -> " + fmt(after, 3) + " dB)");
     }
 
     // ---- the compressor compresses, in the plugin --------------------------

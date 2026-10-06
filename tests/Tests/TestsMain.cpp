@@ -2986,6 +2986,7 @@ int main(int argc, char* argv[])
     if (wants("delay")) testDelay();
     if (wants("mood")) testMood();
     if (wants("fx")) testEffectIndependence();
+    if (wants("additive")) testSendEffectsAreAdditive();
     if (wants("preset")) testPresets();
     if (wants("factorypresets")) testFactoryPresets();
     if (wants("midimapping")) testMidiMapping();

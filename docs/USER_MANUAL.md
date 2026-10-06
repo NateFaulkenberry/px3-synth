@@ -834,6 +834,12 @@ work on the master, in that order, after everything else.
 Each card has a power button in its corner; clicking the card's background does
 the same.
 
+**Amounts add, they do not crossfade.** On DELAY, REVERB, MOOD and DOOM the
+AMOUNT / MIX control sets how much of the effect is added to your sound. The dry
+signal is never turned down, so raising an effect only ever adds to the patch,
+and fully up means the whole effect on top of an intact dry. (The standalone PX3
+plug-ins keep the usual dry/wet crossfade, where fully up is the effect alone.)
+
 **Order matters, and you choose it.** Drag the nodes in the signal-flow strip
 above the cards. The cards themselves are editors, not ordering controls, so they
 can scroll freely while the strip stays in view.
@@ -1066,7 +1072,8 @@ thinner and feathery — it is playing the difference.
 
 ## DELAY
 
-**Controls:** **AMOUNT** (a wire at zero), **TIME**, **FEEDBACK**, a **SYNC** menu
+**Controls:** **AMOUNT** (a wire at zero; how much delay is added on top),
+**TIME**, **FEEDBACK**, a **SYNC** menu
 for tempo-locked times (Free, 1 Bar, 1/2, 1/4, 1/8, 1/8T, 1/16, 1/16T), and a
 **TYPE** menu.
 
@@ -1146,7 +1153,8 @@ roughens. Turning DEGRADE up will never change the pitch of your loop.
 ## REVERB
 
 **Controls:** **MODE** (the type), **PRESET** (starting points for that type),
-**MIX**, and:
+**MIX** (how much reverb is added; fully up is the whole reverb on top of the
+dry), and:
 
 | Control | Function |
 | --- | --- |

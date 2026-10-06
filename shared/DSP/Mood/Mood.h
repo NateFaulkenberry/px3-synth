@@ -2,6 +2,7 @@
 
 #include "MoodControlModel.h"
 #include "MoodTypes.h"
+#include "FxMixLaw.h"
 
 #include <JuceHeader.h>
 
@@ -18,6 +19,10 @@ class Mood
 {
 public:
     void prepare(double sampleRate);
+
+    // See FxMixLaw. Crossfade by default (the standalone PX3 Mood); the
+    // Synth's send chain sets additive.
+    void setMixLaw(px3::FxMixLaw law) noexcept { mixLaw = law; }
     void reset();
     // The user's controls go in; deriveMoodParameters turns the four
     // mode-dependent macros into whichever DSP quantity the current mode
@@ -202,4 +207,5 @@ private:
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> degradeSmoothed;
 
     double sampleRateHz { 44100.0 };
+    px3::FxMixLaw mixLaw { px3::FxMixLaw::crossfade };
 };

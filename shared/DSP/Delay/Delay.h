@@ -3,6 +3,7 @@
 #include <cstdint>
 
 #include "DelayTypes.h"
+#include "FxMixLaw.h"
 
 #include <JuceHeader.h>
 
@@ -23,6 +24,10 @@ public:
     // global that cannot be pinned - so nothing about its output could be
     // asserted exactly, only its bounds.
     void setSeed(uint32_t seed);
+
+    // See FxMixLaw. Crossfade by default (the standalone PX3 Delay); the
+    // Synth's send chain sets additive.
+    void setMixLaw(px3::FxMixLaw law) noexcept { mixLaw = law; }
 
 private:
     // xorshift, per instance, matching Doom::nextRandom, Lucy::nextRandom and
@@ -224,4 +229,5 @@ private:
     bool smoothingPrimed { false };
     // Latches so the clear on bypass happens once, not every block.
     bool bypassCleared { false };
+    px3::FxMixLaw mixLaw { px3::FxMixLaw::crossfade };
 };

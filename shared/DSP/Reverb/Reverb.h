@@ -2,6 +2,7 @@
 
 #include "ReverbMapping.h"
 #include "ReverbTypes.h"
+#include "FxMixLaw.h"
 
 #include <array>
 #include <cstddef>
@@ -33,6 +34,12 @@ public:
     ~Reverb();
 
     void prepare(double sampleRate);
+
+    // See px3::FxMixLaw. Crossfade by default (the standalone PX3 Reverb: MIX
+    // 1 is fully wet); the Synth's send chain sets additive, where the wet
+    // keeps its equal-power gain (MIX 1 = the full reverb) and the dry is
+    // never taken down.
+    void setMixLaw(px3::FxMixLaw law) noexcept { mixLaw = law; }
     void reset();
 
     void updateForBlock(const ReverbSettings& settings, int numSamples);
@@ -94,4 +101,5 @@ private:
 
     float tickInputPeak { 0.0f }, tickWetPeak { 0.0f };
     int silentTicks { 0 }, silentTicksToSleep { 450 };
+    px3::FxMixLaw mixLaw { px3::FxMixLaw::crossfade };
 };

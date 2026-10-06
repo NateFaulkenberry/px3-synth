@@ -92,7 +92,7 @@ std::vector<FactoryPreset> factoryPresets()
         // that moves harmonics without smearing a bass note.
         { "fx.chorus.amount", 0.34f }, { "fx.chorus.mode", dim4 }, { "fx.chorus.low.cut", 0.72f }, { "fx.chorus.depth", 0.42f },
         { "fx.spread.amount", 0.28f }, { "fx.spread.mode", monoSafe },
-        { "mix.master.level", 0.429f } } },
+        { "mix.master.level", 0.2238f } } },
 
     { "Dial Tone", "BASS", "P(X3)",
       "A hard FM bass run through LUCY set low and slow. The loss is barely a texture at "
@@ -108,7 +108,7 @@ std::vector<FactoryPreset> factoryPresets()
         { "fx.lucy.global", 0.26f }, { "fx.lucy.mode", standard }, { "fx.lucy.loss", 0.44f }, { "fx.lucy.speed", 0.62f },
         { "fx.lucy.filter", 0.22f }, { "fx.lucy.freq", 0.62f }, { "fx.lucy.slope", slope24 },
         { "fx.lucy.weighting", weightDark }, { "fx.lucy.loss.gain", -6.2f },
-        { "mix.master.level", 0.60f } } },
+        { "mix.master.level", 0.467f } } },
 
     { "Tar Kiln", "BASS", "P(X3)",
       "Square and sub run into DOOM's RELAY at its shortest time, then straight into GLUE. "
@@ -125,7 +125,7 @@ std::vector<FactoryPreset> factoryPresets()
         { "fx.doom.balance", 1.0f }, { "fx.doom.routing", inputOnly },
         // GLUE past halfway starts folding rather than only saturating.
         { "fx.doom.glue", 0.62f }, { "fx.doom.eq", -0.30f }, { "fx.doom.clock", 0.80f }, { "fx.doom.spread", 0.20f },
-        { "mix.master.level", 0.304f } } },
+        { "mix.master.level", 0.1736f } } },
 
     { "Sunken Bell", "BASS", "P(X3)",
       "The comb filter tuned to a low pitch and given a long decay, so every note rings the "
@@ -176,7 +176,7 @@ std::vector<FactoryPreset> factoryPresets()
         { "fx.reverb.amount", 0.05f }, { "fx.reverb.algorithm", room }, { "fx.reverb.size", 0.40f }, { "fx.reverb.decay", 0.28f },
         { "fx.analog.amount", 0.26f }, { "fx.analog.type", hot },
         { "fx.chorus.amount", 0.20f }, { "fx.chorus.mode", dim2 },
-        { "mix.master.level", 0.52f } } },
+        { "mix.master.level", 0.2622f } } },
 
     { "Glass Filament", "LEADS", "P(X3)",
       "An FM bell stretched into a lead, with LUCY in INVERSE - which plays back only what "
@@ -192,7 +192,7 @@ std::vector<FactoryPreset> factoryPresets()
         { "fx.lucy.verb", 0.30f }, { "fx.lucy.decay", 0.50f }, { "fx.lucy.weighting", weightBright },
         { "fx.lucy.limiter.threshold", 0.70f }, { "fx.lucy.loss.gain", -1.55f },
         { "fx.spread.amount", 0.35f }, { "fx.spread.mode", classic },
-        { "mix.master.level", 0.56f } } },
+        { "mix.master.level", 0.355f } } },
 
     { "Vowel Machine", "LEADS", "P(X3)",
       "A formant lead parked on a vowel, run through the CE-1 chorus on its mono output (WIDTH 0: "
@@ -208,7 +208,7 @@ std::vector<FactoryPreset> factoryPresets()
         { "fx.chorus.width", 0.0f },
         { "fx.delay.amount", 0.22f }, { "fx.delay.algorithm", analogBbd }, { "fx.delay.time", 0.42f }, { "fx.delay.feedback", 0.30f },
         { "fx.reverb.amount", 0.08f }, { "fx.reverb.algorithm", plate },
-        { "mix.master.level", 0.95f } } },
+        { "mix.master.level", 0.529f } } },
 
     // =======================================================================
     // PADS
@@ -243,7 +243,7 @@ std::vector<FactoryPreset> factoryPresets()
         { "fx.lucy.verb", 0.55f }, { "fx.lucy.decay", 0.72f }, { "fx.lucy.limiter.threshold", 0.72f },
         { "fx.lucy.spread", 0.75f }, { "fx.lucy.loss.gain", 4.0f },
         { "fx.reverb.amount", 0.14f }, { "fx.reverb.algorithm", cloud }, { "fx.reverb.decay", 0.60f },
-        { "mix.master.level", 0.54f } } },
+        { "mix.master.level", 0.273f } } },
 
     { "Ghost Ensemble", "PADS", "P(X3)",
       "An additive stack fed into DOOM's SOUP - a spectral reverb that resynthesises what "
@@ -260,7 +260,7 @@ std::vector<FactoryPreset> factoryPresets()
         // A low clock darkens and slows SOUP; a high one is where the sparkle is.
         { "fx.doom.clock", 0.55f }, { "fx.doom.glue", 0.12f }, { "fx.doom.eq", -0.15f }, { "fx.doom.spread", 0.80f },
         { "fx.spread.amount", 0.38f }, { "fx.spread.mode", deep },
-        { "mix.master.level", 0.429f } } },
+        { "mix.master.level", 0.238f } } },
 
     { "Tidal Organ", "PADS", "P(X3)",
       "Drawbar organ tone through the string-machine ensemble chorus, with MOOD holding a "
@@ -275,7 +275,7 @@ std::vector<FactoryPreset> factoryPresets()
         { "fx.chorus.amount", 0.62f }, { "fx.chorus.mode", ensemble }, { "fx.chorus.rate", 0.18f }, { "fx.chorus.depth", 0.62f },
         { "fx.mood.mix", 0.28f }, { "fx.mood.wet.mode", moodReverb }, { "fx.mood.wet.time", 0.62f }, { "fx.mood.wet.modify", 0.40f },
         { "fx.mood.clock", 0.70f }, { "fx.mood.spread", 0.70f },
-        { "mix.master.level", 0.50f } } },
+        { "mix.master.level", 0.2046f } } },
 
     // =======================================================================
     // PLUCKS
@@ -361,7 +361,7 @@ std::vector<FactoryPreset> factoryPresets()
         { "fx.lucy.filter", 0.40f }, { "fx.lucy.freq", 0.55f }, { "fx.lucy.slope", slope96 },
         { "fx.lucy.verb", 0.38f }, { "fx.lucy.decay", 0.55f }, { "fx.lucy.spread", 0.90f },
         { "fx.lucy.limiter.threshold", 0.62f }, { "fx.lucy.loss.gain", -0.8f },
-        { "mix.master.level", 0.95f } } },
+        { "mix.master.level", 0.591f } } },
 
     { "Splinter Choir", "EXPERIMENTAL", "P(X3)",
       "DOOM's FLIP mode - fourths, fifths and octaves stacked on what you play and spread "
@@ -376,7 +376,7 @@ std::vector<FactoryPreset> factoryPresets()
         { "fx.doom.balance", 1.0f }, { "fx.doom.routing", inputOnly }, { "fx.doom.clock", 0.85f },
         { "fx.doom.glue", 0.20f }, { "fx.doom.spread", 0.85f }, { "fx.doom.eq", 0.10f },
         { "fx.reverb.amount", 0.17f }, { "fx.reverb.algorithm", hall }, { "fx.reverb.decay", 0.55f },
-        { "mix.master.level", 0.431f } } },
+        { "mix.master.level", 0.248f } } },
 
     { "Radio Ghost", "EXPERIMENTAL", "P(X3)",
       "DOOM primed for its micro-looper: play a phrase, then engage LOOPER to catch what you "
@@ -396,7 +396,7 @@ std::vector<FactoryPreset> factoryPresets()
         { "fx.doom.clock", 0.42f }, { "fx.doom.glue", 0.28f }, { "fx.doom.spread", 0.70f },
         { "fx.doom.cross", 0.35f }, { "fx.doom.cross.source", 0 },
         { "fx.reverb.amount", 0.11f }, { "fx.reverb.algorithm", cloud },
-        { "mix.master.level", 0.35f } } },
+        { "mix.master.level", 0.242f } } },
 
     { "Comb Reactor", "EXPERIMENTAL", "P(X3)",
       "The comb filter driven near self-oscillation and fed with ROB, then DOOM's CROSS "
@@ -413,7 +413,7 @@ std::vector<FactoryPreset> factoryPresets()
         { "fx.doom.balance", 1.0f }, { "fx.doom.cross", 0.78f }, { "fx.doom.cross.source", 1 },
         { "fx.doom.glue", 0.45f }, { "fx.doom.clock", 0.62f }, { "fx.doom.eq", -0.20f }, { "fx.doom.spread", 0.65f },
         { "fx.spread.amount", 0.30f }, { "fx.spread.mode", classic },
-        { "mix.master.level", 0.393f } } },
+        { "mix.master.level", 0.212f } } },
 
     { "Dimension Drift", "EXPERIMENTAL", "P(X3)",
       "A demonstration of the two spatial effects with nothing else in the way: the stacked "
@@ -431,7 +431,7 @@ std::vector<FactoryPreset> factoryPresets()
         { "fx.spread.amount", 0.70f }, { "fx.spread.mode", wide }, { "fx.spread.width", 0.85f },
         { "fx.spread.depth", 0.60f }, { "fx.spread.high.width", 0.90f },
         { "fx.reverb.amount", 0.08f }, { "fx.reverb.algorithm", plate },
-        { "mix.master.level", 0.54f } } },
+        { "mix.master.level", 0.286f } } },
 
     };
 

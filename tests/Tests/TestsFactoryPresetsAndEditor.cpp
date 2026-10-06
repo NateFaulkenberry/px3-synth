@@ -1,5 +1,7 @@
 #include "TestSupport.h"
 
+#include <map>
+
 // testFactoryPresets, testEditorLifecycle
 
 namespace px3tests
@@ -483,6 +485,7 @@ void testFactoryPresets()
         juce::StringArray loud;
         juce::StringArray quiet;
         std::vector<double> levels;
+        std::map<juce::String, double> measuredDb;
 
         for (const auto& preset : presets)
         {
@@ -536,6 +539,7 @@ void testFactoryPresets()
             if (rms > 0.0 && rms < 0.012) { quiet.add(name + " rms " + juce::String(rms, 4)); }
 
             levels.push_back(rms);
+            measuredDb[juce::String(preset.name)] = juce::Decibels::gainToDecibels(rms);
         }
 
         check("Presets_EveryPresetIsFinite", invalid.isEmpty(),
@@ -560,6 +564,40 @@ void testFactoryPresets()
             check("Presets_LevelsAreWithinAReasonableSpread", spreadDb < 24.0,
                   "loudest to quietest = " + juce::String(spreadDb, 1) + " dB  (quietest "
                       + juce::String(quietest, 4) + ", loudest " + juce::String(loudest, 4) + ")");
+        }
+
+        // The presets whose level the monotonic polyphony gain, the unity FX
+        // return and the additive send effects moved by more than 1 dB were
+        // brought back with MASTER to their 0.8.2 level. Pinned so the next
+        // gain-structure change shows up here rather than in someone's ears.
+        // 0.75 dB: a few use oscillator modes with free-running phase.
+        {
+            static const std::map<juce::String, double> kReleveled {
+            { "Reese Undertow", -23.22 },
+            { "Dial Tone", -33.68 },
+            { "Tar Kiln", -23.36 },
+            { "Hollow Siren", -23.93 },
+            { "Glass Filament", -29.36 },
+            { "Vowel Machine", -32.53 },
+            { "Frozen Transmission", -26.44 },
+            { "Ghost Ensemble", -24.60 },
+            { "Tidal Organ", -27.79 },
+            { "Bad Signal", -33.16 },
+            { "Splinter Choir", -25.68 },
+            { "Radio Ghost", -26.97 },
+            { "Comb Reactor", -30.35 },
+            { "Dimension Drift", -23.03 }
+            };
+            juce::StringArray drifted;
+            for (const auto& [name, ref] : kReleveled)
+            {
+                const auto it = measuredDb.find(name);
+                if (it == measuredDb.end()) { drifted.add(name + " (missing)"); continue; }
+                if (std::abs(it->second - ref) > 0.75) { drifted.add(name + " " + fmt(it->second, 2) + " vs " + fmt(ref, 2)); }
+            }
+            check("Presets_RelevelledPresetsKeepTheir082Level", drifted.isEmpty(),
+                  drifted.isEmpty() ? juce::String(static_cast<int>(kReleveled.size())) + " presets within 0.75 dB of 0.8.2"
+                                    : drifted.joinIntoString(", "));
         }
 
         juce::ignoreUnused(loud, quiet);

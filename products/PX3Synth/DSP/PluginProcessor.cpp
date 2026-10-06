@@ -76,6 +76,15 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     debugProcessorCreatedTime = nowTimestamp();
 
     fxProcessingOrderPacked.store(packFxOrder(px3::kDefaultFxOrder), std::memory_order_relaxed);
+
+    // The send chain's return is (stage - send), so an effect whose amount
+    // crossfades takes part of the dry out of the mix as it is turned up.
+    // Every engine here with an amount/MIX adds instead: amount scales what the
+    // effect makes, on top of an intact dry - see px3::FxMixLaw. (DOOM is set
+    // as its lazy engine is built; LUCY is a master insert and keeps its own.)
+    delayComponent.setMixLaw(px3::FxMixLaw::additive);
+    moodComponent.setMixLaw(px3::FxMixLaw::additive);
+    reverb.setMixLaw(px3::FxMixLaw::additive);
     fxOrderRevision.store(0u, std::memory_order_relaxed);
 
     for (int oscIndex = 0; oscIndex < kOscillatorSourceCount; ++oscIndex)
@@ -1666,7 +1675,7 @@ void PX3SynthAudioProcessor::buildDoomEngine(bool fromSilence)
         // DOOM sits on the FX send, whose return is (output - send): MIX has
         // to add DOOM on top rather than crossfade the send away - see
         // Doom::MixLaw.
-        doom.setMixLaw(px3::Doom::MixLaw::additive);
+        doom.setMixLaw(px3::FxMixLaw::additive);
         doom.prepare(lazyEffectSampleRate);
         if (fromSilence)
         {

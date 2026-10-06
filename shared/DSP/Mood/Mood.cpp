@@ -1187,7 +1187,7 @@ void Mood::processSampleFrame(float inL, float inR, float& outL, float& outR)
     const auto wetR = previousOutput.r + (heldOutput.r - previousOutput.r) * glide;
 
     const auto wetMix = clamp01(currentSettings.mix);
-    const auto dryMix = 1.0f - wetMix;
+    const auto dryMix = mixLaw == px3::FxMixLaw::additive ? 1.0f : 1.0f - wetMix;
 
     const auto processedL = dryMix * inL + wetMix * wetL;
     const auto processedR = dryMix * inR + wetMix * wetR;

@@ -61,6 +61,12 @@ per-type level x (T_default / T)^0.25 -> equal-power MIX
   `Reverb_IsLinear` measures a -300 dB residual.
 - **MIX** uses sin/cos gains and lands exactly on 0 and 1. MIX 0 is the input,
   bit for bit, so an untouched knob cannot colour the FX bus.
+- **MIX law (`px3::FxMixLaw`).** The standalone PX3 Reverb crossfades: MIX 1
+  is fully wet. In the Synth the reverb is on the FX send, whose return is
+  `(stage − send)`, so a crossfade took `(1 − cos)·send` out of the mix as MIX
+  rose. There it is **additive**: `in + wet·sin(πMIX/2)` - the wet keeps its
+  equal-power curve, so MIX 1 is the whole reverb on top of an intact dry and
+  small MIX settings sound as they did. MIX 0 is still bit-exact.
 - **Control rate is 32 samples.**
   - Every normalised control goes through a one-pole of about 60 ms.
   - Delay lengths glide per sample with a 120 ms time constant.
@@ -237,7 +243,7 @@ Three rules came out of prototyping. All three are in code comments.
 
 | Control | Id | Range (per type) | Default |
 | --- | --- | --- | --- |
-| MIX | `fx.reverb.amount` | equal power, 0 dry .. 1 wet | Synth 0, PX3 Reverb 0.35 |
+| MIX | `fx.reverb.amount` | equal power, 0 dry .. 1 wet (Synth: dry + wet·sin) | Synth 0, PX3 Reverb 0.35 |
 | MODE | `fx.reverb.algorithm` | ROOM, PLATE, HALL, CLOUD, SPRING, GATED | ROOM |
 | PRE-DELAY | `fx.reverb.pre.delay` | 0-250 ms (squared) | 10 ms |
 | DECAY | `fx.reverb.decay` | log, per type (see above) | 0.45 |

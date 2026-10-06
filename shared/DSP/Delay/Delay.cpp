@@ -967,6 +967,22 @@ void Delay::processIsaacGranularSample(float inL,
         dryMix = lerp(1.0f, 0.22f, a);
     }
 
+    if (mixLaw == px3::FxMixLaw::additive)
+    {
+        // The dry passes untouched; SHIMMER's soft clip shapes only what the
+        // delay adds.
+        auto addL = wetL * wetMix;
+        auto addR = wetR * wetMix;
+        if (mode == GranularMode::shimmer)
+        {
+            addL = std::tanh(addL * 0.94f);
+            addR = std::tanh(addR * 0.94f);
+        }
+        outL = sanitizeAudioSample(dryL + addL);
+        outR = sanitizeAudioSample(dryR + addR);
+        return;
+    }
+
     auto outLeft = sanitizeAudioSample(dryL * dryMix + wetL * wetMix);
     auto outRight = sanitizeAudioSample(dryR * dryMix + wetR * wetMix);
 
@@ -1531,7 +1547,9 @@ void Delay::processDelayAlgorithmSample(float inL,
     // Reaches zero wet at zero amount, and stays roughly level-constant across
     // the range rather than getting louder as it gets wetter.
     const auto wetMix = 0.92f * std::pow(a, 0.85f);
-    const auto dryMix = std::sqrt(juce::jmax(0.0f, 1.0f - 0.88f * a));
+    const auto dryMix = mixLaw == px3::FxMixLaw::additive
+                            ? 1.0f
+                            : std::sqrt(juce::jmax(0.0f, 1.0f - 0.88f * a));
 
     outL = sanitizeAudioSample(dryL * dryMix + wetL * wetMix);
     outR = sanitizeAudioSample(dryR * dryMix + wetR * wetMix);

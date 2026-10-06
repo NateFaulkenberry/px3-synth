@@ -356,7 +356,8 @@ void Reverb::processSampleFrame(float inL, float inR, float& outL, float& outR)
         mixWet = amountSmoothed >= 1.0f ? 1.0f : static_cast<float>(std::sin(angle));
         mixDry = amountSmoothed >= 1.0f ? 0.0f : static_cast<float>(std::cos(angle));
     }
-    const auto wetMix = mixWet, dryMix = mixDry;
+    const auto wetMix = mixWet;
+    const auto dryMix = mixLaw == px3::FxMixLaw::additive ? 1.0f : mixDry;
     outL = sanitize(cleanL * dryMix + wetL * wetMix);
     outR = sanitize(cleanR * dryMix + wetR * wetMix);
 }

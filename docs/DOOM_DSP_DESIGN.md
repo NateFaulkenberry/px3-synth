@@ -267,7 +267,7 @@ orthogonal, and the two MODIFYs never reach into each other's channel.
               OUTPUT
 ```
 
-**MIX law.** `Doom::MixLaw` chooses how MIX combines DOOM with its input. The
+**MIX law.** `Doom::MixLaw` (= `px3::FxMixLaw`, shared with DELAY, REVERB and MOOD) chooses how MIX combines DOOM with its input. The
 standalone PX3 Doom keeps the pedal's **crossfade** (`in·(1−mix) + doom·mix`).
 The Synth uses **additive** (`in + doom·mix`), because there DOOM is on the FX
 send and the return is `(stage − send)`: a crossfade subtracts `mix·send` from

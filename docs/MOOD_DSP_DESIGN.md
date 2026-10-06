@@ -250,7 +250,7 @@ compound over repeats:
 | Parameter | Range | Default | Purpose |
 |---|---|---|---|
 | `moodEnabled` | bool | true | bypass |
-| `moodMix` | 0…1 | 0.35 | dry ↔ MOOD |
+| `moodMix` | 0…1 | 0.35 | dry ↔ MOOD in the standalone PX3 Mood; in the Synth `dry + MOOD × mix` (`px3::FxMixLaw::additive`, because the Synth's FX return is `stage − send` and a crossfade there took the dry down as MIX rose) |
 | `moodClock` | 0…1 | 1.0 | engine sample rate, semitone-quantised over three octaves |
 | `moodRouting` | DRY→WET / LOOP→WET / PARALLEL | DRY→WET | what the wet channel is fed |
 | `moodWetMode` | REVERB / DELAY / SLIP | REVERB | wet channel mode |

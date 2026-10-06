@@ -2451,3 +2451,104 @@ void testEffectIndependence()
 }
 
 } // namespace px3tests
+
+namespace px3tests
+{
+//==============================================================================
+// SEND EFFECTS ADD, THEY DO NOT CROSSFADE
+//==============================================================================
+// The FX return is (stage - send). With a crossfading amount, turning an
+// effect up subtracted part of the send from the mix while the dry bus carried
+// on: DELAY at 0.5 took the patch 3.4 dB down (measured through the real AU).
+// In the Synth DELAY, REVERB and MOOD (and DOOM) add what they make on top of an
+// intact dry. The standalone products keep their crossfade.
+void testSendEffectsAreAdditive()
+{
+    suite("SEND EFFECTS ARE ADDITIVE");
+
+    struct Effect { const char* name; const char* enabled; const char* amount; };
+    const std::vector<Effect> effects {
+        { "DELAY", "fx.delay.enabled", "fx.delay.amount" },
+        { "REVERB", "fx.reverb.enabled", "fx.reverb.amount" },
+        { "MOOD", "fx.mood.enabled", "fx.mood.mix" },
+    };
+
+    auto renderWith = [](const Effect& e, bool on, float amount)
+    {
+        PX3SynthAudioProcessor processor;
+        makePlainPatch(processor);   // every other effect off
+        setChoice(processor, "voice.osc1.mode", 1);   // SAW
+        for (const auto* id : { "sub", "osc1", "osc2", "osc3" })
+            setParam(processor, juce::String("mix.") + id + ".send.fx", 1.0f);
+        setParam(processor, "mix.send.fx.level", 1.0f);
+        setParam(processor, "mix.fx.level", 1.0f);
+        setParam(processor, e.enabled, on ? 1.0f : 0.0f);
+        setParam(processor, e.amount, amount);
+        // A chord that changes, so a delayed or reverberated copy is not just
+        // the held note again.
+        return render(processor, 48000 * 3,
+                      { { 0, true, 48, 0.9f }, { 0, true, 55, 0.9f }, { 24000, false, 48, 0.0f }, { 24000, false, 55, 0.0f },
+                        { 24000, true, 52, 0.9f }, { 24000, true, 59, 0.9f }, { 72000, false, 52, 0.0f }, { 72000, false, 59, 0.0f },
+                        { 72000, true, 50, 0.9f } });
+    };
+    constexpr int kFrom = 12000, kTo = 48000 * 3;
+
+    for (const auto& e : effects)
+    {
+        const auto off = renderWith(e, false, 0.0f);
+        const auto zero = renderWith(e, true, 0.0f);
+
+        auto identical = off.left.size() == zero.left.size();
+        for (std::size_t i = 0; identical && i < off.left.size(); ++i)
+        {
+            identical = off.left[i] == zero.left[i] && off.right[i] == zero.right[i];
+        }
+
+        juce::StringArray levels, drops;
+        for (const auto amount : { 0.1f, 0.25f, 0.5f, 0.75f, 1.0f })
+        {
+            const auto on = renderWith(e, true, amount);
+            const auto db = juce::Decibels::gainToDecibels(on.rmsOver(kFrom, kTo) / juce::jmax(1.0e-12, off.rmsOver(kFrom, kTo)));
+            levels.add(juce::String(amount, 2) + ":" + fmt(db, 2));
+            // The effect's own content can partly cancel the dry (a delay
+            // repeat landing in antiphase), so a little is allowed - not the
+            // several dB a crossfade took.
+            if (db < -0.75 || ! on.isFinite()) { drops.add(juce::String(amount, 2) + " " + fmt(db, 2) + " dB"); }
+        }
+
+        check((juce::String(e.name) + "_AmountZeroIsBitIdenticalToOff").toRawUTF8(), identical,
+              identical ? "switched on at amount 0 renders the same samples as switched off" : "differs");
+        check((juce::String(e.name) + "_TurningItUpNeverTakesThePatchDown").toRawUTF8(), drops.isEmpty(),
+              (drops.isEmpty() ? juce::String("level re off by amount ") : "dropped: " + drops.joinIntoString(", ") + "; ")
+                  + levels.joinIntoString("  "));
+    }
+
+    // The dry under the effect is exactly the dry: the difference from OFF is
+    // the effect alone, and it grows with the amount. REVERB and MOOD are
+    // deterministic, so their wet scales exactly by the engine's own gain
+    // curve (REVERB sin(pi/2 a), MOOD a).
+    {
+        const auto scaled = [&](const Effect& e, float a, float b)
+        {
+            const auto off = renderWith(e, false, 0.0f);
+            const auto x = renderWith(e, true, a);
+            const auto y = renderWith(e, true, b);
+            double ex = 0.0, ey = 0.0;
+            for (std::size_t i = static_cast<std::size_t>(kFrom); i < off.left.size(); ++i)
+            {
+                const auto dx = static_cast<double>(x.left[i]) - off.left[i];
+                const auto dy = static_cast<double>(y.left[i]) - off.left[i];
+                ex += dx * dx;
+                ey += dy * dy;
+            }
+            return 10.0 * std::log10(juce::jmax(1.0e-30, ex) / juce::jmax(1.0e-30, ey));
+        };
+        const auto reverbDb = scaled(effects[1], 0.5f, 1.0f);
+        const auto moodDb = scaled(effects[2], 0.5f, 1.0f);
+        check("REVERB_AmountScalesOnlyTheWet", std::abs(reverbDb - juce::Decibels::gainToDecibels(std::sin(juce::MathConstants<double>::pi * 0.25))) < 0.2,
+              "MIX 0.5 adds " + fmt(reverbDb, 2) + " dB of what MIX 1 adds (sin(pi/4) is -3.01)");
+        check("MOOD_AmountScalesOnlyTheWet", std::abs(moodDb + 6.02) < 0.2,
+              "MIX 0.5 adds " + fmt(moodDb, 2) + " dB of what MIX 1 adds (half is -6.02)");
+    }
+}
+} // namespace px3tests
