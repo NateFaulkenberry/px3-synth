@@ -1060,7 +1060,7 @@ void testEditorLayout()
             auto* panel = editor->debugFxPanel();
             panel->setUIConfig(manager.getConfig());
             editor->debugSelectSection(4);
-            for (const auto [w, h] : { std::pair { 1100, 700 }, std::pair { 1300, 800 }, std::pair { 1488, 884 },
+            for (const auto& [w, h] : { std::pair { 1100, 700 }, std::pair { 1300, 800 }, std::pair { 1488, 884 },
                                        std::pair { 1800, 1100 }, std::pair { 2400, 1400 } })
             {
                 editor->setSize(w, h);
