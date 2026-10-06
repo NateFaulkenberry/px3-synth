@@ -224,7 +224,7 @@ was found).
 | TONE | wet tilt, one-pole split at 1.4 kHz | 0 |
 | LOW CUT | extra wet HPF 20–420 Hz | 0 (20 Hz) |
 | FEEDBACK | line output into its input, ≤ 0.55 | 0 |
-| DRY/WET (`mix`) | final crossfade against the input | 1 |
+| DRY/WET (`mix`) | final crossfade against the input (standalone PX3 Chorus); in the Synth's send chain `in + wet·AMOUNT·MIX`, with the modes' dry trims and CE-1's direct/chorus split left out because the Synth's dry bus carries the dry (`px3::FxMixLaw::additive`) | 1 |
 
 ---
 

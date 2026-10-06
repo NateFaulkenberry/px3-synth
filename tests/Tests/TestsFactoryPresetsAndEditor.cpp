@@ -567,7 +567,8 @@ void testFactoryPresets()
         }
 
         // The presets whose level the monotonic polyphony gain, the unity FX
-        // return and the additive send effects moved by more than 1 dB were
+        // return, the additive send effects or DELAY's additive wet curve moved
+        // by more than 1 dB were
         // brought back with MASTER to their 0.8.2 level. Pinned so the next
         // gain-structure change shows up here rather than in someone's ears.
         // 0.75 dB: a few use oscillator modes with free-running phase.
@@ -586,7 +587,10 @@ void testFactoryPresets()
             { "Splinter Choir", -25.68 },
             { "Radio Ghost", -26.97 },
             { "Comb Reactor", -30.35 },
-            { "Dimension Drift", -23.03 }
+            { "Dimension Drift", -23.03 },
+            // Moved > 1 dB by DELAY's sqrt(AMOUNT) repeats in the synth.
+            { "Porcelain", -26.31 },
+            { "Music Box", -30.49 }
             };
             juce::StringArray drifted;
             for (const auto& [name, ref] : kReleveled)

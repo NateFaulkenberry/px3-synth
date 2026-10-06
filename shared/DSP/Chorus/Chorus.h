@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ChorusTypes.h"
+#include "FxMixLaw.h"
 
 #include <JuceHeader.h>
 
@@ -63,6 +64,12 @@ public:
     };
 
     void prepare(double sampleRate);
+
+    // See FxMixLaw. Crossfade by default (the standalone PX3 Chorus, where the
+    // modes' own dry trims and CE-1's direct/chorus split apply); the Synth's
+    // send chain sets additive: what the lines make, times AMOUNT and MIX, on
+    // top of an untouched dry.
+    void setMixLaw(FxMixLaw law) noexcept { mixLaw = law; }
     void reset();
     void updateForBlock(const ChorusSettings& settings);
     void processSampleFrame(float inL, float inR, float& outL, float& outR);
@@ -195,6 +202,7 @@ private:
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> feedbackSmoothed;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> characterSmoothed;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> mixSmoothed;
+    FxMixLaw mixLaw { FxMixLaw::crossfade };
 };
 
 } // namespace px3

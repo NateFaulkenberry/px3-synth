@@ -85,6 +85,7 @@ PX3SynthAudioProcessor::PX3SynthAudioProcessor()
     delayComponent.setMixLaw(px3::FxMixLaw::additive);
     moodComponent.setMixLaw(px3::FxMixLaw::additive);
     reverb.setMixLaw(px3::FxMixLaw::additive);
+    chorusComponent.setMixLaw(px3::FxMixLaw::additive);
     fxOrderRevision.store(0u, std::memory_order_relaxed);
 
     for (int oscIndex = 0; oscIndex < kOscillatorSourceCount; ++oscIndex)

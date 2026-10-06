@@ -176,7 +176,7 @@ std::vector<FactoryPreset> factoryPresets()
         { "fx.reverb.amount", 0.05f }, { "fx.reverb.algorithm", room }, { "fx.reverb.size", 0.40f }, { "fx.reverb.decay", 0.28f },
         { "fx.analog.amount", 0.26f }, { "fx.analog.type", hot },
         { "fx.chorus.amount", 0.20f }, { "fx.chorus.mode", dim2 },
-        { "mix.master.level", 0.2622f } } },
+        { "mix.master.level", 0.2348f } } },
 
     { "Glass Filament", "LEADS", "P(X3)",
       "An FM bell stretched into a lead, with LUCY in INVERSE - which plays back only what "
@@ -295,7 +295,7 @@ std::vector<FactoryPreset> factoryPresets()
         { "fx.delay.amount", 0.30f }, { "fx.delay.algorithm", diffusion }, { "fx.delay.time", 0.26f }, { "fx.delay.feedback", 0.34f },
         { "fx.reverb.amount", 0.11f }, { "fx.reverb.algorithm", plate }, { "fx.reverb.decay", 0.40f },
         { "fx.chorus.amount", 0.22f }, { "fx.chorus.mode", dim1 },
-        { "mix.master.level", 0.95f } } },
+        { "mix.master.level", 0.724f } } },
 
     { "Rain on Copper", "PLUCKS", "P(X3)",
       "A short digital pluck with LUCY set to PACKET REPEAT. Dropped frames are filled with "
@@ -325,7 +325,7 @@ std::vector<FactoryPreset> factoryPresets()
         { "fx.delay.amount", 0.28f }, { "fx.delay.algorithm", tape }, { "fx.delay.time", 0.34f }, { "fx.delay.feedback", 0.32f },
         { "fx.reverb.amount", 0.14f }, { "fx.reverb.algorithm", hall }, { "fx.reverb.size", 0.60f }, { "fx.reverb.decay", 0.45f },
         { "fx.chorus.amount", 0.24f }, { "fx.chorus.mode", dim1 }, { "fx.chorus.rate", 0.20f },
-        { "mix.master.level", 0.72f } } },
+        { "mix.master.level", 0.5173f } } },
 
     { "Lamp Swirl", "PLUCKS", "P(X3)",
       "A bright saw pluck through VIBE in CHORUS: the lamp snaps bright and drifts dark, so the "

@@ -2460,8 +2460,10 @@ namespace px3tests
 // The FX return is (stage - send). With a crossfading amount, turning an
 // effect up subtracted part of the send from the mix while the dry bus carried
 // on: DELAY at 0.5 took the patch 3.4 dB down (measured through the real AU).
-// In the Synth DELAY, REVERB and MOOD (and DOOM) add what they make on top of an
-// intact dry. The standalone products keep their crossfade.
+// In the Synth DELAY, REVERB, MOOD and CHORUS (and DOOM) add what they make on
+// top of an intact dry. The standalone products keep their crossfade. DRIVE and
+// VIBE still replace their input (distortion and VIBRATO have no dry), so they
+// keep the crossfade and are not here.
 void testSendEffectsAreAdditive()
 {
     suite("SEND EFFECTS ARE ADDITIVE");
@@ -2471,6 +2473,7 @@ void testSendEffectsAreAdditive()
         { "DELAY", "fx.delay.enabled", "fx.delay.amount" },
         { "REVERB", "fx.reverb.enabled", "fx.reverb.amount" },
         { "MOOD", "fx.mood.enabled", "fx.mood.mix" },
+        { "CHORUS", "fx.chorus.enabled", "fx.chorus.amount" },
     };
 
     auto renderWith = [](const Effect& e, bool on, float amount)
@@ -2549,6 +2552,69 @@ void testSendEffectsAreAdditive()
               "MIX 0.5 adds " + fmt(reverbDb, 2) + " dB of what MIX 1 adds (sin(pi/4) is -3.01)");
         check("MOOD_AmountScalesOnlyTheWet", std::abs(moodDb + 6.02) < 0.2,
               "MIX 0.5 adds " + fmt(moodDb, 2) + " dB of what MIX 1 adds (half is -6.02)");
+    }
+
+    // ---- DELAY's repeats are clearly there from a quarter of the knob --------
+    //
+    // Under the crossfade, most of what a low AMOUNT did was take the dry down;
+    // the repeats themselves were 0.92 * smoothstep(a)^0.85 of the wet - at
+    // 0.25 about -14 dB, and on top of an intact dry nearly inaudible. Under
+    // the additive law the wet follows sqrt(AMOUNT) instead. Short plucks, so
+    // the repeats land in the gaps; every type.
+    {
+        static const std::array<const char*, 7> kTypes { { "Granular", "Tape", "Analog/BBD", "Ping-Pong", "Stereo", "Modulated", "Diffusion" } };
+        auto renderDelay = [](int type, bool on, float amount)
+        {
+            PX3SynthAudioProcessor processor;
+            makePlainPatch(processor);
+            setChoice(processor, "voice.osc1.mode", 1);   // SAW
+            setParam(processor, "voice.amp.decay", 0.12f);
+            setParam(processor, "voice.amp.sustain", 0.0f);
+            setParam(processor, "voice.amp.release", 0.08f);
+            for (const auto* id : { "sub", "osc1", "osc2", "osc3" })
+                setParam(processor, juce::String("mix.") + id + ".send.fx", 1.0f);
+            setParam(processor, "mix.send.fx.level", 1.0f);
+            setParam(processor, "mix.fx.level", 1.0f);
+            setParam(processor, "fx.delay.enabled", on ? 1.0f : 0.0f);
+            setChoice(processor, "fx.delay.algorithm", type);
+            setParam(processor, "fx.delay.time", 0.35f);
+            setParam(processor, "fx.delay.feedback", 0.4f);
+            setParam(processor, "fx.delay.amount", amount);
+            std::vector<NoteEvent> notes;
+            for (int n = 0; n < 6; ++n)
+            {
+                notes.push_back({ n * 24000, true, 55 + 2 * n, 0.9f });
+                notes.push_back({ n * 24000 + 4800, false, 55 + 2 * n, 0.0f });
+            }
+            return render(processor, 48000 * 3, notes);
+        };
+        juce::StringArray table, quiet, hot;
+        for (int type = 0; type < static_cast<int>(kTypes.size()); ++type)
+        {
+            const auto off = renderDelay(type, false, 0.0f);
+            const auto dryRms = off.rmsOver(0, 48000 * 3);
+            juce::String row = juce::String(kTypes[static_cast<std::size_t>(type)]) + ":";
+            for (const auto amount : { 0.25f, 0.5f, 1.0f })
+            {
+                const auto on = renderDelay(type, true, amount);
+                Capture repeats;
+                for (std::size_t i = 0; i < on.left.size(); ++i)
+                {
+                    repeats.left.push_back(on.left[i] - off.left[i]);
+                    repeats.right.push_back(on.right[i] - off.right[i]);
+                }
+                const auto db = juce::Decibels::gainToDecibels(repeats.rmsOver(0, 48000 * 3) / juce::jmax(1.0e-12, dryRms), -300.0);
+                row << " " << juce::String(amount, 2) << "=" << fmt(db, 1);
+                if (amount == 0.25f && db < -18.0) { quiet.add(juce::String(kTypes[static_cast<std::size_t>(type)]) + " " + fmt(db, 1)); }
+                if (on.peak() > 0.98) { hot.add(juce::String(kTypes[static_cast<std::size_t>(type)]) + " @" + juce::String(amount, 2) + " peak " + fmt(on.peak(), 3)); }
+            }
+            table.add(row);
+        }
+        check("DELAY_RepeatsAreClearlyAudibleAtAQuarter", quiet.isEmpty(),
+              (quiet.isEmpty() ? juce::String() : "too quiet at 0.25: " + quiet.joinIntoString(", ") + "; ")
+                  + "repeats re dry, dB: " + table.joinIntoString("; "));
+        check("DELAY_FullAmountDoesNotHitTheCeiling", hot.isEmpty(),
+              hot.isEmpty() ? "every type, every amount, peak under 0.98" : hot.joinIntoString(", "));
     }
 }
 } // namespace px3tests

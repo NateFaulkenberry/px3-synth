@@ -834,11 +834,17 @@ work on the master, in that order, after everything else.
 Each card has a power button in its corner; clicking the card's background does
 the same.
 
-**Amounts add, they do not crossfade.** On DELAY, REVERB, MOOD and DOOM the
-AMOUNT / MIX control sets how much of the effect is added to your sound. The dry
-signal is never turned down, so raising an effect only ever adds to the patch,
-and fully up means the whole effect on top of an intact dry. (The standalone PX3
-plug-ins keep the usual dry/wet crossfade, where fully up is the effect alone.)
+**Amounts add, they do not crossfade.** On DELAY, REVERB, MOOD, DOOM and CHORUS
+the AMOUNT / MIX control sets how much of the effect is added to your sound. The
+dry signal is never turned down, so raising an effect only ever adds to the
+patch, and fully up means the whole effect on top of an intact dry. (The
+standalone PX3 plug-ins keep the usual dry/wet crossfade, where fully up is the
+effect alone.) DELAY's repeats follow the square root of AMOUNT — clearly there
+from a quarter of the knob, and the whole echo at full — and its Granular type
+always makes its full grain cloud, with AMOUNT setting only how much of it you
+hear. DRIVE and VIBE are different: distortion and VIBRATO have no dry signal in
+them, so adding them on top of the dry would turn them into something else
+(parallel distortion, a chorus). They keep their crossfade for now.
 
 **Order matters, and you choose it.** Drag the nodes in the signal-flow strip
 above the cards. The cards themselves are editors, not ordering controls, so they

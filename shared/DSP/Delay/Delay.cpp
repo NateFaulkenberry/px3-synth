@@ -781,6 +781,21 @@ void Delay::processIsaacGranularSample(float inL,
         return;
     }
 
+    // Under the additive law AMOUNT is how much of the grains is ADDED, and
+    // nothing else. The grain engine itself - density, grain length, feedback,
+    // damping, spread - is driven by AMOUNT too, which under a crossfade made
+    // the bottom of the knob sparse AND quiet: on top of an intact dry the
+    // repeats at 0.25 were 37 dB down and inaudible. So the engine runs at its
+    // full character - the cloud the standalone PX3 Delay makes at AMOUNT 1 -
+    // and AMOUNT sets only how much of it is added, as sqrt(AMOUNT) like the
+    // other types. (A floor of 0.6 still left the grains 23 dB down at 0.25:
+    // the cloud below full character is sparse, not just quiet.)
+    const auto level = amount;
+    if (mixLaw == px3::FxMixLaw::additive)
+    {
+        amount = 1.0f;
+    }
+
     const auto mode = static_cast<GranularMode>(juce::jlimit(0, 3, currentSettings.granularModeIndex));
     const auto a = smoothstep(amount);
     const auto macro = std::pow(a, 0.62f);
@@ -971,8 +986,9 @@ void Delay::processIsaacGranularSample(float inL,
     {
         // The dry passes untouched; SHIMMER's soft clip shapes only what the
         // delay adds.
-        auto addL = wetL * wetMix;
-        auto addR = wetR * wetMix;
+        const auto addGain = std::sqrt(level);
+        auto addL = wetL * addGain;
+        auto addR = wetR * addGain;
         if (mode == GranularMode::shimmer)
         {
             addL = std::tanh(addL * 0.94f);
@@ -1544,12 +1560,14 @@ void Delay::processDelayAlgorithmSample(float inL,
     delayBuffer[1][static_cast<std::size_t>(writePos)] = sanitizeAudioSample(writeR);
     writePos = (writePos + 1) % delayBufferSize;
 
-    // Reaches zero wet at zero amount, and stays roughly level-constant across
-    // the range rather than getting louder as it gets wetter.
-    const auto wetMix = 0.92f * std::pow(a, 0.85f);
-    const auto dryMix = mixLaw == px3::FxMixLaw::additive
-                            ? 1.0f
-                            : std::sqrt(juce::jmax(0.0f, 1.0f - 0.88f * a));
+    // Crossfade: reaches zero wet at zero amount and stays roughly
+    // level-constant across the range. Additive: the dry is never touched and
+    // the repeats follow sqrt(AMOUNT) - the crossfade's curve put them 14 dB
+    // down at a quarter of the knob, which on top of an intact dry is barely
+    // there; this puts them 6 dB down, and the whole echo at full.
+    const auto additive = mixLaw == px3::FxMixLaw::additive;
+    const auto wetMix = additive ? std::sqrt(amountSmooth) : 0.92f * std::pow(a, 0.85f);
+    const auto dryMix = additive ? 1.0f : std::sqrt(juce::jmax(0.0f, 1.0f - 0.88f * a));
 
     outL = sanitizeAudioSample(dryL * dryMix + wetL * wetMix);
     outR = sanitizeAudioSample(dryR * dryMix + wetR * wetMix);

@@ -734,6 +734,16 @@ void Chorus::processSampleFrame(float inL, float inR, float& outL, float& outR)
         wetR = toneState[1] * lowGain + (wetR - toneState[1]) * highGain;
     }
 
+    if (mixLaw == FxMixLaw::additive)
+    {
+        // Only what the lines make is added. The modes' dry trims (and CE-1's
+        // direct/chorus split) shape a dry signal this engine does not own on
+        // a send: the Synth's dry bus carries it, untouched.
+        outL = sanitize(inL + wetL * c.amount * mix);
+        outR = sanitize(inR + wetR * c.amount * mix);
+        return;
+    }
+
     const auto processedL = result.dryL + wetL * c.amount;
     const auto processedR = result.dryR + wetR * c.amount;
 
