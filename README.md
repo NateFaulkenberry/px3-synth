@@ -19,7 +19,7 @@ the same interface. See
 This README is an overview for new users and a function-level map for
 developers. Day-to-day operating detail lives in the user manual.
 
-Current version: v0.8.2 (the single source is `PX3_VERSION` in `CMakeLists.txt`).
+Current version: v0.8.3 (the single source is `PX3_VERSION` in `CMakeLists.txt`).
 
 | For | See |
 | --- | --- |

@@ -1,6 +1,6 @@
 # P(X3) — User Manual
 
-For PX3 Synth v0.8.2.
+For PX3 Synth v0.8.3.
 
 ---
 
