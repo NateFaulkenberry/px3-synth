@@ -578,7 +578,11 @@ void testDelay()
         // for this measure.
         const auto modulated = nonHarmonicDb(5, 1.0f);
 
-        check("Delay_TurningTheMixUpDoesNotDeepenTheModulation", modulated < -28.0,
+        // -26 dB: measured relative to the whole output, so a louder wet reads
+        // higher. Normalising the FX return's centre to unity (it sat 3 dB low)
+        // moved this from -29.8 dB to -27.7 dB with the depth unchanged; the
+        // regression it guards was -14.0 dB.
+        check("Delay_TurningTheMixUpDoesNotDeepenTheModulation", modulated < -26.0,
               "MODULATED non-harmonic content at full amount: " + fmt(modulated, 1) + " dB");
 
         // ...and the character must still be there at the mix the presets use,

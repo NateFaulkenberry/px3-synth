@@ -4561,7 +4561,12 @@ void testMultiOutput()
         const auto mainOn = renderReverb(true, fxPairOn);
         const auto changeDb = juce::Decibels::gainToDecibels(mainOn / juce::jmax(1.0e-9f, mainOff));
 
-        check("MultiOut_WithEveryBusEnabledTheMainPairStillCarriesTheFx", std::abs(changeDb) > 1.0f,
+        // 0.5 dB, not 1: the reverb's MIX is a crossfade, so on the (stage -
+        // send) return switching it on also takes some dry out, and with the
+        // FX return's centre normalised to unity (it used to sit 3 dB low) that
+        // cancellation is fuller: the move went from -1.13 dB to -0.94 dB. A
+        // split main pair would carry the dry only and move by ~0 dB.
+        check("MultiOut_WithEveryBusEnabledTheMainPairStillCarriesTheFx", std::abs(changeDb) > 0.5f,
               "turning reverb on moves outputs 1/2 by " + fmt(changeDb, 2) + " dB ("
                   + fmt(mainOff, 5) + " -> " + fmt(mainOn, 5) + ")");
         check("MultiOut_WithoutSeparateOutputTheFxPairIsSilent",

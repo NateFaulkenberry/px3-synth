@@ -6,6 +6,11 @@ namespace px3tests
 {
 
 
+// INIT's RMS at 13ce2de (before the FX return normalisation and the monotonic
+// polyphony gain), measured by Preset_InitKeepsItsLevel itself.
+constexpr double kInitHeldChordRefDb = -16.95;
+constexpr double kInitPluckRefDb = -40.49;
+
 void testFactoryPresets()
 {
     suite("FACTORY PRESETS");
@@ -192,6 +197,96 @@ void testFactoryPresets()
     }
 
     const auto presets = px3::presets::factoryPresets();
+    // ---- INIT keeps its level ----------------------------------------------
+    //
+    // INIT is what a new user hears first. Its level is pinned against what it
+    // measured before the FX return's centre was normalised to unity and the
+    // polyphony gain was made monotonic (13ce2de), on a held chord and on a
+    // pluck: overall RMS, peak, and the FX return's share of the master.
+    // INIT switches every effect off, so its FX return carries nothing and the
+    // normalisation cannot reach it; the monotonic polyphony gain did not move
+    // it either (both measured identical before and after).
+    {
+        struct Case { const char* name; std::vector<NoteEvent> notes; bool pluck; double refDb; };
+        const std::vector<Case> cases {
+            { "held chord", { { 2000, true, 48, 0.85f }, { 2000, true, 55, 0.85f }, { 2000, true, 60, 0.85f }, { 2000, true, 64, 0.85f } },
+              false, kInitHeldChordRefDb },
+            { "pluck", { { 2000, true, 60, 0.9f }, { 2200, false, 60, 0.0f }, { 24000, true, 67, 0.9f }, { 24200, false, 67, 0.0f } },
+              true, kInitPluckRefDb },
+        };
+        juce::StringArray report, off;
+        for (const auto& c : cases)
+        {
+            PX3SynthAudioProcessor processor;
+            PresetManager manager(processor);
+            juce::String error;
+            manager.loadInitState(error);
+            if (c.pluck)
+            {
+                setParam(processor, "voice.amp.decay", 0.25f);
+                setParam(processor, "voice.amp.sustain", 0.0f);
+                setParam(processor, "voice.amp.release", 0.3f);
+            }
+            double fxEnergy = 0.0, masterEnergy = 0.0;
+            const auto capture = render(processor, static_cast<int>(kSampleRate * 2.0), c.notes, [&](int block)
+            {
+                if (block == 0) { return; }
+                fxEnergy += static_cast<double>(processor.debugGetFxBusRms()) * processor.debugGetFxBusRms();
+                masterEnergy += static_cast<double>(processor.debugGetMasterBusRms()) * processor.debugGetMasterBusRms();
+            });
+            const auto db = juce::Decibels::gainToDecibels(capture.rms(), -300.0);
+            const auto fxShareDb = juce::Decibels::gainToDecibels(std::sqrt(fxEnergy / juce::jmax(1.0e-30, masterEnergy)), -300.0);
+            report.add(juce::String(c.name) + " " + fmt(db, 2) + " dBFS (ref " + fmt(c.refDb, 2) + "), peak "
+                       + fmt(capture.peak(), 3) + ", FX return " + fmt(fxShareDb, 1) + " dB re master");
+            // Peak below clipping; INIT's held chord already reached the output
+            // ceiling's knee (0.90) at 13ce2de - 0.907 - and still does.
+            if (std::abs(db - c.refDb) > 0.5 || capture.peak() > 0.98 || fxShareDb > -30.0) { off.add(c.name); }
+        }
+        check("Preset_InitKeepsItsLevel", off.isEmpty(), report.joinIntoString("; "));
+    }
+
+    // ---- MASTER is monotonic ------------------------------------------------
+    //
+    // The polyphony gain is computed from the very peak it scales, and its
+    // bypasses were switches: just under a threshold the gain was 1, just over
+    // it the load gain applied in full. On "Tar Kiln" (two held notes) raising
+    // MASTER from 0.219 to 0.25 made the preset 2.5 dB QUIETER. A louder input
+    // must never come out quieter, so MASTER is swept on a few presets of
+    // different densities and every step must be at least as loud as the last
+    // (0.3 dB of slack: the gain's unity deadband steps by 0.26 dB).
+    {
+        juce::StringArray dips;
+        juce::String summary;
+        for (const auto* name : { "Tar Kiln", "Reese Undertow", "Slow Weather", "Porcelain", "Dimension Drift" })
+        {
+            const auto found = std::find_if(presets.begin(), presets.end(),
+                                            [name](const auto& p) { return juce::String(p.name) == name; });
+            if (found == presets.end()) { dips.add(juce::String(name) + " (missing)"); continue; }
+
+            auto previous = -300.0;
+            auto previousMaster = 0.0f;
+            for (const auto master : { 0.10f, 0.15f, 0.20f, 0.22f, 0.25f, 0.30f, 0.35f, 0.40f, 0.50f, 0.60f, 0.80f, 1.00f })
+            {
+                PX3SynthAudioProcessor processor;
+                for (const auto& [id, value] : found->params) { setParam(processor, id, value); }
+                setParam(processor, "mix.master.level", master);
+                const auto capture = render(processor, static_cast<int>(kSampleRate * 2.0),
+                                            { { 2000, true, 55, 0.85f }, { 2200, true, 62, 0.85f } });
+                const auto db = juce::Decibels::gainToDecibels(capture.rmsOver(static_cast<int>(kSampleRate * 0.3),
+                                                                               static_cast<int>(kSampleRate * 2.0)), -300.0);
+                if (db < previous - 0.3)
+                {
+                    dips.add(juce::String(name) + " " + juce::String(previousMaster, 2) + "->" + juce::String(master, 2)
+                             + ": " + fmt(previous, 2) + " -> " + fmt(db, 2) + " dBFS");
+                }
+                previous = db;
+                previousMaster = master;
+            }
+            summary << name << " ends at " << fmt(previous, 1) << " dBFS; ";
+        }
+        check("Presets_MasterLevelIsMonotonic", dips.isEmpty(),
+              dips.isEmpty() ? summary : "quieter at a higher MASTER: " + dips.joinIntoString(", "));
+    }
 
     check("Presets_LibraryIsNotEmpty", presets.size() >= 16,
           juce::String(static_cast<int>(presets.size())) + " factory presets");

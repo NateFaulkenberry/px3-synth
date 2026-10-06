@@ -2609,6 +2609,48 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
                                    : juce::jlimit(kPolyphonyGainFloor,
                                                   1.0f,
                                                   1.0f - overloadBlend * (1.0f - polyphonyGainFromLoad));
+
+    // MONOTONIC IN LEVEL. The gain is a function of the very peak it scales,
+    // so a louder input must never come out quieter. Two places broke that:
+    //   - the bypasses are switches: just under their threshold the gain is 1,
+    //     just over it the load gain applies in full - on two held notes a
+    //     -6 dB step, so raising MASTER past it made "Tar Kiln" 2.5 dB QUIETER;
+    //   - the overload blend falls faster than 1/peak toward its full point
+    //     when the load gain is low, so the output dips before it recovers.
+    // Both are held to "the output peak never falls below the most it reached
+    // at a lower input": above a bypass threshold the gain is at least
+    // threshold/peak (a ceiling at the threshold, continuous with the bypass),
+    // and on the blend the gain is at least the curve's own maximum over lower
+    // peaks divided by this one. Below every threshold nothing changes.
+    if (! polyphonyBypass && calibratedPeak > 1.0e-6f)
+    {
+        if (heldVoiceCount == 0)
+        {
+            polyphonyGainTarget = juce::jmax(polyphonyGainTarget, kTailOnlyBypassPrePolyPeakThreshold / calibratedPeak);
+        }
+        else if (heldVoiceCount <= kLowHeldBypassMaxHeldVoices)
+        {
+            polyphonyGainTarget = juce::jmax(polyphonyGainTarget, kLowHeldBypassPrePolyPeakThreshold / calibratedPeak);
+        }
+
+        const auto reduction = 1.0f - polyphonyGainFromLoad;   // c
+        const auto slope = 1.0f / juce::jmax(1.0e-5f, kAttenuationFullPeak - kAttenuationStartPeak);
+        const auto curveOutput = [&](float peak)
+        {
+            const auto blend = juce::jlimit(0.0f, 1.0f, (peak - kAttenuationStartPeak) * slope);
+            return peak * (1.0f - blend * reduction);
+        };
+        if (reduction > 1.0e-6f && predictedMasterPeak > kAttenuationStartPeak)
+        {
+            // d/dp [p (1 - k (p - a) c)] = 0 at p = (1/(k c) + a) / 2.
+            const auto turning = juce::jlimit(kAttenuationStartPeak, kAttenuationFullPeak,
+                                              0.5f * (1.0f / (slope * reduction) + kAttenuationStartPeak));
+            const auto best = juce::jmax(curveOutput(juce::jmin(predictedMasterPeak, turning)),
+                                         curveOutput(predictedMasterPeak));
+            polyphonyGainTarget = juce::jmax(polyphonyGainTarget, best / predictedMasterPeak);
+        }
+        polyphonyGainTarget = juce::jlimit(kPolyphonyGainFloor, 1.0f, polyphonyGainTarget);
+    }
     if (polyphonyGainTarget >= kPolyGainUnityDeadband)
     {
         polyphonyGainTarget = 1.0f;
@@ -3124,6 +3166,14 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         float fxPanLeft = 1.0f;
         float fxPanRight = 1.0f;
         panToGains(fxReturnPanSmoother.getNextValue(), fxPanLeft, fxPanRight);
+        // Normalised so centre is unity, exactly as the DRY channel is. The
+        // return is a bus pan like the dry bus's, not a source's: the send is
+        // already taken at the centre pan-law gain (kSendCentreGain, matching a
+        // centred source's dry), so the equal-power 0.707 here applied that law
+        // a second time and left every effect 3 dB under the dry path it was
+        // taken from - DOOM at MIX 1 sat 15.5 dB under the dry.
+        fxPanLeft *= juce::MathConstants<float>::sqrt2;
+        fxPanRight *= juce::MathConstants<float>::sqrt2;
         const auto fxPhaseTarget = (fxReturnPhaseInvertParam != nullptr && fxReturnPhaseInvertParam->get()) ? -1.0f : 1.0f;
         auto smoothedFxReturnGain = fxReturnGainSmoother.next(fxReturnGain)
                                     * fxReturnPhaseSmoother.next(fxPhaseTarget);

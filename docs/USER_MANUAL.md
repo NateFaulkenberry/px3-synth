@@ -1235,6 +1235,14 @@ lightly reverberated; the reverse gives a little signal drenched.
 The send is taken before the pan, so panning a source does not move where it sits
 in the effects.
 
+**DRY and FX pans are bus pans.** At centre they pass the bus at unity; turned to
+one side they move the whole bus there (the far side goes silent, the near side
+rises 3 dB). A source's PAN is an equal-power pan instead, which is why a
+centred source and its send arrive at the same level. Up to 0.8.2 the FX return
+used the source law, which left every effect 3 dB lower at centre than the dry
+signal it was taken from; it now matches the DRY bus, so patches that use
+effects are about 3 dB wetter at the same settings.
+
 ## Solo
 
 | State | What you hear |
