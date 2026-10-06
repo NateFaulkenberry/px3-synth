@@ -3533,6 +3533,107 @@ void testLazyFxEngines()
                   + " vs " + fmt(settled, 4) + " once in");
     }
 
+    // ---- no message loop: offline bounces and state restores ------------------
+    //
+    // The asynchronous request needs the host to pump its message loop. An
+    // offline bounce need not, and 0.8.2 rendered an effect switched on for one
+    // bit-identical to it being off (measured through the real AU: LUCY and
+    // DOOM ON-vs-off -300 dB with no pump, -8 dB with one). None of these
+    // service the processor or run a dispatch loop.
+    for (const auto doomCase : { true, false })
+    {
+        const auto label = juce::String(doomCase ? "Doom" : "Lucy");
+        auto switchOn = [doomCase](PX3SynthAudioProcessor& processor)
+        {
+            if (doomCase) { setParam(processor, "fx.doom.mix", 0.8f); }
+            else          { setParam(processor, "fx.lucy.enabled", 1.0f); }
+        };
+        auto isBuilt = [doomCase](const PX3SynthAudioProcessor& processor)
+        {
+            return doomCase ? processor.debugIsDoomEngineBuilt() : processor.debugIsLucyEngineBuilt();
+        };
+        auto baseline = [&](PX3SynthAudioProcessor& processor)
+        {
+            setUp(processor);
+            setParam(processor, "fx.doom.enabled", 1.0f);
+            setParam(processor, "fx.doom.mix", 0.0f);
+            setParam(processor, "fx.lucy.enabled", 0.0f);
+            setParam(processor, "fx.lucy.global", 0.7f);
+        };
+        auto difference = [](const Capture& a, const Capture& b, int from)
+        {
+            double sum = 0.0;
+            int count = 0;
+            for (std::size_t i = static_cast<std::size_t>(from); i < a.left.size() && i < b.left.size(); ++i, ++count)
+            {
+                const auto d = static_cast<double>(a.left[i]) - b.left[i];
+                sum += d * d;
+            }
+            return std::sqrt(sum / static_cast<double>(juce::jmax(1, count)));
+        };
+
+        // Switched on mid-bounce: built at the next block, on the render thread,
+        // because a non-realtime render may block and allocate.
+        {
+            constexpr int kSwitchBlock = 10, kBlocks = 50;
+            auto bounce = [&](bool on, bool& builtNextBlock)
+            {
+                PX3SynthAudioProcessor processor;
+                baseline(processor);
+                processor.setNonRealtime(true);
+                prepare(processor);
+                Capture capture;
+                run(processor, kBlocks, capture, [&](int block)
+                {
+                    if (on && block == kSwitchBlock) { switchOn(processor); }
+                    if (block == kSwitchBlock + 2) { builtNextBlock = isBuilt(processor); }
+                });
+                return capture;
+            };
+            auto ignored = false, built = false;
+            const auto dry = bounce(false, ignored);
+            const auto wet = bounce(true, built);
+            const auto effect = difference(dry, wet, (kSwitchBlock + 10) * kBlockSize);
+            check(("LazyFx_" + label + "SwitchedOnInAnOfflineBounceIsHeard").toRawUTF8(),
+                  built && wet.isFinite() && effect > 1.0e-3 * juce::jmax(1.0e-9, dry.rms()),
+                  "built by the non-realtime render itself; difference from the dry bounce "
+                      + fmt(juce::Decibels::gainToDecibels(effect / juce::jmax(1.0e-9, dry.rms())), 1) + " dB");
+        }
+
+        // Restored from a session, mid-stream, with no message loop at all.
+        {
+            juce::MemoryBlock session;
+            {
+                PX3SynthAudioProcessor source;
+                baseline(source);
+                switchOn(source);
+                source.getStateInformation(session);
+            }
+            PX3SynthAudioProcessor processor;
+            baseline(processor);
+            prepare(processor);   // realtime; nothing audible yet
+            const auto builtBefore = isBuilt(processor);
+            processor.setStateInformation(session.getData(), static_cast<int>(session.getSize()));
+            check(("LazyFx_" + label + "RestoredFromASessionIsBuiltWithoutAMessageLoop").toRawUTF8(),
+                  ! builtBefore && isBuilt(processor),
+                  "setStateInformation builds the engine the restored patch can hear");
+        }
+    }
+
+    // A non-realtime render of a patch that hears nothing builds nothing: the
+    // offline path is not a way round the memory saving.
+    {
+        PX3SynthAudioProcessor processor;
+        processor.setNonRealtime(true);
+        prepare(processor);
+        Capture capture;
+        run(processor, 10, capture, {});
+        check("LazyFx_OfflineRenderOfTheDefaultPatchBuildsNothing",
+              ! processor.debugIsDoomEngineBuilt() && ! processor.debugIsLucyEngineBuilt()
+                  && ! processor.debugIsCombPoolBuilt(0) && ! processor.debugIsCombPoolBuilt(1),
+              "DOOM at zero mix, LUCY off and no COMB slot stay unbuilt offline too");
+    }
+
     // ---- COMB delay lines: pooled per filter slot, only while set to COMB ----
     {
         auto combType = [](PX3SynthAudioProcessor& processor, int slot, bool comb)
@@ -3568,6 +3669,26 @@ void testLazyFxEngines()
             check("LazyFx_CombLinesFreedOnceNoSlotIsComb",
                   ! processor.debugIsCombPoolBuilt(0) && ! processor.debugIsCombPoolBuilt(1),
                   "freed at the next prepare once filter 1 left COMB");
+        }
+
+        // Switched to COMB during an offline bounce, with no message loop: the
+        // render builds the lines itself at the next block.
+        {
+            PX3SynthAudioProcessor processor;
+            setUp(processor);
+            setParam(processor, "voice.filter1.enabled", 1.0f);
+            processor.setNonRealtime(true);
+            prepare(processor);
+            auto builtNextBlock = false;
+            Capture capture;
+            run(processor, 20, capture, [&](int block)
+            {
+                if (block == 5) { combType(processor, 0, true); }
+                if (block == 6) { builtNextBlock = processor.debugIsCombPoolBuilt(0); }
+            });
+            check("LazyFx_CombSwitchedOnInAnOfflineBounceGetsItsLines",
+                  builtNextBlock && capture.isFinite(),
+                  "built by the non-realtime render, not left waiting for a message loop");
         }
 
         // Switched to COMB mid-note: the filter crossfades out of circuit as

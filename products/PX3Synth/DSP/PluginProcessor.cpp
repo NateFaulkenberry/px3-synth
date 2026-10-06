@@ -1414,6 +1414,7 @@ void PX3SynthAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
                 buildCombPool(filter);
             }
         }
+        lazyEffectsPrepared = true;
     }
     chorusComponent.prepare(sampleRate);
     stereoSpreadComponent.prepare(sampleRate);
@@ -1582,6 +1583,7 @@ void PX3SynthAudioProcessor::releaseResources()
     // The audio thread is stopped, so the lazily built engines can go; the
     // next prepareToPlay builds whichever the patch still uses.
     const std::lock_guard<std::mutex> lock(lazyEffectLock);
+    lazyEffectsPrepared = false;
     doomEffect.release();
     lucyEffect.release();
     for (int filter = 0; filter < kFilterInstanceCount; ++filter)
@@ -1701,6 +1703,46 @@ void PX3SynthAudioProcessor::serviceLazyEffects()
         if (combPoolRequested[static_cast<std::size_t>(filter)].load(std::memory_order_relaxed))
         {
             buildCombPool(filter);
+        }
+    }
+}
+
+bool PX3SynthAudioProcessor::patchWantsAnUnbuiltLazyEffect() const noexcept
+{
+    if (doomEffect.get() == nullptr && px3::Doom::wouldBeAudible(currentDoomUserParameters()))
+    {
+        return true;
+    }
+    if (lucyEffect.get() == nullptr && px3::Lucy::wouldBeAudible(currentLucyUserParameters()))
+    {
+        return true;
+    }
+    for (int filter = 0; filter < kFilterInstanceCount; ++filter)
+    {
+        if (combPoolLive[static_cast<std::size_t>(filter)].load(std::memory_order_acquire) == nullptr
+            && px3::isCombMode(getFilterTypeParam(filter).getIndex()))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+void PX3SynthAudioProcessor::buildLazyEffectsThePatchUses(bool fromSilence)
+{
+    if (! doomEffect.isBuilt() && px3::Doom::wouldBeAudible(currentDoomUserParameters()))
+    {
+        buildDoomEngine(fromSilence);
+    }
+    if (! lucyEffect.isBuilt() && px3::Lucy::wouldBeAudible(currentLucyUserParameters()))
+    {
+        buildLucyEngine(fromSilence);
+    }
+    for (int filter = 0; filter < kFilterInstanceCount; ++filter)
+    {
+        if (px3::isCombMode(getFilterTypeParam(filter).getIndex()))
+        {
+            buildCombPool(filter);   // does nothing if it exists
         }
     }
 }
@@ -2081,6 +2123,17 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
             triggerAsyncUpdate();
         }
     }
+    // A non-realtime render (an offline bounce) may block and allocate, and
+    // its host need not pump the message loop the asynchronous build relies
+    // on - so an effect the patch can hear is built here, before anything
+    // reads it, rather than leaving the whole bounce dry. Never in realtime:
+    // there the message thread builds it (handleAsyncUpdate).
+    if (isNonRealtime() && patchWantsAnUnbuiltLazyEffect())
+    {
+        const std::lock_guard<std::mutex> lock(lazyEffectLock);
+        buildLazyEffectsThePatchUses(true);
+    }
+
     // COMB lines for any filter slot set to COMB, before a voice renders.
     attachCombPools();
 

@@ -78,6 +78,20 @@ void PX3SynthAudioProcessor::setStateInformation(const void* data, int sizeInByt
     juce::String ignoredError;
     applyParameterStateTree(state, &ignoredError);
 
+    // A restored session that uses DOOM, LUCY or a COMB filter gets its
+    // engines now, on this (non-audio) thread, instead of waiting for the
+    // audio thread's request to be serviced by a message loop the host may
+    // not be running - an offline bounce straight after loading, for one.
+    // Before the first prepareToPlay there is nothing to do: prepare builds
+    // them at the real rate.
+    {
+        const std::lock_guard<std::mutex> lock(lazyEffectLock);
+        if (lazyEffectsPrepared)
+        {
+            buildLazyEffectsThePatchUses(true);
+        }
+    }
+
     const auto after = getFxProcessingOrder();
     debugLogEvent("HOST",
                   "SET_STATE_INFORMATION_END",

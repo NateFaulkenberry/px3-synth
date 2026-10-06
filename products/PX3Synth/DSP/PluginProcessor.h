@@ -1415,6 +1415,23 @@ private:
     void buildDoomEngine(bool fromSilence);    // lazyEffectLock held
     void buildLucyEngine(bool fromSilence);    // lazyEffectLock held
 
+    // The asynchronous request above is only as reliable as the host's message
+    // loop: an offline bounce (or any host that renders without pumping it)
+    // never delivers the AsyncUpdater, and an effect switched on for that
+    // render stayed dry for the whole of it - bit-identical to the effect being
+    // off. So the engines the patch can hear are also built synchronously
+    // wherever that is allowed: in prepareToPlay, at the end of
+    // setStateInformation, and - in a non-realtime render only, where blocking
+    // and allocating are permitted - at the top of processBlock.
+    //
+    // Lock-free: true when the patch can hear an effect whose storage does not
+    // exist yet.
+    bool patchWantsAnUnbuiltLazyEffect() const noexcept;
+    // Builds every engine / COMB pool the current patch can hear and that does
+    // not exist yet. lazyEffectLock held; never frees anything.
+    void buildLazyEffectsThePatchUses(bool fromSilence);
+    bool lazyEffectsPrepared { false };        // guarded by lazyEffectLock
+
     // COMB delay lines, one pool per filter slot, built only while that slot
     // is set to COMB. Every voice/source filter used to carry its own line -
     // 512 x ~3.9 KB at 48 kHz - whether or not any filter was a comb. Same
