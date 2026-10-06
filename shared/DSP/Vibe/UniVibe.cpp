@@ -189,6 +189,7 @@ void UniVibe::settleLampAtIdle() noexcept
 void UniVibe::reset()
 {
     for (auto& c : channels) { c = Channel {}; }
+    for (auto& c : secondChannels) { c = Channel {}; }
     lfoPhase = 0.0f;
     settleLampAtIdle();
     computeStageCoefficients(coeff);
@@ -308,6 +309,55 @@ float UniVibe::processChannel(Channel& c, float input, float& dryOut) noexcept
     return wet;
 }
 
+void UniVibe::processChannelPair(Channel& a, Channel& b, float inA, float inB,
+                                 float& dryA, float& dryB, float& wetA, float& wetB) noexcept
+{
+    // The clip's secant gain on the sum, applied to each part: the parts then
+    // sum to clip(a + b) exactly. Unit slope at zero, so a silent sum is 1.
+    const auto sharedClip = [](float& va, float& vb) noexcept
+    {
+        // One part silent: the other IS the sum, clipped directly (so a pair
+        // with one silent signal is the single pedal bit for bit).
+        if (vb == 0.0f) { va = stageClip(va); return; }
+        if (va == 0.0f) { vb = stageClip(vb); return; }
+        const auto sum = va + vb;
+        const auto gain = std::abs(sum) > 1.0e-12f ? stageClip(sum) / sum : 1.0f;
+        va *= gain;
+        vb *= gain;
+    };
+
+    constexpr auto kDrive = kInputVolts * kInputPad * kPreampGain;
+    auto va = inA * kDrive;
+    auto vb = inB * kDrive;
+    sharedClip(va, vb);
+
+    const auto dcBlock = [this](float v, float& x1, float& y1) noexcept
+    {
+        const auto y = v - x1 + dcCoeff * y1;
+        x1 = v;
+        y1 = y;
+        return y;
+    };
+    dryA = dcBlock(va, a.dryDcX1, a.dryDcY1);
+    dryB = dcBlock(vb, b.dryDcX1, b.dryDcY1);
+
+    for (std::size_t s = 0; s < static_cast<std::size_t>(kStageCount); ++s)
+    {
+        if (s > 0) { sharedClip(va, vb); }
+        const auto ya = coeff[s].b0 * va + coeff[s].b1 * a.x1[s] - coeff[s].a1 * a.y1[s];
+        const auto yb = coeff[s].b0 * vb + coeff[s].b1 * b.x1[s] - coeff[s].a1 * b.y1[s];
+        a.x1[s] = va;
+        a.y1[s] = ya;
+        b.x1[s] = vb;
+        b.y1[s] = yb;
+        va = ya;
+        vb = yb;
+    }
+
+    wetA = dcBlock(va, a.wetDcX1, a.wetDcY1);
+    wetB = dcBlock(vb, b.wetDcX1, b.wetDcY1);
+}
+
 void UniVibe::processSampleFrame(float inL, float inR, float& outL, float& outR) noexcept
 {
     const auto enabled = enabledGate.next();
@@ -354,6 +404,63 @@ void UniVibe::processSampleFrame(float inL, float inR, float& outL, float& outR)
         reset();
         outL = inL;
         outR = inR;
+    }
+}
+
+void UniVibe::processSampleFramePair(float aL, float aR, float bL, float bR,
+                                     float& outAL, float& outAR, float& outBL, float& outBR) noexcept
+{
+    const auto enabled = enabledGate.next();
+    if (enabled <= 0.0f && ! current.enabled)
+    {
+        if (! idle) { reset(); idle = true; }
+        outAL = aL;
+        outAR = aR;
+        outBL = bL;
+        outBR = bR;
+        return;
+    }
+    idle = false;
+
+    // The shared part, once: lamp, cells, coefficients, fades.
+    if (--controlCountdown < 0)
+    {
+        controlTick();
+        controlCountdown = kControlInterval - 1;
+    }
+    for (std::size_t s = 0; s < coeff.size(); ++s)
+    {
+        coeff[s].b0 += coeffStep[s].b0;
+        coeff[s].b1 += coeffStep[s].b1;
+        coeff[s].a1 += coeffStep[s].a1;
+    }
+    const auto invert = 1.0f - 2.0f * invertGate.next();
+    const auto vibrato = vibratoGate.next();
+    constexpr auto toUnits = 1.0f / (kInputVolts * kInputPad * kPreampGain);
+    const auto level = levelGain.next(levelTarget) * toUnits;
+
+    // The audio: both signals through the same coefficients, each clip on
+    // their sum, then the pedal's output switch on each.
+    float dryAL, dryBL, wetAL, wetBL, dryAR, dryBR, wetAR, wetBR;
+    processChannelPair(channels[0], secondChannels[0], aL, bL, dryAL, dryBL, wetAL, wetBL);
+    processChannelPair(channels[1], secondChannels[1], aR, bR, dryAR, dryBR, wetAR, wetBR);
+    const auto mix = [&](float in, float dry, float wet) noexcept
+    {
+        const auto m = ((dry + wet) * kChorusMakeup * (1.0f - vibrato) + wet * kVibratoMakeup * vibrato) * level;
+        return in + (m - in) * enabled;
+    };
+    outAL = mix(aL, dryAL, wetAL);
+    outAR = mix(aR, dryAR, wetAR * invert);
+    outBL = mix(bL, dryBL, wetBL);
+    outBR = mix(bR, dryBR, wetBR * invert);
+
+    if (! std::isfinite(outAL) || ! std::isfinite(outAR) || ! std::isfinite(outBL) || ! std::isfinite(outBR))
+    {
+        reset();
+        outAL = aL;
+        outAR = aR;
+        outBL = bL;
+        outBR = bR;
     }
 }
 } // namespace px3

@@ -24,9 +24,9 @@ For PX3 Synth v0.8.2.
 
 P(X3) is a 64-voice polyphonic synthesiser. Every note you play is given its
 own voice, and every voice contains four sound sources, two filters, an
-amplitude envelope, and modulation of its own. Those voices are mixed, sent
-through seven effects in an order you choose, then through LUCY and SPREAD on
-the master, and delivered to the output.
+amplitude envelope, and modulation of its own. Those voices go through VIBE,
+are mixed, sent through six effects in an order you choose, then through LUCY
+and SPREAD on the master, and delivered to the output.
 
 Four things shape the way you work with it.
 
@@ -161,8 +161,13 @@ It also carries messages when the instrument has something to tell you.
                        │  one channel per source
           ┌────────────┴─────────────┐
           │                          │
-     level, pan,                 FX SEND
+     level, pan,                    SEND
      mute, solo                      │
+          │                          │
+     ┌────▼──────────────────────────▼────┐
+     │  VIBE  (one pedal on dry and send) │
+     └────┬──────────────────────────┬────┘
+          │                          │
           │                ┌─────────▼─────────┐
        DRY BUS             │     FX CHAIN      │
      (EQ, COMP)            │   (your order)    │
@@ -178,7 +183,9 @@ It also carries messages when the instrument has something to tell you.
 Each note gets a voice of its own. Inside it, the four sources are coloured by
 ANALOG, filtered, and shaped by the amplitude envelope. Each source then arrives
 at its own mixer channel, where level, pan, mute and solo apply, and goes on to
-the **dry bus**.
+the **dry bus**. VIBE works on the instrument at this point, ahead of the split:
+the dry signal and everything sent to the effects go through the same pedal, so
+the effects hear the vibe too.
 
 Each source channel also has a **send** into the FX bus. The effects process only
 what is sent to them, and their output returns on its own channel with its own
@@ -825,11 +832,12 @@ Several routes on one control add together.
 
 # FX — Effects
 
-Seven effects process the FX bus in a chain whose order you choose: **VIBE**,
-**DRIVE**, **CHORUS**, **DOOM**, **DELAY**, **MOOD** and **REVERB** (that is
-the default order). Three more cards sit on the same page but outside the chain:
-**ANALOG**, which works inside the voices, and **LUCY** and **SPREAD**, which
-work on the master, in that order, after everything else.
+Six effects process the FX bus in a chain whose order you choose: **DRIVE**,
+**CHORUS**, **DOOM**, **DELAY**, **MOOD** and **REVERB** (that is the default
+order). Four more cards sit on the same page but outside the chain: **ANALOG**,
+which works inside the voices, **VIBE**, which works on the whole instrument
+ahead of the mixer's dry/send split, and **LUCY** and **SPREAD**, which work on
+the master, in that order, after everything else.
 
 Each card has a power button in its corner; clicking the card's background does
 the same.
@@ -842,9 +850,9 @@ standalone PX3 plug-ins keep the usual dry/wet crossfade, where fully up is the
 effect alone.) DELAY's repeats follow the square root of AMOUNT — clearly there
 from a quarter of the knob, and the whole echo at full — and its Granular type
 always makes its full grain cloud, with AMOUNT setting only how much of it you
-hear. DRIVE and VIBE are different: distortion and VIBRATO have no dry signal in
-them, so adding them on top of the dry would turn them into something else
-(parallel distortion, a chorus). They keep their crossfade for now.
+hear. DRIVE is different: distortion has no dry signal in it, so adding it on
+top of the dry would make it parallel distortion. It keeps its crossfade for
+now. (VIBE is not on the send at all - see below.)
 
 **Order matters, and you choose it.** Drag the nodes in the signal-flow strip
 above the cards. The cards themselves are editors, not ordering controls, so they
@@ -879,6 +887,14 @@ photocells. The cells brighten quickly and darken slowly, so the sweep lunges
 up and drifts back - the lopsided, throbbing swirl - and the stages are not
 perfect all-passes, so the low end swells and dips with it. The transistor
 stages add a little grit when driven hard. Off in a new patch.
+
+**Where it sits:** On the whole instrument, ahead of the mixer's dry/send split
+- like a pedal between the synth and the desk. The dry signal and what is sent to
+the effects go through one pedal (one lamp, one sweep), so the reverb and delay
+hear the vibe, VIBRATO is the phase-shifted signal alone, and switching VIBE on
+does not make the patch quieter. Its card sits first after ANALOG and it is not
+in the reorder strip. (Up to 0.8.2 it was in the send chain, where the dry signal
+passed underneath it: VIBRATO was never pure, and engaging it cost up to 3 dB.)
 
 **Controls:**
 

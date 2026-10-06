@@ -590,7 +590,9 @@ void testFactoryPresets()
             { "Dimension Drift", -23.03 },
             // Moved > 1 dB by DELAY's sqrt(AMOUNT) repeats in the synth.
             { "Porcelain", -26.31 },
-            { "Music Box", -30.49 }
+            { "Music Box", -30.49 },
+            // Moved > 1 dB by VIBE becoming a pre-chain insert on the whole instrument.
+            { "Lamp Swirl", -25.15 }
             };
             juce::StringArray drifted;
             for (const auto& [name, ref] : kReleveled)

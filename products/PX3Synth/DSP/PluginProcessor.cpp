@@ -3068,6 +3068,18 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
 #endif
         }
 
+        // ---- VIBE ---------------------------------------------------------
+        // A pre-chain insert on the instrument, ahead of the dry/send split:
+        // the dry sum and the send sum go through ONE Uni-Vibe - one lamp, one
+        // set of photocells, one coefficient trajectory - as two signals.
+        // Every stage but its soft clips is linear and every channel gain
+        // above is a per-side scalar, so this is (to the clips) one VIBE on
+        // each source before the mixer: the dry hears it, the effects hear it,
+        // and VIBRATO is the phased signal alone. As a send effect it was not:
+        // its return was (stage - send), so the dry passed underneath VIBRATO
+        // and engaging it cost up to 3 dB.
+        uniVibeComponent.processSampleFramePair(dryL, dryR, fxInL, fxInR, dryL, dryR, fxInL, fxInR);
+
         // ---- DRY CHANNEL --------------------------------------------------
         // The dry bus gets the same treatment a source channel does - level,
         // pan, polarity, mute/solo - applied to the sum rather than to each
@@ -3129,8 +3141,7 @@ void PX3SynthAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         {
             switch (stage)
             {
-                case 0: // VIBE (the Uni-Vibe)
-                    uniVibeComponent.processSampleFrame(stageL, stageR, stageL, stageR);
+                case 0: // VIBE: a pre-chain insert, applied to the dry and send sums above
                     break;
 
                 case 1: // Delay

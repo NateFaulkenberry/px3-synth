@@ -43,12 +43,22 @@ using FxOrder = std::array<int, kFxStageCount>;
 // nothing.
 //
 //   ANALOG  inside the voices, before the sources are summed;
+//   VIBE    on the instrument ahead of the dry/send split - one Uni-Vibe, two
+//           signals (the dry sum and the send sum). As a send effect its return
+//           was (stage - send): the dry passed under VIBRATO, which has none,
+//           and engaging it cost up to 3 dB;
 //   LUCY    a master insert on the dry + FX sum. In the send chain its output
 //           was a (stage - send) difference: the residual dry stayed at full
 //           level under it, engaging it cost ~5 dB, and its own output sat
 //           5 dB below a dry signal no LUCY control could touch;
 //   SPREAD  the master bus after that, sizing the finished picture.
-inline constexpr bool isUpstreamFxStage(int stage) noexcept { return stage == fxStageAnalog; }
+inline constexpr bool isUpstreamFxStage(int stage) noexcept
+{
+    return stage == fxStageAnalog || stage == fxStageVibe;
+}
+// The upstream stages in the order they process: ANALOG inside the voices,
+// then VIBE on the instrument ahead of the dry/send split.
+inline constexpr std::array<int, 2> kUpstreamFxStageOrder { { fxStageAnalog, fxStageVibe } };
 inline constexpr bool isMasterFxStage(int stage) noexcept
 {
     return stage == fxStageLucy || stage == fxStageStereoSpread;
@@ -61,8 +71,9 @@ inline constexpr bool isSendChainFxStage(int stage) noexcept
 // order says: LUCY degrades the mix, SPREAD then sizes what LUCY produced.
 inline constexpr std::array<int, 2> kMasterFxStageOrder { { fxStageLucy, fxStageStereoSpread } };
 
-// ANALOG is upstream of everything (it is inside the voices). VIBE colours the
-// source, CHORUS widens it, DOOM mangles it, the time-based effects follow,
+// ANALOG is upstream of everything (it is inside the voices), VIBE colours the
+// whole instrument before the split; in the chain DRIVE, CHORUS widens it,
+// DOOM mangles it, the time-based effects follow,
 // REVERB builds the room; then the master stages: LUCY on the whole mix, and
 // STEREO SPREAD sizing the whole finished picture - which is why it is last
 // rather than early: a widener placed before a reverb only widens what the

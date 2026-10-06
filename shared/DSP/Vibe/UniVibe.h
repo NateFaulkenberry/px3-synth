@@ -68,6 +68,18 @@ public:
     void updateForBlock(const UniVibeSettings& settings);
     void processSampleFrame(float inL, float inR, float& outL, float& outR) noexcept;
 
+    // TWO stereo signals through ONE pedal: one lamp, one LFO, one set of
+    // photocells and stage coefficients, one set of enable/mode/stereo/level
+    // fades - advanced once per sample and applied to both - with separate
+    // filter states for each signal. The transistor clips act on the sum of
+    // the two signals and their gain is shared between them in proportion;
+    // every other stage is linear. So outA + outB is one Uni-Vibe on a + b,
+    // to float rounding, delivered as two parts.
+    // The Synth uses it to put VIBE on the instrument ahead of the mixer: a =
+    // the dry bus, b = the FX send. The standalone PX3 Vibe never calls it.
+    void processSampleFramePair(float aL, float aR, float bL, float bR,
+                                float& outAL, float& outAR, float& outBL, float& outBR) noexcept;
+
     // ---- the model, exposed for tests ----------------------------------------
     // Rate of the lamp sweep for a SPEED value, in Hz.
     static float speedToHz(float speed) noexcept;
@@ -101,6 +113,12 @@ private:
     void computeStageCoefficients(std::array<Coefficients, kStageCount>& out) const noexcept;
     void settleLampAtIdle() noexcept;
     float processChannel(Channel& c, float input, float& dryOut) noexcept;
+    // One channel of two signals through the same stages. Each transistor
+    // clip acts on the SUM of the two and is shared between them in
+    // proportion (its secant gain), and everything else is linear, so the two
+    // results add up to exactly what processChannel makes of a + b.
+    void processChannelPair(Channel& a, Channel& b, float inA, float inB,
+                            float& dryA, float& dryB, float& wetA, float& wetB) noexcept;
 
     double sampleRateHz { 48000.0 };
     UniVibeSettings current;
@@ -121,6 +139,8 @@ private:
     std::array<Coefficients, kStageCount> coeffStep {};
 
     std::array<Channel, 2> channels {};
+    std::array<Channel, 2> secondChannels {};   // processSampleFramePair's b
+
     float dcCoeff { 0.999f };
 
     SmoothedGate enabledGate;

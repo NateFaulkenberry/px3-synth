@@ -1,7 +1,7 @@
 # VIBE — Uni-Vibe model
 
-`shared/DSP/Vibe/UniVibe.{h,cpp}`. A stage in the Synth's FX chain and the PX3
-Vibe plug-in. Parameters (`fx.vibe.*`): `enabled`, `speed`, `intensity`, `mode`
+`shared/DSP/Vibe/UniVibe.{h,cpp}`. A pre-chain insert on the whole Synth (see
+"Placement in the Synth") and the PX3 Vibe plug-in. Parameters (`fx.vibe.*`): `enabled`, `speed`, `intensity`, `mode`
 (CHORUS / VIBRATO), `level` (±12 dB), `stereo` (LINKED / INVERTED).
 
 Until 0.8.0 "VIBE" was two unrelated things on one card: a phaser labelled
@@ -152,6 +152,38 @@ cell 1 at 294 k.
 * VIBRATO is level-matched to CHORUS; the pedal's divider ratio is unverified.
 * No light-history (long-term memory) term: no measurement to calibrate it.
 * No oversampling ([D] did not need it either: the clipping is gentle).
+
+## 2a. Placement in the Synth
+
+VIBE has no dry/wet: CHORUS is the pedal's equal dry + phased sum, VIBRATO the
+phased signal alone. On the FX send its return was `(stage − send)`, so the
+dry bus passed underneath it - VIBRATO was never pure, and engaging it cost
+0.6-1.2 dB in CHORUS and 2.3-3.1 dB in VIBRATO (measured through the plug-in).
+
+It now sits on the instrument ahead of the mixer's dry/send split: the dry sum
+and the send sum go through ONE `UniVibe` via `processSampleFramePair` - one
+lamp, one LFO, one LDR state, one coefficient trajectory, one set of fades,
+advanced once per sample and applied to both signals, with separate filter
+states. Both signals therefore move in exactly the same way.
+
+**The clips act on the sum.** Every stage is linear except the transistor soft
+clips (preamp and three Darlingtons). Clipping each signal on its own made the
+pair differ from one pedal on dry + send by −42 dB at a synth's level and
+−24 dB 12 dB hotter (intermodulation). Instead each clip is evaluated on the
+SUM of the two signals and its secant gain `clip(a+b)/(a+b)` is applied to both
+parts, so the parts add up to `clip(a+b)` exactly; the linear filters,
+DC blockers and output switch then keep that true. The pair equals one pedal on
+dry + send to float rounding (`Vibe_PairIsOneVibeOnTheSum_*`: −115 to −117 dB),
+and in the plug-in, with the sends closed, VIBE is the standalone pedal on the
+instrument (`Vibe_InTheSynthIsOnePedalOnTheInstrument_*`: −119/−121 dB). One
+signal through the pair is the single pedal bit for bit.
+
+Why not elsewhere: per source stem would be four instances and the stems are
+mono (INVERTED's stereo would be lost before the pan); a single "pre-fader sum"
+does not exist because each source's dry and send are different weightings;
+on the master (like LUCY) it would also swirl the reverb's tail. The pair is
+exact and costs 42 µs per 512-sample block against 26 µs for one stereo pedal
+(0.39 % of the 48 kHz budget; 16 voices: 920.5 → 930.0 µs median).
 
 ## 3. What the old VIBE was
 

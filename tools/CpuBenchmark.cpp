@@ -849,6 +849,39 @@ int main(int argc, char* argv[])
             std::printf("  class alone, stereo: %8.2f us per block (%5.3f%% of budget)  [sink %g]\n",
                         micros, 100.0 * micros / budget, static_cast<double>(sink));
         }
+        {
+            // What the Synth runs: two stereo signals (dry, send) through one
+            // lamp, each clip on their sum.
+            px3::UniVibe vibe;
+            vibe.prepare(kSampleRate);
+            px3::UniVibeSettings settings;
+            settings.speed = 0.5f;
+            settings.intensity = 0.7f;
+            settings.mode = 0;
+            juce::Random random(7);
+            std::vector<float> noise(static_cast<std::size_t>(kBlockSize) * 4u);
+            for (auto& v : noise) { v = random.nextFloat() * 0.5f - 0.25f; }
+            constexpr int kBlocks = 4000;
+            float sink = 0.0f;
+            const auto start = std::chrono::steady_clock::now();
+            for (int block = 0; block < kBlocks; ++block)
+            {
+                vibe.updateForBlock(settings);
+                for (int i = 0; i < kBlockSize; ++i)
+                {
+                    float al = 0.0f, ar = 0.0f, bl = 0.0f, br = 0.0f;
+                    const auto n = static_cast<std::size_t>(i);
+                    const auto stride = static_cast<std::size_t>(kBlockSize);
+                    vibe.processSampleFramePair(noise[n], noise[n + stride], noise[n + 2 * stride],
+                                                noise[n + 3 * stride], al, ar, bl, br);
+                    sink += al + ar + bl + br;
+                }
+            }
+            const auto micros = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - start).count()
+                                / static_cast<double>(kBlocks);
+            std::printf("  class, pair (dry + send): %8.2f us per block (%5.3f%% of budget)  [sink %g]\n",
+                        micros, 100.0 * micros / budget, static_cast<double>(sink));
+        }
         for (const auto on : { false, true })
         {
             Scenario scenario {};

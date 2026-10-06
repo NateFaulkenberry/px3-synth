@@ -300,9 +300,22 @@ void testVisualRedesign()
         const auto strip = panel != nullptr ? panel->debugStripStages() : std::vector<int> {};
         const auto has = [&strip](int id) { return std::find(strip.begin(), strip.end(), id) != strip.end(); };
         check("FxCards_SpreadIsNotInTheReorderableStrip",
-              strip.size() == static_cast<std::size_t>(px3::kFxStageCount - 3)
+              strip.size() == static_cast<std::size_t>(px3::kFxStageCount - 4)
                   && ! has(px3::fxStageStereoSpread) && ! has(px3::fxStageAnalog) && has(px3::fxStageDistortion)
-                  && has(px3::fxStageVibe));
+                  && has(px3::fxStageChorus));
+        // VIBE is a pre-chain insert on the whole instrument: no node in the
+        // strip, its card first after ANALOG, ahead of the chain's cards.
+        {
+            auto* analogCard = panel != nullptr ? panel->cardForSection(px3::fxStageAnalog) : nullptr;
+            auto* vibeCard = panel != nullptr ? panel->cardForSection(px3::fxStageVibe) : nullptr;
+            auto* driveCard = panel != nullptr ? panel->cardForSection(px3::fxStageDistortion) : nullptr;
+            const auto at = [](const juce::Component* c) { return c->getY() * 100000 + c->getX(); };
+            check("FxCards_VibeIsAFixedFirstStage",
+                  ! has(px3::fxStageVibe) && ! FxPanel::isReorderable(px3::fxStageVibe)
+                      && analogCard != nullptr && vibeCard != nullptr && driveCard != nullptr
+                      && showingIn(*vibeCard, *editor) && at(analogCard) < at(vibeCard) && at(vibeCard) < at(driveCard),
+                  "VIBE in strip " + juce::String(has(px3::fxStageVibe) ? "YES" : "no"));
+        }
         // LUCY is a master insert now, like SPREAD: no node in the strip, a
         // card after the send chain, and LUCY before SPREAD because that is
         // the order they process in.

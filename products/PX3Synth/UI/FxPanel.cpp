@@ -64,8 +64,8 @@ FxPanel::FxPanel(juce::ToggleButton& delayBypass,
         }
 
         // The strip shows only the reorderable send chain. LUCY and SPREAD run
-        // on the master bus and ANALOG in the voices, so they are put back at
-        // the end - the
+        // on the master bus, ANALOG in the voices and VIBE ahead of the split,
+        // so they are put back at the end - the
         // processor's order is always a permutation of every stage.
         std::vector<int> full(order.begin(), order.end());
         for (const auto stage : chainOrder)
@@ -324,22 +324,25 @@ void FxPanel::resized()
 
     // Only the stages that have a card take a cell. A stage without one is
     // still in the chain and still processes; it simply has nothing to show.
-    // ANALOG first (it is inside the voices), then the send chain in its
-    // order, then the master-bus stages (LUCY, SPREAD) in the order they
+    // ANALOG and VIBE first (inside the voices, then ahead of the split), then
+    // the send chain in its order, then the master-bus stages (LUCY, SPREAD) in the order they
     // process, which always sit last because that is where they are in the
     // signal - whatever slot a saved order happens to give them.
     std::vector<juce::Component*> cards;
     cards.reserve(chainOrder.size());
-    for (const auto pass : { 0, 1 })
+    for (const auto sectionId : px3::kUpstreamFxStageOrder)
     {
-        for (const auto sectionId : chainOrder)
+        if (auto* component = componentForSection(sectionId))
         {
-            const auto group = isUpstreamOfChain(sectionId) ? 0 : (isReorderable(sectionId) ? 1 : 2);
-            if (group != pass) { continue; }
-            if (auto* component = componentForSection(sectionId))
-            {
-                cards.push_back(component);
-            }
+            cards.push_back(component);
+        }
+    }
+    for (const auto sectionId : chainOrder)
+    {
+        if (! isReorderable(sectionId)) { continue; }
+        if (auto* component = componentForSection(sectionId))
+        {
+            cards.push_back(component);
         }
     }
     for (const auto sectionId : px3::kMasterFxStageOrder)

@@ -340,7 +340,7 @@ std::vector<FactoryPreset> factoryPresets()
         { "fx.vibe.mode", vibeChorus }, { "fx.vibe.intensity", 0.72f }, { "fx.vibe.speed", 0.42f },
         { "fx.analog.amount", 0.18f }, { "fx.analog.type", vintage },
         { "fx.reverb.amount", 0.05f }, { "fx.reverb.algorithm", room },
-        { "mix.master.level", 0.62f } } },
+        { "mix.master.level", 0.5488f } } },
 
     // =======================================================================
     // EXPERIMENTAL

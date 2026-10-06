@@ -260,6 +260,17 @@ void makeFullPatch(Processor& processor)
     {
         setParam(processor, juce::String("mix.") + id + ".send.fx", 0.6f);
     }
+    // Something on the send that answers at once, so the sends are heard
+    // within the render. VIBE used to be that (it sat in the send chain and
+    // replaced what it was sent); it is now ahead of the dry/send split, and
+    // the time-based effects at their defaults barely sound in 0.4 s - the
+    // sends' effect fell to ~3e-5 and a route's arrival transient was a third
+    // of it. CHORUS, at a clear amount, adds its lines immediately, and DRIVE
+    // (still a crossfading send effect) gives even the SUB's sine harmonics.
+    setParam(processor, "fx.chorus.amount", 0.8f);
+    setParam(processor, "fx.chorus.mix", 1.0f);
+    setParam(processor, "fx.distortion.mix", 1.0f);
+    setParam(processor, "fx.distortion.drive", 1.0f);
     for (const auto* bus : { "mix.dry", "mix.fx" })
     {
         for (const auto* insert : { ".insert.eq.enabled", ".insert.comp.enabled" })

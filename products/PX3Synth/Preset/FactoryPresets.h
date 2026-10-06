@@ -16,7 +16,7 @@ namespace px3::presets
 // way a refreshed preset reaches someone who has already run the plugin once -
 // the writer skips files that already exist. User presets live in a separate
 // root and are never touched by this.
-inline constexpr int kFactoryLibraryVersion = 28;
+inline constexpr int kFactoryLibraryVersion = 29;
 
 struct FactoryPreset
 {

@@ -70,9 +70,10 @@ and a glossary.
 - **Six Macros** (M1-M6) down the left of every page, each able to move any
   number of parameters, with a depth panel per Macro.
 - **MIDI Learn** on any knob: Shift-click, move a hardware control.
-- **Effects:** VIBE, DRIVE, CHORUS, DOOM, DELAY, MOOD and REVERB in a
-  user-ordered send chain; LUCY and SPREAD on the master; and ANALOG,
-  per-voice drift inside the voices.
+- **Effects:** DRIVE, CHORUS, DOOM, DELAY, MOOD and REVERB in a
+  user-ordered send chain; VIBE on the whole instrument ahead of the mixer's
+  dry/send split; LUCY and SPREAD on the master; and ANALOG, per-voice drift
+  inside the voices.
 - **Mixer:** level, pan, send, mute, solo and a meter per channel (SUB, OSC 1-3,
   FX return), and EQ / COMP bus inserts on the dry and FX buses — a four-band EQ
   with a playable graph and an 1176-style FET compressor with a VU meter.
@@ -400,7 +401,7 @@ clean rather than releasing an old tail.
 | Effect | What it is | Standalone | Design notes |
 | --- | --- | --- | --- |
 | **ANALOG** | Per-voice analog drift, saturation, supply sag and hiss, inside each voice before the sources are summed. STYLE and AMOUNT. Not in the reorder strip | — | — |
-| **VIBE** | A Uni-Vibe model: four staggered phase stages swept by one lamp through four photocells, CHORUS / VIBRATO modes, STEREO LINKED / INVERTED | PX3 Vibe | [VIBE_DSP_DESIGN.md](docs/VIBE_DSP_DESIGN.md) |
+| **VIBE** | A Uni-Vibe model: four staggered phase stages swept by one lamp through four photocells, CHORUS / VIBRATO modes, STEREO LINKED / INVERTED. On the instrument ahead of the dry/send split (one pedal, dry and send); not in the reorder strip | PX3 Vibe | [VIBE_DSP_DESIGN.md](docs/VIBE_DSP_DESIGN.md) |
 | **DRIVE** | SOFT / HARD / ASYM clipping with TIGHT, TONE and automatic level matching, oversampled with anti-derivative anti-aliasing | — | — |
 | **CHORUS** | Hardware topologies: JUNO-60 I / II / I+II, Dimension D (DIM 1-4, 1+4, 2+4, 3+4), BOSS CE-1 and a Solina-style ENSEMBLE | PX3 Chorus | [CHORUS_DSP_DESIGN.md](docs/CHORUS_DSP_DESIGN.md) |
 | **DOOM** | Two-channel ambient processor: an always-listening micro-looper (BURST / RADIO / MASK) and a wet channel (SOUP / RELAY / FLIP); six knobs, twelve functions | PX3 Doom | [DOOM_DSP_DESIGN.md](docs/DOOM_DSP_DESIGN.md) |
@@ -465,9 +466,11 @@ MIDI / on-screen keyboard
        -> ANALOG (per-voice drift, before the sources are summed)
        -> FILTER 1 / FILTER 2 (SERIES or PARALLEL)
        -> AMP ENV
-  -> Source stems -> DRY BUS (channel level/pan/mute/solo)
-                  -> FX SEND BUS (channel sends)
-  -> FX chain (user order: VIBE / DRIVE / CHORUS / DOOM / DELAY / MOOD / REVERB)
+  -> Source stems -> channel level/pan/mute/solo -> dry sum
+                  -> channel sends                -> send sum
+  -> VIBE (one Uni-Vibe on the dry sum and the send sum: one lamp, clips on their total)
+  -> DRY BUS (fader/pan/mute/solo, EQ/COMP)
+  -> FX chain on the send (user order: DRIVE / CHORUS / DOOM / DELAY / MOOD / REVERB)
   -> FX RETURN (return level/pan/mute/solo)
   -> MASTER BUS (DRY + FX RETURN, fixed output boost)
   -> console master -> LUCY -> SPREAD -> output ceiling -> output

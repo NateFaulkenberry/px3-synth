@@ -199,6 +199,201 @@ void printVibeCalibration()
     }
 }
 
+// ---- VIBE in the Synth: one pedal on the instrument, ahead of the split ----
+//
+// The Synth runs VIBE on the dry sum and the send sum as two signals through
+// ONE Uni-Vibe (processSampleFramePair): one lamp, one coefficient trajectory.
+// As a send effect its return was (stage - send), so the dry passed underneath
+// VIBRATO (which has none) and engaging it cost up to 3 dB.
+static void testVibeAsAPreChainInsert()
+{
+    constexpr double rate = 48000.0;
+    const auto settingsFor = [](int mode, int stereo)
+    {
+        px3::UniVibeSettings s;
+        s.enabled = true;
+        s.speed = 0.55f;
+        s.intensity = 0.9f;
+        s.mode = mode;
+        s.stereo = stereo;
+        return s;
+    };
+    // Two different signals at a synth's level: a saw chord (the dry) and a
+    // second chord, quieter (the send).
+    const auto signal = [](int which, int n, double gain)
+    {
+        const double f[2][3] = { { 110.0, 164.8, 220.0 }, { 146.8, 196.0, 293.7 } };
+        double v = 0.0;
+        for (auto hz : f[which])
+        {
+            const auto ph = std::fmod(hz * n / 48000.0, 1.0);
+            v += 2.0 * ph - 1.0;
+        }
+        return static_cast<float>(v * gain / 3.0);
+    };
+
+    for (const auto mode : { 0, 1 })
+    {
+        for (const auto stereo : { 0, 1 })
+        {
+            const auto label = juce::String(mode == 0 ? "CHORUS" : "VIBRATO") + (stereo == 0 ? " LINKED" : " INVERTED");
+
+            // b silent: the pair's first signal is the single pedal, bit for bit,
+            // so the two paths share one control trajectory exactly.
+            {
+                px3::UniVibe single, pair;
+                for (auto* v : { &single, &pair }) { v->updateForBlock(settingsFor(mode, stereo)); v->prepare(rate); }
+                auto identical = true, bSilent = true;
+                for (int n = 0; n < 96000; ++n)
+                {
+                    if (n % 512 == 0) { single.updateForBlock(settingsFor(mode, stereo)); pair.updateForBlock(settingsFor(mode, stereo)); }
+                    const auto x = signal(0, n, 0.25);
+                    float sL, sR, aL, aR, bL, bR;
+                    single.processSampleFrame(x, x * 0.8f, sL, sR);
+                    pair.processSampleFramePair(x, x * 0.8f, 0.0f, 0.0f, aL, aR, bL, bR);
+                    identical = identical && sL == aL && sR == aR;
+                    bSilent = bSilent && bL == 0.0f && bR == 0.0f;
+                }
+                check(("Vibe_PairSharesOneLamp_" + label.replaceCharacter(' ', '_')).toRawUTF8(), identical && bSilent,
+                      "one signal through the pair is the single pedal bit for bit; a silent second path stays silent");
+            }
+
+            // Two signals: the pair's sum against one pedal on their sum, at a
+            // synth's level and 12 dB hotter. Every stage is linear except the
+            // transistor soft clips, which act on the sum and share their gain
+            // in proportion, so the two parts add up to the one pedal to float
+            // rounding. (Clipping each part on its own was -42 dB off at the
+            // synth's level and -24 dB hot: the clips' intermodulation.)
+            for (const auto gain : { 0.25, 1.0 })
+            {
+                px3::UniVibe single, pair;
+                for (auto* v : { &single, &pair }) { v->updateForBlock(settingsFor(mode, stereo)); v->prepare(rate); }
+                double err = 0.0, ref = 0.0;
+                for (int n = 0; n < 96000; ++n)
+                {
+                    const auto a = signal(0, n, gain);
+                    const auto b = signal(1, n, gain * 0.5);
+                    float sL, sR, aL, aR, bL, bR;
+                    single.processSampleFrame(a + b, (a + b) * 0.8f, sL, sR);
+                    pair.processSampleFramePair(a, a * 0.8f, b, b * 0.8f, aL, aR, bL, bR);
+                    if (n < 4800) { continue; }
+                    const auto dL = static_cast<double>(sL) - (aL + bL);
+                    const auto dR = static_cast<double>(sR) - (aR + bR);
+                    err += dL * dL + dR * dR;
+                    ref += static_cast<double>(sL) * sL + static_cast<double>(sR) * sR;
+                }
+                const auto db = 10.0 * std::log10(juce::jmax(1.0e-30, err) / juce::jmax(1.0e-30, ref));
+                const auto peakDb = juce::roundToInt(juce::Decibels::gainToDecibels(gain * 1.5));
+                check(("Vibe_PairIsOneVibeOnTheSum_" + label.replaceCharacter(' ', '_') + "_at_" + juce::String(peakDb) + "dBFS").toRawUTF8(),
+                      db < -100.0,
+                      "dry + send through one lamp vs one pedal on their sum: " + fmt(db, 1)
+                          + " dB (each clip acts on the sum and is shared in proportion)");
+            }
+        }
+    }
+
+    // In the plugin: with every send closed the output is the instrument
+    // through one VIBE - the standalone pedal on the VIBE-off render, taken
+    // back to the level VIBE sees. VIBRATO is therefore the phased signal
+    // alone.
+    {
+        auto renderSynth = [](bool vibe, int mode, int stereo)
+        {
+            PX3SynthAudioProcessor processor;
+            makePlainPatch(processor);
+            setChoice(processor, "voice.osc1.mode", 1);
+            for (const auto* id : { "fx.chorus.enabled", "fx.spread.enabled", "fx.doom.enabled", "fx.lucy.enabled" })
+                setParam(processor, id, 0.0f);
+            setParam(processor, "fx.vibe.enabled", vibe ? 1.0f : 0.0f);
+            setParam(processor, "fx.vibe.speed", 0.55f);
+            setParam(processor, "fx.vibe.intensity", 0.9f);
+            setChoice(processor, "fx.vibe.mode", mode);
+            setChoice(processor, "fx.vibe.stereo", stereo);
+            return render(processor, 96000, { { 0, true, 45, 0.8f }, { 0, true, 52, 0.8f } });
+        };
+        for (const auto mode : { 0, 1 })
+        {
+            const auto off = renderSynth(false, mode, 1);
+            const auto on = renderSynth(true, mode, 1);
+            px3::UniVibe pedal;
+            auto s = px3::UniVibeSettings {};
+            s.enabled = true; s.speed = 0.55f; s.intensity = 0.9f; s.mode = mode; s.stereo = 1;
+            pedal.updateForBlock(s);
+            pedal.prepare(48000.0);
+            // Everything after VIBE in the Synth with this patch is one fixed
+            // gain - the dry bus fader and the output boost - so the reference
+            // pedal is given the signal at the level VIBE actually saw.
+            PX3SynthAudioProcessor probe;
+            const auto after = getParamValue(probe, "mix.dry.level") * juce::Decibels::decibelsToGain(6.0f);
+            double err = 0.0, ref = 0.0, changed = 0.0;
+            for (std::size_t i = 0; i < off.left.size(); ++i)
+            {
+                if (i % 512 == 0) { pedal.updateForBlock(s); }
+                float l, r;
+                pedal.processSampleFrame(off.left[i] / after, off.right[i] / after, l, r);
+                l *= after;
+                r *= after;
+                if (i < 4800) { continue; }
+                const auto dl = static_cast<double>(on.left[i]) - l, dr = static_cast<double>(on.right[i]) - r;
+                err += dl * dl + dr * dr;
+                ref += static_cast<double>(l) * l + static_cast<double>(r) * r;
+                const auto cl = static_cast<double>(on.left[i]) - off.left[i];
+                changed += cl * cl;
+            }
+            const auto db = 10.0 * std::log10(juce::jmax(1.0e-30, err) / juce::jmax(1.0e-30, ref));
+            const auto changedDb = 10.0 * std::log10(juce::jmax(1.0e-30, changed) / juce::jmax(1.0e-30, ref * 0.5));
+            check(mode == 0 ? "Vibe_InTheSynthIsOnePedalOnTheInstrument_CHORUS" : "Vibe_InTheSynthIsOnePedalOnTheInstrument_VIBRATO",
+                  db < -90.0 && changedDb > -20.0,
+                  "plugin vs the standalone pedal on the VIBE-off render (INVERTED, sends closed): " + fmt(db, 1)
+                      + " dB; VIBE changes the output by " + fmt(changedDb, 1) + " dB");
+        }
+    }
+
+    // Engaging VIBE does not take the patch down - in either mode - and the
+    // effects hear it: with the dry bus muted, the reverb's return changes.
+    {
+        auto renderWith = [](int vibeMode, bool dryMuted)
+        {
+            PX3SynthAudioProcessor processor;
+            makePlainPatch(processor);
+            setChoice(processor, "voice.osc1.mode", 1);
+            for (const auto* id : { "sub", "osc1", "osc2", "osc3" })
+                setParam(processor, juce::String("mix.") + id + ".send.fx", 1.0f);
+            setParam(processor, "mix.fx.level", 1.0f);
+            setParam(processor, "fx.reverb.enabled", 1.0f);
+            setParam(processor, "fx.reverb.amount", 0.5f);
+            setParam(processor, "mix.dry.mute", dryMuted ? 1.0f : 0.0f);
+            setParam(processor, "fx.vibe.enabled", vibeMode >= 0 ? 1.0f : 0.0f);
+            setChoice(processor, "fx.vibe.mode", juce::jmax(0, vibeMode));
+            return render(processor, 96000, { { 0, true, 45, 0.8f }, { 0, true, 52, 0.8f } });
+        };
+        const auto off = renderWith(-1, false);
+        juce::StringArray levels;
+        auto ok = true;
+        for (const auto mode : { 0, 1 })
+        {
+            const auto on = renderWith(mode, false);
+            const auto db = juce::Decibels::gainToDecibels(on.rmsOver(9600, 96000) / juce::jmax(1.0e-12, off.rmsOver(9600, 96000)));
+            levels.add(juce::String(mode == 0 ? "CHORUS " : "VIBRATO ") + fmt(db, 2) + " dB");
+            ok = ok && std::abs(db) < 1.0;
+        }
+        check("Vibe_EngagingItDoesNotDropTheLevel", ok, levels.joinIntoString(", ") + " re VIBE off (reverb on, sends open)");
+
+        const auto wetOff = renderWith(-1, true);
+        const auto wetOn = renderWith(1, true);
+        double diff = 0.0, ref = 0.0;
+        for (std::size_t i = 9600; i < wetOff.left.size(); ++i)
+        {
+            const auto d = static_cast<double>(wetOn.left[i]) - wetOff.left[i];
+            diff += d * d;
+            ref += static_cast<double>(wetOff.left[i]) * wetOff.left[i];
+        }
+        const auto heardDb = 10.0 * std::log10(juce::jmax(1.0e-30, diff) / juce::jmax(1.0e-30, ref));
+        check("Vibe_TheEffectsHearIt", ref > 1.0e-8 && heardDb > -20.0,
+              "dry muted, reverb return only: VIBE VIBRATO changes it by " + fmt(heardDb, 1) + " dB");
+    }
+}
+
 void testVibe()
 {
     suite("VIBE (Uni-Vibe)");
@@ -536,5 +731,7 @@ void testVibe()
         }
         check("Vibe_ResetReturnsToAFreshInstance", same);
     }
+
+    testVibeAsAPreChainInsert();
 }
 } // namespace px3tests

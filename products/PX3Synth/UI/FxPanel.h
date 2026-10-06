@@ -82,8 +82,9 @@ public:
 
     // Whether a stage is part of the reorderable FX send chain. LUCY and
     // SPREAD run on the master bus after everything, so they are shown after
-    // the chain (in that order); ANALOG runs inside the voices before
-    // anything, so it is shown before it. None of them is in the strip.
+    // the chain (in that order); ANALOG runs inside the voices and VIBE on the
+    // instrument ahead of the dry/send split, so they are shown before it (in
+    // that order). None of them is in the strip.
     static bool isReorderable(int sectionId) noexcept { return px3::isSendChainFxStage(sectionId); }
     static bool isUpstreamOfChain(int sectionId) noexcept { return px3::isUpstreamFxStage(sectionId); }
     // The stage ids the signal-flow strip shows, in order.
