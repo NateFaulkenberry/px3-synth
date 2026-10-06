@@ -1663,6 +1663,10 @@ void PX3SynthAudioProcessor::buildDoomEngine(bool fromSilence)
 {
     doomEffect.build([this, fromSilence](px3::Doom& doom)
     {
+        // DOOM sits on the FX send, whose return is (output - send): MIX has
+        // to add DOOM on top rather than crossfade the send away - see
+        // Doom::MixLaw.
+        doom.setMixLaw(px3::Doom::MixLaw::additive);
         doom.prepare(lazyEffectSampleRate);
         if (fromSilence)
         {

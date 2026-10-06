@@ -107,7 +107,7 @@ std::vector<FactoryPreset> factoryPresets()
         { "voice.amp.attack", 0.002f }, { "voice.amp.decay", 0.26f }, { "voice.amp.sustain", 0.55f }, { "voice.amp.release", 0.14f },
         { "fx.lucy.global", 0.26f }, { "fx.lucy.mode", standard }, { "fx.lucy.loss", 0.44f }, { "fx.lucy.speed", 0.62f },
         { "fx.lucy.filter", 0.22f }, { "fx.lucy.freq", 0.62f }, { "fx.lucy.slope", slope24 },
-        { "fx.lucy.weighting", weightDark }, { "fx.lucy.loss.gain", 12.0f },
+        { "fx.lucy.weighting", weightDark }, { "fx.lucy.loss.gain", -6.2f },
         { "mix.master.level", 0.60f } } },
 
     { "Tar Kiln", "BASS", "P(X3)",
@@ -118,7 +118,7 @@ std::vector<FactoryPreset> factoryPresets()
         { "fx.doom.enabled", 1 }, { "fx.lucy.enabled", 0 }, { "fx.chorus.enabled", 0 }, { "fx.spread.enabled", 0 },
         { "voice.filter2.enabled", 0 }, { "global.character.enabled", 1 }, { "global.character.profile", 3 },
         { "voice.sub.enabled", 1 }, { "voice.sub.tuning.octave", -1.0f }, { "voice.sub.waveform", subSquare },
-        { "mix.sub.level", 0.78f }, { "mix.osc1.level", 0.62f },
+        { "mix.sub.level", 0.66f }, { "mix.osc1.level", 0.52f },
         { "voice.filter1.enabled", 1 }, { "voice.filter1.type", lp12 }, { "voice.filter1.cutoff", 640.0f }, { "voice.filter1.resonance", 1.05f },
         { "voice.amp.attack", 0.003f }, { "voice.amp.decay", 0.30f }, { "voice.amp.sustain", 0.80f }, { "voice.amp.release", 0.18f },
         { "fx.doom.mix", 0.30f }, { "fx.doom.wet.mode", relay }, { "fx.doom.wet.time", 0.06f }, { "fx.doom.wet.modify", 0.20f },
@@ -190,7 +190,7 @@ std::vector<FactoryPreset> factoryPresets()
         { "fx.lucy.global", 0.42f }, { "fx.lucy.mode", inverse }, { "fx.lucy.loss", 0.62f }, { "fx.lucy.speed", 0.44f },
         { "fx.lucy.filter", 0.34f }, { "fx.lucy.freq", 0.72f }, { "fx.lucy.slope", slope24 },
         { "fx.lucy.verb", 0.30f }, { "fx.lucy.decay", 0.50f }, { "fx.lucy.weighting", weightBright },
-        { "fx.lucy.limiter.threshold", 0.70f }, { "fx.lucy.loss.gain", 24.7f },
+        { "fx.lucy.limiter.threshold", 0.70f }, { "fx.lucy.loss.gain", -1.55f },
         { "fx.spread.amount", 0.35f }, { "fx.spread.mode", classic },
         { "mix.master.level", 0.56f } } },
 
@@ -260,7 +260,7 @@ std::vector<FactoryPreset> factoryPresets()
         // A low clock darkens and slows SOUP; a high one is where the sparkle is.
         { "fx.doom.clock", 0.55f }, { "fx.doom.glue", 0.12f }, { "fx.doom.eq", -0.15f }, { "fx.doom.spread", 0.80f },
         { "fx.spread.amount", 0.38f }, { "fx.spread.mode", deep },
-        { "mix.master.level", 0.54f } } },
+        { "mix.master.level", 0.429f } } },
 
     { "Tidal Organ", "PADS", "P(X3)",
       "Drawbar organ tone through the string-machine ensemble chorus, with MOOD holding a "
@@ -308,7 +308,7 @@ std::vector<FactoryPreset> factoryPresets()
         { "voice.amp.attack", 0.001f }, { "voice.amp.decay", 0.20f }, { "voice.amp.sustain", 0.08f }, { "voice.amp.release", 0.22f },
         { "fx.lucy.global", 0.50f }, { "fx.lucy.packets", packetRepeat }, { "fx.lucy.mode", standard },
         { "fx.lucy.loss", 0.58f }, { "fx.lucy.speed", 0.68f }, { "fx.lucy.spread", 0.85f },
-        { "fx.lucy.filter", 0.26f }, { "fx.lucy.freq", 0.66f }, { "fx.lucy.limiter.threshold", 0.68f }, { "fx.lucy.loss.gain", 6.8f },
+        { "fx.lucy.filter", 0.26f }, { "fx.lucy.freq", 0.66f }, { "fx.lucy.limiter.threshold", 0.68f }, { "fx.lucy.loss.gain", -2.1f },
         { "fx.delay.amount", 0.26f }, { "fx.delay.algorithm", stereoDelay }, { "fx.delay.time", 0.22f }, { "fx.delay.feedback", 0.30f },
         { "fx.reverb.amount", 0.09f }, { "fx.reverb.algorithm", room },
         { "mix.master.level", 0.95f } } },
@@ -360,7 +360,7 @@ std::vector<FactoryPreset> factoryPresets()
         { "fx.lucy.gate", 1 }, { "fx.lucy.gate.threshold", 0.12f },
         { "fx.lucy.filter", 0.40f }, { "fx.lucy.freq", 0.55f }, { "fx.lucy.slope", slope96 },
         { "fx.lucy.verb", 0.38f }, { "fx.lucy.decay", 0.55f }, { "fx.lucy.spread", 0.90f },
-        { "fx.lucy.limiter.threshold", 0.62f }, { "fx.lucy.loss.gain", 27.8f },
+        { "fx.lucy.limiter.threshold", 0.62f }, { "fx.lucy.loss.gain", -0.8f },
         { "mix.master.level", 0.95f } } },
 
     { "Splinter Choir", "EXPERIMENTAL", "P(X3)",
@@ -376,7 +376,7 @@ std::vector<FactoryPreset> factoryPresets()
         { "fx.doom.balance", 1.0f }, { "fx.doom.routing", inputOnly }, { "fx.doom.clock", 0.85f },
         { "fx.doom.glue", 0.20f }, { "fx.doom.spread", 0.85f }, { "fx.doom.eq", 0.10f },
         { "fx.reverb.amount", 0.17f }, { "fx.reverb.algorithm", hall }, { "fx.reverb.decay", 0.55f },
-        { "mix.master.level", 0.54f } } },
+        { "mix.master.level", 0.431f } } },
 
     { "Radio Ghost", "EXPERIMENTAL", "P(X3)",
       "DOOM primed for its micro-looper: play a phrase, then engage LOOPER to catch what you "
@@ -396,7 +396,7 @@ std::vector<FactoryPreset> factoryPresets()
         { "fx.doom.clock", 0.42f }, { "fx.doom.glue", 0.28f }, { "fx.doom.spread", 0.70f },
         { "fx.doom.cross", 0.35f }, { "fx.doom.cross.source", 0 },
         { "fx.reverb.amount", 0.11f }, { "fx.reverb.algorithm", cloud },
-        { "mix.master.level", 0.52f } } },
+        { "mix.master.level", 0.35f } } },
 
     { "Comb Reactor", "EXPERIMENTAL", "P(X3)",
       "The comb filter driven near self-oscillation and fed with ROB, then DOOM's CROSS "
@@ -413,7 +413,7 @@ std::vector<FactoryPreset> factoryPresets()
         { "fx.doom.balance", 1.0f }, { "fx.doom.cross", 0.78f }, { "fx.doom.cross.source", 1 },
         { "fx.doom.glue", 0.45f }, { "fx.doom.clock", 0.62f }, { "fx.doom.eq", -0.20f }, { "fx.doom.spread", 0.65f },
         { "fx.spread.amount", 0.30f }, { "fx.spread.mode", classic },
-        { "mix.master.level", 0.44f } } },
+        { "mix.master.level", 0.393f } } },
 
     { "Dimension Drift", "EXPERIMENTAL", "P(X3)",
       "A demonstration of the two spatial effects with nothing else in the way: the stacked "

@@ -36,6 +36,19 @@ public:
     // excitation) through this, so a run is reproducible.
     void setSeed(uint32_t seed);
 
+    // How MIX combines DOOM's output with its input.
+    //
+    //   crossfade - in * (1 - mix) + doom * mix. The pedal's law, and the
+    //               standalone PX3 Doom's: at MIX 1 you hear only DOOM.
+    //   additive  - in + doom * mix. For an engine on an aux send, whose
+    //               return is (output - send): there, a crossfade subtracts
+    //               mix x send from the mix while the dry bus carries on, so
+    //               MIX 1 took the synth ~4 dB down and left DOOM 11 dB under
+    //               a dry it could not touch. Additive returns exactly
+    //               doom x mix on top of an intact dry.
+    enum class MixLaw { crossfade, additive };
+    void setMixLaw(MixLaw law) noexcept { mixLaw = law; }
+
     // Whether these settings can make the engine contribute anything. When
     // they cannot, processSampleFrame passes dry and holds no state (it goes
     // idle and clears itself), so a host that has not built an engine at all
@@ -239,6 +252,7 @@ private:
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> overdubSmoothed;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> wetActiveSmoothed;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> loopActiveSmoothed;
+    MixLaw mixLaw { MixLaw::crossfade };
 };
 
 } // namespace px3

@@ -267,6 +267,15 @@ orthogonal, and the two MODIFYs never reach into each other's channel.
               OUTPUT
 ```
 
+**MIX law.** `Doom::MixLaw` chooses how MIX combines DOOM with its input. The
+standalone PX3 Doom keeps the pedal's **crossfade** (`in·(1−mix) + doom·mix`).
+The Synth uses **additive** (`in + doom·mix`), because there DOOM is on the FX
+send and the return is `(stage − send)`: a crossfade subtracts `mix·send` from
+the master while the dry bus carries on. Measured through the real AU (0.8.2,
+held chord, other FX off): MIX 1 took the mix 3.8 dB down and left DOOM's own
+output at −33.7 dBFS under a −22.3 dBFS dry it could not touch. Additive returns
+exactly `doom·mix` on top of an intact dry.
+
 ---
 
 ## 5. Subsystem designs
@@ -585,7 +594,7 @@ saved sessions and factory presets load exactly as they did.
 | Parameter | Range | Default | Purpose |
 |---|---|---|---|
 | `doomEnabled` | bool | true | bypass (true bypass semantics) |
-| `doomMix` | 0…1 | **0.0** | dry ↔ DOOM, both channels. Zero by default, matching `reverbAmount`: adding an effect must not change what existing patches sound like. |
+| `doomMix` | 0…1 | **0.0** | how much DOOM, both channels: a dry ↔ DOOM crossfade in the standalone PX3 Doom, `dry + DOOM × MIX` in the Synth (see §4, "MIX law"). Zero by default, matching `reverbAmount`: adding an effect must not change what existing patches sound like. |
 | `doomClock` | 0…1 | 1.0 | engine sample rate, harmonised steps |
 | `doomClockSmooth` | bool | false | disable the harmonised quantiser |
 | `doomRouting` | INPUT / INPUT+LOOP / LOOP | INPUT | what the wet channel processes |

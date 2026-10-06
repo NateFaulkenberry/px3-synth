@@ -939,6 +939,12 @@ A separate engine from MOOD. One half is a micro-looper that records *while
 bypassed*, so switching it on captures what you already played. Its MIX starts at
 zero, so a new patch hears none of it until you turn it up.
 
+**MIX adds DOOM on top.** In P(X3), DOOM sits on the FX send, so MIX sets how
+much of DOOM is added to the mix — your dry sound stays exactly as it is, and MIX
+fully up is all of DOOM on top of it. (Up to 0.8.2 MIX crossfaded, as it does on
+the pedal and in the standalone PX3 Doom; on a send that made the patch quieter
+as you turned it up, and left DOOM well under the dry.)
+
 ### Six knobs, twelve functions
 
 DOOM and LUCY both follow pedals where each knob has a **second function
@@ -1037,6 +1043,15 @@ The menus and switches beside them:
 | **VERB FIRST / LAST** | The reverb after the codec, or in front of it so the reverb is degraded too |
 | **PASS / REJECT** | Keep the band, or keep everything but the band |
 | **SLOW ON / OFF** | Bigger, darker, slower, and with more latency |
+
+**Extreme settings stay audible.** LOSS fully up keeps the strongest part of
+each frequency band — sparse, coarse and chiming, never silent. INVERSE never
+falls more than about 6 dB below its input: where STANDARD has thrown little away
+(low LOSS, or a sound with nothing in LOSS's range), the gap is filled with the
+coded signal. The band filter is level-matched (up to +30 dB), so a narrow band is
+heard at a similar level; a band placed where your sound has nothing can still be
+quiet. GATE at its highest threshold chops everything but the loudest moments
+rather than muting the instrument.
 
 **AMOUNT is not a wet/dry.** It scales how strongly the character you have
 dialled in is expressed — the coder's depth and reach, the packet rate, the

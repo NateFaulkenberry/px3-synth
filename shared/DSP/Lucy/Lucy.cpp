@@ -140,6 +140,8 @@ void Lucy::prepare(double sampleRate)
         smoother->reset(sampleRateHz, rampSeconds);
     }
 
+    gatePeakRelease = static_cast<float>(std::exp(-1.0 / (1.5 * sampleRateHz)));
+
     buildCriticalBands(fastStft.numBins());
     reset();
 }
@@ -200,6 +202,12 @@ void Lucy::reset()
     gateEnv = { { 0.0f, 0.0f } };
     gateGain = 1.0f;
     gateOpen = false;
+    gatePeak = 0.0f;
+
+    filterEnergyIn = 0.0f;
+    filterEnergyOut = 0.0f;
+    filterMakeup = 1.0f;
+    inverseFill = { { 0.0f, 0.0f } };
 
     for (auto* smoother : { &enabledSmoothed, &outputBlendSmoothed,
                             &filterAmountSmoothed, &filterFreqSmoothed, &verbSmoothed,
@@ -393,10 +401,43 @@ void Lucy::applyLoss(int channel, int numBins)
     // is what makes the bottom of LOSS thin the spectrum rather than gouge it.
     const auto discardRatio = derived.discardAmount;
 
+    // A band never masks its own strongest bin. The threshold is the band's
+    // energy times a depth that passes 1 near the top of LOSS, so a band
+    // holding one partial - a sine, a sparse chord, any narrow peak - used to
+    // throw that partial away, and at full LOSS a sine chord came out as
+    // silence (-160 dB on the master). A coder at its lowest bitrate keeps the
+    // most salient component of each band and spends nothing on the rest;
+    // that is what full LOSS now does: sparse, coarsely quantised, chiming -
+    // never empty.
+    int band = 0;
+    float bandPeak = 0.0f;
+    int bandPeakBin = -1;
+    auto findBandPeak = [&](int b)
+    {
+        bandPeak = 0.0f;
+        bandPeakBin = -1;
+        const auto lo = bandEdges[static_cast<std::size_t>(b)];
+        const auto hi = b == kCriticalBands - 1 ? numBins : bandEdges[static_cast<std::size_t>(b + 1)];
+        for (int k = lo; k < hi && k < numBins; ++k)
+        {
+            if (mag[static_cast<std::size_t>(k)] > bandPeak)
+            {
+                bandPeak = mag[static_cast<std::size_t>(k)];
+                bandPeakBin = k;
+            }
+        }
+    };
+    findBandPeak(0);
+
     for (int k = 0; k < numBins; ++k)
     {
         const auto idx = static_cast<std::size_t>(k);
         const auto binNorm = static_cast<float>(k) / static_cast<float>(juce::jmax(1, numBins - 1));
+
+        while (band < kCriticalBands - 1 && k >= bandEdges[static_cast<std::size_t>(band + 1)])
+        {
+            findBandPeak(++band);
+        }
 
         const auto inside = std::abs(binNorm - kCoverageCentre) < coverageHalfWidth;
         if (! inside)
@@ -406,7 +447,7 @@ void Lucy::applyLoss(int channel, int numBins)
         }
 
         const auto m = mag[idx];
-        if (m <= threshold[idx] * discardRatio)
+        if (m <= threshold[idx] * discardRatio && k != bandPeakBin)
         {
             // Below the masking threshold: discarded, exactly as a coder does.
             out[idx] = 0.0f;
@@ -594,12 +635,45 @@ void Lucy::spectralFrame(int channel, float* real, float* imag, int numBins)
     // happened in. Everything STANDARD threw away - the sub-threshold bins and
     // the quantisation error - is what is left, and it is brighter and thinner
     // because that is what a coder discards.
+    if (user.mode != LucyLossMode::inverse)
+    {
+        inverseFill[ch] = 0.0f;
+    }
+
     if (user.mode == LucyLossMode::inverse)
     {
+        // Where STANDARD discards little - low LOSS, or material with nothing
+        // in the coverage strip, like a sine chord - the residual is little
+        // more than the quantiser's rounding, and INVERSE took the whole
+        // instrument 55-90 dB down. So the residual is never left below a
+        // floor 6 dB under its input: the gap is filled with the STANDARD
+        // signal it was taken from, smoothed across frames, and the fill
+        // falls away as LOSS gives the residual something of its own to say.
+        constexpr auto kInverseFloor = 0.25f;   // energy, i.e. -6 dB
+        auto energyIn = 0.0f;
+        auto energyResidual = 0.0f;
+        auto energyStandard = 0.0f;
         for (int k = 0; k < bins; ++k)
         {
             const auto idx = static_cast<std::size_t>(k);
-            coded[ch][idx] = std::abs(magnitude[ch][idx] - coded[ch][idx]);
+            const auto standard = coded[ch][idx];
+            const auto residual = std::abs(magnitude[ch][idx] - standard);
+            energyIn += magnitude[ch][idx] * magnitude[ch][idx];
+            energyStandard += standard * standard;
+            energyResidual += residual * residual;
+            standardScratch[idx] = standard;
+            coded[ch][idx] = residual;
+        }
+
+        const auto shortfall = juce::jmax(0.0f, kInverseFloor * energyIn - energyResidual);
+        const auto wanted = energyStandard > 1.0e-12f
+                                ? juce::jlimit(0.0f, 1.0f, std::sqrt(shortfall / energyStandard))
+                                : 0.0f;
+        inverseFill[ch] += (wanted - inverseFill[ch]) * 0.2f;
+        for (int k = 0; k < bins; ++k)
+        {
+            const auto idx = static_cast<std::size_t>(k);
+            coded[ch][idx] += standardScratch[idx] * inverseFill[ch];
         }
     }
     else if (user.mode == LucyLossMode::jitter)
@@ -743,10 +817,16 @@ Lucy::Frame Lucy::applyFilter(Frame in)
     const auto width = filterAmountSmoothed.getNextValue();
     const auto freqNorm = filterFreqSmoothed.getNextValue();
 
+    const auto energyIn = 0.5f * (in.l * in.l + in.r * in.r);
+    const auto followCoeff = onePoleCoeff(3.0f, static_cast<float>(sampleRateHz));
+    filterEnergyIn += (energyIn - filterEnergyIn) * followCoeff;
+
     // At the minimum there is no filtering at all - documented, and it is what
     // makes this a width control rather than a resonance control.
     if (width <= 0.001f)
     {
+        filterEnergyOut += (energyIn - filterEnergyOut) * followCoeff;
+        filterMakeup += (1.0f - filterMakeup) * onePoleCoeff(4.0f, static_cast<float>(sampleRateHz));
         return in;
     }
 
@@ -799,7 +879,24 @@ Lucy::Frame Lucy::applyFilter(Frame in)
         values[static_cast<std::size_t>(ch)] = user.filterInvert ? (dry - x) : x;
     }
 
-    return { sanitize(values[0]), sanitize(values[1]) };
+    // MAKEUP. Each section peaks at unity, so a narrow band passes only the
+    // energy inside it: FILTER at the top took a dense patch 33 dB down, the
+    // 96 dB slope 56 dB, and with LUCY on the master that was the whole
+    // instrument. The band's output is brought back toward the level that
+    // went in - slowly, from energy followers, so it is a level match and not
+    // a compressor - by at most kFilterMakeupMax. Beyond that the band really
+    // is somewhere the material has nothing, and it is left to sound so.
+    constexpr auto kFilterMakeupMax = 31.6f;   // +30 dB
+    const auto energyOut = 0.5f * (values[0] * values[0] + values[1] * values[1]);
+    filterEnergyOut += (energyOut - filterEnergyOut) * followCoeff;
+    if (filterEnergyIn > 1.0e-10f)
+    {
+        const auto wanted = juce::jlimit(1.0f, kFilterMakeupMax,
+                                         std::sqrt(filterEnergyIn / juce::jmax(1.0e-20f, filterEnergyOut)));
+        filterMakeup += (wanted - filterMakeup) * onePoleCoeff(4.0f, static_cast<float>(sampleRateHz));
+    }
+
+    return { sanitize(values[0] * filterMakeup), sanitize(values[1] * filterMakeup) };
 }
 
 // ============================================================================
@@ -920,7 +1017,16 @@ Lucy::Frame Lucy::applyGate(Frame in)
     const auto coeff = level > gateEnv[0] ? attack : release;
     gateEnv[0] += (level - gateEnv[0]) * coeff;
 
-    const auto openThreshold = cutoff * cutoff * 0.5f;
+    // Never above half the material's own recent peak. The absolute
+    // threshold reaches -6 dBFS at the top of the knob, above anything a
+    // patch at a sensible level produces, so the top of GATE was a mute
+    // switch for the whole instrument. Capped at -6 dB under a peak follower
+    // (instant up, ~1.5 s down), the top of the knob chops everything but the
+    // loudest moments - heavy sputter, never silence. Below the cap, which is
+    // where the default and most of the knob sit on a normal patch, nothing
+    // changes.
+    gatePeak = juce::jmax(gateEnv[0], gatePeak * gatePeakRelease);
+    const auto openThreshold = juce::jmin(cutoff * cutoff * 0.5f, 0.5f * gatePeak);
     // Hysteresis: a signal hovering at the cutoff would otherwise chatter, and
     // chattering is a buzz rather than the documented sputter.
     const auto closeThreshold = openThreshold * 0.6f;

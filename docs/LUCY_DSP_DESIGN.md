@@ -509,6 +509,34 @@ produce peaks the input never had. Lowering the threshold increases limiting and
 
 ---
 
+### 5.10 Extremes stay audible
+
+On the master, LUCY's output is everything you hear, and four settings used to
+take the instrument to (near) silence (default patch / sine chord, re LUCY off):
+LOSS 1 −59 / −160 dB, INVERSE −55 / −87 dB, FILTER 1 −33 dB, GATE THRESHOLD 1
+silence. Each is now bounded, without changing what the rest of the range does:
+
+- **A band never masks its own strongest bin.** The threshold is the band's
+  energy times a depth that passes 1 near the top of LOSS, so a band holding one
+  partial discarded it. Full LOSS now keeps each band's most salient bin,
+  quantised — the sparsest, most chiming setting, never an empty frame.
+- **INVERSE has a floor.** Its residual is never left below −6 dB of its input:
+  where STANDARD discards little, the shortfall is filled with the STANDARD
+  spectrum it was taken from (smoothed across frames). As LOSS gives the
+  residual something of its own the fill falls away.
+- **The band filter is level-matched**, from slow energy followers either side
+  of it, by up to +30 dB. Beyond that the band really is where the material has
+  nothing (a 13 kHz band over a low chord, or the 96 dB slope's eight stacked
+  sections at full FILTER) and is left to sound so.
+- **GATE's threshold is capped at −6 dB under a peak follower** (instant up,
+  ~1.5 s down) of the material itself. Below the cap — the default and most of
+  the knob on a normal patch — nothing changes; at the top it chops everything
+  but the loudest moments instead of muting.
+
+Pinned by `Lucy_NoSingleControlSilencesTheDefaultPatch` and
+`Lucy_NoSingleControlSilencesASineChord`: every control alone at each end stays
+within 12 dB of LUCY off (LOSS GAIN and LIMIT, level controls, exempt).
+
 ## 6. Intentional approximations / adaptations
 
 1. Footswitch gestures become parameters: freeze state, gate on/off.

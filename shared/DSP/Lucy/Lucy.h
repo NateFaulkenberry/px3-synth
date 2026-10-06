@@ -117,6 +117,10 @@ private:
 
     std::array<bool, 2> freezeLatched { { false, false } };
     std::array<float, 2> autoGainState { { 1.0f, 1.0f } };
+    // INVERSE's fill of STANDARD under a thin residual, per channel, smoothed
+    // across frames; and the frame's STANDARD magnitudes it is taken from.
+    std::array<float, 2> inverseFill { { 0.0f, 0.0f } };
+    std::array<float, kMaxBins> standardScratch {};
 
     // ---- jitter timing ---------------------------------------------------
     std::array<std::vector<float>, 2> jitterLine;
@@ -132,6 +136,9 @@ private:
         float ic2 { 0.0f };
     };
     std::array<std::array<SvfState, kFilterSections>, 2> filterState {};
+    float filterEnergyIn { 0.0f };    // level match across the band filter
+    float filterEnergyOut { 0.0f };
+    float filterMakeup { 1.0f };
 
     // ---- verb -------------------------------------------------------------
     std::array<std::array<std::vector<float>, kVerbLines>, 2> verbLines;
@@ -144,6 +151,8 @@ private:
     std::array<float, 2> gateEnv { { 0.0f, 0.0f } };
     float gateGain { 1.0f };
     bool gateOpen { false };
+    float gatePeak { 0.0f };          // the threshold's ceiling follows this
+    float gatePeakRelease { 0.99998f };
 
     // ---- limiter ----------------------------------------------------------
     std::array<std::array<float, kLimiterLookahead>, 2> limiterDelay {};

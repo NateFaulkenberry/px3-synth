@@ -1664,6 +1664,12 @@ void Doom::processSampleFrame(float inL, float inR, float& outL, float& outR)
     const auto wetR = sanitize(reconstructState[1]);
 
     const auto amount = mix * enabled;
+    if (mixLaw == MixLaw::additive)
+    {
+        outL = inL + wetL * amount;
+        outR = inR + wetR * amount;
+        return;
+    }
     outL = inL * (1.0f - amount) + wetL * amount;
     outR = inR * (1.0f - amount) + wetR * amount;
 }

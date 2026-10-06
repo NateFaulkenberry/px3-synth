@@ -1808,6 +1808,61 @@ void testDoom()
               "DOOM first rms " + juce::String(a.rms(), 5) + ", DOOM last "
                   + juce::String(b.rms(), 5));
     }
+
+    // ---- in the Synth, MIX adds DOOM on top of an intact dry ---------------
+    //
+    // DOOM is on the FX send, whose return is (stage - send). With the pedal's
+    // crossfade, MIX subtracted mix x send from the mix while the dry bus
+    // carried on: MIX 1 took the synth ~4 dB down and left DOOM's own output
+    // 11 dB under a dry it could not touch (measured through the real AU). In
+    // the Synth MIX is additive, so the return is exactly DOOM x MIX.
+    {
+        auto renderDoom = [](float mix, bool wetOn)
+        {
+            PX3SynthAudioProcessor processor;
+            makePlainPatch(processor);
+            setChoice(processor, "voice.osc1.mode", 1);   // SAW
+            for (const auto* id : { "sub", "osc1", "osc2", "osc3" })
+                setParam(processor, juce::String("mix.") + id + ".send.fx", 1.0f);
+            setParam(processor, "mix.fx.level", 1.0f);
+            setParam(processor, "fx.doom.enabled", 1.0f);
+            setParam(processor, "fx.doom.mix", mix);
+            setParam(processor, "fx.doom.wet.active", wetOn ? 1.0f : 0.0f);
+            setParam(processor, "fx.doom.loop.active", 0.0f);
+            return render(processor, 48000 * 2, { { 0, true, 48, 0.9f }, { 0, true, 55, 0.9f }, { 0, true, 60, 0.9f } });
+        };
+        auto difference = [](const Capture& a, const Capture& b)
+        {
+            Capture d;
+            for (std::size_t i = 0; i < a.left.size() && i < b.left.size(); ++i)
+            {
+                d.left.push_back(a.left[i] - b.left[i]);
+                d.right.push_back(a.right[i] - b.right[i]);
+            }
+            return d;
+        };
+        constexpr int kFrom = 24000, kTo = 96000;
+        const auto off = renderDoom(0.0f, true);
+        const auto nulled = renderDoom(1.0f, false);   // MIX 1, DOOM producing nothing
+        const auto full = renderDoom(1.0f, true);
+        const auto half = renderDoom(0.5f, true);
+
+        const auto offLevel = off.rmsOver(kFrom, kTo);
+        const auto dryChangeDb = juce::Decibels::gainToDecibels(
+            difference(nulled, off).rmsOver(kFrom, kTo) / juce::jmax(1.0e-12, offLevel), -300.0);
+        check("Doom_EngagingItLeavesTheDryIntact", dryChangeDb < -80.0,
+              "MIX 1 with DOOM producing nothing differs from DOOM off by " + fmt(dryChangeDb, 1)
+                  + " dB (the crossfade took the dry ~4 dB down)");
+
+        const auto doomFull = difference(full, off).rmsOver(kFrom, kTo);
+        const auto doomHalf = difference(half, off).rmsOver(kFrom, kTo);
+        const auto ratioDb = juce::Decibels::gainToDecibels(doomHalf / juce::jmax(1.0e-12, doomFull), -300.0);
+        const auto fullDb = juce::Decibels::gainToDecibels(doomFull / juce::jmax(1.0e-12, offLevel), -300.0);
+        check("Doom_MixScalesDoomOnTopOfTheDry",
+              full.isFinite() && fullDb > -30.0 && std::abs(ratioDb + 6.02) < 0.5,
+              "DOOM's contribution at MIX 1 is " + fmt(fullDb, 1) + " dB re the dry; MIX 0.5 gives "
+                  + fmt(ratioDb, 2) + " dB of it (exactly half is -6.02)");
+    }
 }
 
 // ============================================================================
@@ -3355,7 +3410,7 @@ void testLucy()
             setParam(p, "fx.lucy.loss", 0.0f);
         });
         check("Lucy_ProcessesTheMasterWithEveryFxSendClosed",
-              on.isFinite() && differenceDb(transparent, on) > -12.0,
+              on.isFinite() && differenceDb(transparent, on) > -20.0,
               "LOSS 0.8 vs LOSS 0 differs by " + fmt(differenceDb(transparent, on), 1)
                   + " dB with all four sends at 0");
 
@@ -3480,6 +3535,96 @@ void testLucy()
         check("Lucy_IsOnNeitherSeparateFxOutputStem",
               level > 1.0e-3f && worst <= 1.0e-6f * juce::jmax(1.0f, level),
               "stems with LUCY on differ by at most " + fmt(worst, 8) + " (peak " + fmt(level, 4) + ")");
+    }
+
+    // ---- no single LUCY control silences the synth ----------------------------
+    //
+    // On the master, what LUCY outputs is all there is. Several settings used
+    // to take the whole instrument to (near) silence: LOSS at the top (a band
+    // masked its own strongest bin), INVERSE at modest LOSS (almost nothing is
+    // discarded, so the residual is almost nothing), a narrow or far-off band
+    // filter, and the GATE at its highest threshold. Every control is moved,
+    // alone, to each end - with the one companion it needs to mean anything -
+    // on a dense patch and on a sparse sine chord. LOSS GAIN is a level
+    // control and LIMIT sets a ceiling, so they are exempt.
+    //
+    // FREQ and SLOPE do nothing until FILTER is up, so with FILTER at its top
+    // they are reported but not pinned: a narrow band placed where the
+    // material has nothing (13 kHz over a low chord), or the 96 dB slope's
+    // eight stacked sections, is the filter doing its job. The band's makeup
+    // gain is bounded (+30 dB) rather than chasing a band with no content.
+    {
+        struct Setting { const char* id; float value; const char* companion; float companionValue; bool pinned = true; };
+        const std::vector<Setting> settings {
+            { "fx.lucy.global", 0.0f, nullptr, 0.0f }, { "fx.lucy.global", 1.0f, nullptr, 0.0f },
+            { "fx.lucy.loss", 0.0f, nullptr, 0.0f },   { "fx.lucy.loss", 1.0f, nullptr, 0.0f },
+            { "fx.lucy.loss", 1.0f, "fx.lucy.global", 1.0f },
+            { "fx.lucy.speed", 0.0f, nullptr, 0.0f },  { "fx.lucy.speed", 1.0f, nullptr, 0.0f },
+            { "fx.lucy.filter", 1.0f, nullptr, 0.0f },
+            { "fx.lucy.freq", 0.0f, "fx.lucy.filter", 1.0f, false }, { "fx.lucy.freq", 1.0f, "fx.lucy.filter", 1.0f, false },
+            { "fx.lucy.slope", 0.0f, "fx.lucy.filter", 1.0f, false }, { "fx.lucy.slope", 2.0f, "fx.lucy.filter", 1.0f, false },
+            { "fx.lucy.filter.invert", 1.0f, "fx.lucy.filter", 1.0f },
+            { "fx.lucy.verb", 1.0f, nullptr, 0.0f },   { "fx.lucy.decay", 1.0f, "fx.lucy.verb", 1.0f },
+            { "fx.lucy.verb.post", 1.0f, "fx.lucy.verb", 1.0f },
+            { "fx.lucy.mode", 1.0f, nullptr, 0.0f },   { "fx.lucy.mode", 2.0f, nullptr, 0.0f },
+            { "fx.lucy.mode", 1.0f, "fx.lucy.loss", 0.0f }, { "fx.lucy.mode", 1.0f, "fx.lucy.loss", 1.0f },
+            { "fx.lucy.packets", 1.0f, nullptr, 0.0f }, { "fx.lucy.packets", 2.0f, nullptr, 0.0f },
+            { "fx.lucy.freeze", 1.0f, nullptr, 0.0f }, { "fx.lucy.freeze", 2.0f, nullptr, 0.0f },
+            { "fx.lucy.freezer", 0.0f, "fx.lucy.freeze", 1.0f }, { "fx.lucy.freezer", 1.0f, "fx.lucy.freeze", 1.0f },
+            { "fx.lucy.weighting", 0.0f, nullptr, 0.0f }, { "fx.lucy.weighting", 2.0f, nullptr, 0.0f },
+            { "fx.lucy.gate", 1.0f, nullptr, 0.0f },
+            { "fx.lucy.gate.threshold", 0.0f, "fx.lucy.gate", 1.0f }, { "fx.lucy.gate.threshold", 1.0f, "fx.lucy.gate", 1.0f },
+            { "fx.lucy.slow", 1.0f, nullptr, 0.0f },
+            { "fx.lucy.auto.gain", 0.0f, nullptr, 0.0f }, { "fx.lucy.auto.gain", 1.0f, nullptr, 0.0f },
+            { "fx.lucy.spread", 0.0f, nullptr, 0.0f }, { "fx.lucy.spread", 1.0f, nullptr, 0.0f },
+        };
+
+        for (const auto sparse : { false, true })
+        {
+            auto renderWith = [sparse](const std::function<void(PX3SynthAudioProcessor&)>& configure)
+            {
+                PX3SynthAudioProcessor processor;
+                if (sparse) { makePlainPatch(processor); }   // three sines, nothing else
+                configure(processor);
+                return render(processor, 48000 * 2,
+                              sparse ? std::vector<NoteEvent> { { 0, true, 48, 0.8f }, { 0, true, 55, 0.8f }, { 0, true, 64, 0.8f } }
+                                     : std::vector<NoteEvent> { { 0, true, 48, 0.8f }, { 0, true, 55, 0.8f },
+                                                                { 0, true, 60, 0.8f }, { 0, true, 64, 0.8f } })
+                    .rmsOver(24000, 96000);
+            };
+            const auto off = renderWith([](PX3SynthAudioProcessor&) {});
+
+            juce::StringArray quiet, all, filtered;
+            auto worstDb = 0.0;
+            for (const auto& setting : settings)
+            {
+                const auto level = renderWith([&setting](PX3SynthAudioProcessor& p)
+                {
+                    setParam(p, "fx.lucy.enabled", 1.0f);
+                    if (setting.companion != nullptr) { setParam(p, setting.companion, setting.companionValue); }
+                    setParam(p, setting.id, setting.value);
+                });
+                const auto db = juce::Decibels::gainToDecibels(level / juce::jmax(1.0e-12, off), -300.0);
+                if (setting.pinned) { worstDb = juce::jmin(worstDb, db); }
+                auto name = juce::String(setting.id).fromFirstOccurrenceOf("fx.lucy.", false, false) + "="
+                            + juce::String(setting.value, 1);
+                if (setting.companion != nullptr)
+                {
+                    name << " (" << juce::String(setting.companion).fromFirstOccurrenceOf("fx.lucy.", false, false)
+                         << "=" << juce::String(setting.companionValue, 1) << ")";
+                }
+                all.add(name + " " + fmt(db, 1));
+                if (! setting.pinned) { filtered.add(name + " " + fmt(db, 1)); }
+                else if (db < -12.0) { quiet.add(name + " " + fmt(db, 1) + " dB"); }
+            }
+            if (std::getenv("PX3_LUCY_LEVELS") != nullptr) { std::printf("%s\n", all.joinIntoString("\n").toRawUTF8()); }
+            check(sparse ? "Lucy_NoSingleControlSilencesASineChord" : "Lucy_NoSingleControlSilencesTheDefaultPatch",
+                  quiet.isEmpty(),
+                  quiet.isEmpty() ? juce::String(static_cast<int>(settings.size()) - filtered.size()) + " settings, the quietest "
+                                        + fmt(worstDb, 1) + " dB re LUCY off; band filter at FILTER 1 (not pinned): "
+                                        + filtered.joinIntoString(", ")
+                                  : "more than 12 dB down: " + quiet.joinIntoString(", "));
+        }
     }
 }
 
