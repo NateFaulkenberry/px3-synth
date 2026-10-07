@@ -3,7 +3,8 @@
 #include "LucyCardLayout.h"
 
 PX3LucyAudioProcessorEditor::PX3LucyAudioProcessorEditor(PX3LucyAudioProcessor& processorIn)
-    : px3::fx::FxCardEditor(processorIn, "lucy", "LUCY")
+    : px3::fx::FxCardEditor(processorIn, "lucy", "LUCY"),
+      lucyProcessor(processorIn)
 {
     // The same rows, in the same order and wording, as buildLucyCard. The two
     // are compared control-by-control by
@@ -53,4 +54,17 @@ PX3LucyAudioProcessorEditor::PX3LucyAudioProcessorEditor(PX3LucyAudioProcessor& 
     px3::ui::lucyLayout::wireAltSwitch(rows());
 
     finishSetup();
+    timerCallback();
+    startTimerHz(15);
+}
+
+PX3LucyAudioProcessorEditor::~PX3LucyAudioProcessorEditor()
+{
+    stopTimer();
+}
+
+void PX3LucyAudioProcessorEditor::timerCallback()
+{
+    px3::ui::lucyLayout::syncSpeed(rows(), lucyProcessor.mode().getIndex(), lucyProcessor.packets().getIndex(),
+                                   lucyProcessor.freeze().getIndex());
 }

@@ -7,6 +7,8 @@
 #include "../../products/PX3Reverb/PluginProcessor.h"
 #include "../../products/PX3Doom/PluginProcessor.h"
 #include "../../products/PX3Lucy/PluginProcessor.h"
+#include "../../products/PX3Lucy/PluginEditor.h"
+#include "LucyCardLayout.h"
 #include "../../products/PX3Vibe/PluginProcessor.h"
 #include "../../shared/Infrastructure/Fx/FxCardEditor.h"
 #include "../../shared/UI/Style/UIConfigManager.h"
@@ -1819,6 +1821,78 @@ void testFxProducts()
                       : "differ: " + differing.joinIntoString(", ") + ". "
                             + firstDifference.joinIntoString("  /  "));
         }
+    }
+
+    // ---- LUCY's SPEED dims where it does nothing ---------------------------
+    //
+    // SPEED times only JITTER, the packet chain and the SLUSHY freeze; in
+    // STANDARD with CLEAN packets and no SLUSHY freeze it is bit-identical at
+    // every position (PX3Tests fxsweep). It dims there, as the reverb dims a
+    // control its type does not read, on both cards, and its SHIFT alternate
+    // (AUTO GAIN) never does.
+    {
+        struct State { const char* name; int mode, packets, freeze; bool active; };
+        const std::vector<State> states {
+            { "defaults", 0, 0, 0, false }, { "INVERSE", 1, 0, 0, false }, { "SOLID freeze", 0, 0, 1, false },
+            { "JITTER", 2, 0, 0, true }, { "PACKETS LOSS", 0, 1, 0, true }, { "PACKETS REPEAT", 0, 2, 0, true },
+            { "SLUSHY freeze", 0, 0, 2, true },
+        };
+
+        PX3SynthAudioProcessor synth;
+        synth.getLucyEnabledParam().setValueNotifyingHost(1.0f);
+        std::unique_ptr<juce::AudioProcessorEditor> synthBase(synth.createEditor());
+        auto* synthEditor = dynamic_cast<PX3SynthAudioProcessorEditor*>(synthBase.get());
+        if (synthEditor != nullptr)
+        {
+            // The FX page refreshes its cards while it is the page on show.
+            synthEditor->setSize(1400, 900);
+            synthEditor->debugSelectSectionPersisted(px3::ui::kSectionFx);
+        }
+        auto* synthCard = synthEditor != nullptr && synthEditor->debugFxPanel() != nullptr
+                              ? synthEditor->debugFxPanel()->cardForSection(px3::fxStageLucy) : nullptr;
+
+        PX3LucyAudioProcessor standalone;
+        std::unique_ptr<juce::AudioProcessorEditor> standaloneBase(standalone.createEditor());
+        auto* standaloneEditor = dynamic_cast<PX3LucyAudioProcessorEditor*>(standaloneBase.get());
+
+        juce::StringArray wrong;
+        const auto setChoiceIndex = [](juce::AudioParameterChoice& p, int index)
+        { p.setValueNotifyingHost(p.convertTo0to1(static_cast<float>(index))); };
+        for (const auto& st : states)
+        {
+            setChoiceIndex(synth.getLucyModeParam(), st.mode);
+            setChoiceIndex(synth.getLucyPacketsParam(), st.packets);
+            setChoiceIndex(synth.getLucyFreezeParam(), st.freeze);
+            setChoiceIndex(standalone.mode(), st.mode);
+            setChoiceIndex(standalone.packets(), st.packets);
+            setChoiceIndex(standalone.freeze(), st.freeze);
+            if (synthEditor != nullptr) { synthEditor->debugTimerTick(); }
+            if (standaloneEditor != nullptr) { standaloneEditor->debugRefresh(); }
+
+            const auto synthDimmed = synthCard != nullptr && synthCard->isKnobDimmed("speed");
+            const auto standaloneDimmed = standaloneEditor != nullptr && standaloneEditor->debugCard().isKnobDimmed("speed");
+            if (synthDimmed == st.active || standaloneDimmed == st.active)
+            {
+                wrong.add(juce::String(st.name) + ": synth " + (synthDimmed ? "dim" : "lit") + ", standalone "
+                          + (standaloneDimmed ? "dim" : "lit"));
+            }
+            for (auto* card : { synthCard, standaloneEditor != nullptr ? &standaloneEditor->debugCard() : nullptr })
+            {
+                if (card == nullptr) { continue; }
+                if (auto* autoGain = card->knob("autoGain"); autoGain == nullptr || autoGain->getAlpha() < 0.99f)
+                {
+                    wrong.addIfNotAlreadyThere("AUTO GAIN dimmed or missing");
+                }
+            }
+        }
+        const auto tooltipOk = synthCard != nullptr && standaloneEditor != nullptr
+                               && synthCard->knob("speed")->getTooltip() == px3::ui::lucyLayout::speedTooltip()
+                               && standaloneEditor->debugCard().knob("speed")->getTooltip() == px3::ui::lucyLayout::speedTooltip();
+        check("Lucy_SpeedDimsWhereItDoesNothingOnBothCards",
+              synthCard != nullptr && standaloneEditor != nullptr && wrong.isEmpty() && tooltipOk,
+              wrong.isEmpty() ? juce::String("dim in defaults, INVERSE and SOLID; lit in JITTER, LOSS, REPEAT and SLUSHY; "
+                                             "AUTO GAIN never dims; tooltip says what it affects")
+                              : wrong.joinIntoString("; "));
     }
 }
 

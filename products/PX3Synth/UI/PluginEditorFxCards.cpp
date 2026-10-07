@@ -84,6 +84,9 @@ void PX3SynthAudioProcessorEditor::refreshFxBypassUI()
     {
         lucyCard->bypassButton().setToggleState(lucyEnabled, juce::dontSendNotification);
         lucyCard->setActive(lucyEnabled);
+        px3::ui::lucyLayout::syncSpeed(*lucyCard, audioProcessor.getLucyModeParam().getIndex(),
+                                       audioProcessor.getLucyPacketsParam().getIndex(),
+                                       audioProcessor.getLucyFreezeParam().getIndex());
     }
 
     // Reverb greys out with the rest. It was left out when it became a card,

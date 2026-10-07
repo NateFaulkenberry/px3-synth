@@ -6,6 +6,36 @@
 
 namespace px3::ui::lucyLayout
 {
+inline const char* speedTooltip()
+{
+    return "SPEED - how fast LUCY's JITTER, PACKETS and SLUSHY freeze move. "
+           "Has no effect in STANDARD with CLEAN packets and no SLUSHY freeze.";
+}
+
+// Whether SPEED does anything. It times only LUCY's stochastic stages - JITTER's
+// phase walk and read-head retargeting, the packet chain (its state length and
+// how long a decision is held, which gates nothing else) and the SLUSHY
+// freeze's drift (Lucy.cpp: jitterWalkStep / jitterTimingRate,
+// packetStateFrames / decisionFrames, freezeSlushRate). The STANDARD coder
+// recomputes every frame, so with none of those engaged SPEED is inert.
+// Indices are the parameters' choice indices (LucyTypes.h).
+inline bool speedIsActive(int modeIndex, int packetsIndex, int freezeIndex) noexcept
+{
+    constexpr int kJitter = 2;    // LucyLossMode::jitter
+    constexpr int kClean = 0;     // LucyPacketMode::clean
+    constexpr int kSlushy = 2;    // LucyFreezeMode::slushy
+    return modeIndex == kJitter || packetsIndex != kClean || freezeIndex == kSlushy;
+}
+
+// Dims SPEED when it is inert, the way the reverb card dims a control its type
+// does not read: visual only, the knob stays live and automatable. Only the
+// primary dims; its SHIFT alternate, AUTO GAIN, is never inert and is never
+// dimmed. Cheap to call every tick: nothing repaints unless the state changes.
+inline void syncSpeed(FxCardComponent& card, int modeIndex, int packetsIndex, int freezeIndex)
+{
+    card.setKnobDimmed("speed", ! speedIsActive(modeIndex, packetsIndex, freezeIndex));
+}
+
 
 // LUCY's card layout, declared ONCE.
 //
@@ -58,7 +88,7 @@ inline void declareRows(FxCardComponent& card,
                       { "freq", "FREQ", "Band filter centre frequency",
                         "limiterThreshold", "LIMIT", "Output limiter threshold; lower means more limiting" } });
 
-    card.addKnobRow({ { "speed", "SPEED", "How fast the loss, packets and freeze evolve",
+    card.addKnobRow({ { "speed", "SPEED", speedTooltip(),
                         "autoGain", "AUTO GAIN", "Gain compensation for the loss modes" },
                       { "loss", "LOSS", "How degraded the codec is, and how much of the spectrum it reaches",
                         "lossGain", "LOSS GAIN", "Wet gain, plus or minus 36 dB" },

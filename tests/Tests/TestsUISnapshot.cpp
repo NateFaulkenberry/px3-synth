@@ -7,6 +7,7 @@
 #include "TestSupport.h"
 
 #include "../../products/PX3Reverb/PluginEditor.h"
+#include "../../products/PX3Lucy/PluginEditor.h"
 #include "ReverbPresets.h"
 
 #include <typeinfo>
@@ -139,6 +140,43 @@ int runUISnapshot(const juce::String& outDir, int width, int height)
                 reverbEditor->debugRefresh();
                 const auto image = fxEditor->createComponentSnapshot(fxEditor->getLocalBounds(), true, 2.0f);
                 auto png = dir.getChildFile(juce::String("px3reverb-") + px3::reverb::kTypeNames[type] + ".png");
+                png.deleteFile();
+                juce::FileOutputStream stream(png);
+                juce::PNGImageFormat().writeImageToStream(image, stream);
+            }
+        }
+    }
+    // LUCY on, in the Synth's rack and as the standalone card, with SPEED inert
+    // (defaults: dimmed) and live (JITTER), at 2x.
+    {
+        PX3LucyAudioProcessor lucy;
+        std::unique_ptr<juce::AudioProcessorEditor> fxEditor(lucy.createEditor());
+        auto* lucyEditor = dynamic_cast<PX3LucyAudioProcessorEditor*>(fxEditor.get());
+        processor.getLucyEnabledParam().setValueNotifyingHost(1.0f);
+        for (const auto jitter : { false, true })
+        {
+            const auto mode = jitter ? 1.0f : 0.0f;
+            processor.getLucyModeParam().setValueNotifyingHost(mode);
+            lucy.mode().setValueNotifyingHost(mode);
+            const juce::String suffix = jitter ? "-jitter" : "-default";
+            if (auto* fx = editor->debugFxPanel())
+            {
+                editor->debugSelectSectionPersisted(4);   // FX
+                editor->debugTimerTick();
+                if (auto* card = fx->cardForSection(px3::fxStageLucy))
+                {
+                    const auto image = card->createComponentSnapshot(card->getLocalBounds(), true, 2.0f);
+                    auto png = dir.getChildFile("lucy-card" + suffix + ".png");
+                    png.deleteFile();
+                    juce::FileOutputStream stream(png);
+                    juce::PNGImageFormat().writeImageToStream(image, stream);
+                }
+            }
+            if (lucyEditor != nullptr)
+            {
+                lucyEditor->debugRefresh();
+                const auto image = fxEditor->createComponentSnapshot(fxEditor->getLocalBounds(), true, 2.0f);
+                auto png = dir.getChildFile("px3lucy" + suffix + ".png");
                 png.deleteFile();
                 juce::FileOutputStream stream(png);
                 juce::PNGImageFormat().writeImageToStream(image, stream);
