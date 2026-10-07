@@ -66,6 +66,8 @@ Each table has one row per section, control and value. It records:
 
 At 48 kHz / 512 the two paths should agree row for row. Effects that use the shared system random (MOOD, the Granular DELAY, LUCY's packets) differ run to run by a few tenths of a dB.
 
+Set `PX3_FXSWEEP_CONTEXTS=1` to print a line for each context a control is tried in. A control can be tried in several contexts: DOOM's looper controls in each loop mode, LUCY's SPEED with JITTER, each packet mode and SLUSHY freeze. Without the variable, only the context where the control does the most is reported.
+
 `compare.py` diffs two tables:
 
 ```sh

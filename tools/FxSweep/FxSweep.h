@@ -213,6 +213,16 @@ inline std::vector<Settings> contextsFor(const juce::String& name)
         }
         return out;
     }
+    // LUCY's SPEED times the coder's stochastic stages - the packet chain, the
+    // slushy freeze's drift, JITTER's walk - so it is tried in each of them.
+    if (name == "Lucy Speed")
+    {
+        return { {},
+                 { { "Lucy Mode", choice(2, 3) } },
+                 { { "Lucy Packets", choice(1, 3) } },
+                 { { "Lucy Packets", choice(2, 3) } },
+                 { { "Lucy Freeze", choice(2, 3) } } };
+    }
     return { companionsFor(name) };
 }
 
@@ -221,7 +231,6 @@ inline std::vector<Settings> contextsFor(const juce::String& name)
 inline std::map<juce::String, juce::String> knownInert()
 {
     return {
-        { "Lucy Speed", "known dead: decisionFrames only gates packets (declined fix)" },
         { "Lucy Weighting", "known dead: tilt only acts inside the LOSS coverage strip (declined fix)" },
         { "Lucy Auto Gain", "known dead: the coder barely changes energy at these settings (declined fix)" },
         { "Dry Bus Comp Meter", "display only: chooses what the VU shows" },
@@ -493,6 +502,14 @@ inline std::vector<SectionResult> run(const std::vector<ParameterInfo>& params, 
                     {
                         flags.addIfNotAlreadyThere("CLICK");
                     }
+                }
+                if (log && std::getenv("PX3_FXSWEEP_CONTEXTS") != nullptr)
+                {
+                    juce::String c;
+                    for (const auto& setting : context) { c << setting.name << "=" << juce::String(setting.value, 2) << " "; }
+                    juce::String v;
+                    for (const auto& value : cr.values) { v << " " << juce::String(value.value, 2) << ":" << juce::String(value.vsDefaultDb, 1); }
+                    log("    context [" + c.trim() + "] max vs default " + juce::String(cr.maxVsDefaultDb, 1) + " dB |" + v);
                 }
                 if (best.name.isEmpty() || cr.maxVsDefaultDb > best.maxVsDefaultDb) { best = std::move(cr); }
             }
