@@ -2994,7 +2994,9 @@ int main(int argc, char* argv[])
     if (wants("envmode")) testEnvelopeModes();
     if (wants("vumeter")) testVuBallistics();
     if (wants("businserts")) testBusInserts();
-    if (wants("multiout")) testMultiOutput();
+    if (wants("outputs")) testOutputs();
+    if (filter == "fxsweep") testFxSweep();
+    if (wants("sweepfindings")) testSweepFindings();
     if (wants("updater")) testUpdater();
     if (wants("ecosystem")) testEcosystem();
     if (wants("fxproducts")) testFxProducts();

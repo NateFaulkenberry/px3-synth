@@ -635,6 +635,18 @@ void Delay::spawnIsaacGrain(float amount,
             semitone = static_cast<float>(intervals[static_cast<std::size_t>(idx)]);
             pitchMicro = (nextRandom() - 0.5f) * (0.16f + 0.26f * macro);
             reverseChance = 0.0f;
+            // Under the additive law AMOUNT is only a level (the engine runs
+            // at full character), so CLASSIC takes its grain size and delay
+            // from TIME, as the other modes do - otherwise TIME did nothing
+            // at all in the default mode. The crossfading standalone keeps
+            // AMOUNT driving them.
+            // Ranged so the knobs' defaults (TIME 0.35) land close to the full
+            // character CLASSIC had at AMOUNT 1 (170 ms grains, 0.75 beats).
+            if (mixLaw == px3::FxMixLaw::additive)
+            {
+                grainMs = lerp(90.0f, 260.0f, sizeCtrl);
+                baseDelayBeats = lerp(0.25f, 1.5f, sizeCtrl);
+            }
         }
         else if (mode == GranularMode::cloud)
         {
@@ -903,7 +915,13 @@ void Delay::processIsaacGranularSample(float inL,
     float wetR = 0.0f;
     renderActiveGranularGrains(wetL, wetR);
 
-    float feedback = lerp(0.16f, 0.74f, macro);
+    // CLASSIC's feedback followed AMOUNT; under the additive law AMOUNT is
+    // only a level, so FEEDBACK sets it (it did nothing in CLASSIC before).
+    // At the default FEEDBACK (0.38) this is 0.68, near the 0.74 CLASSIC had
+    // at AMOUNT 1; the saturator in the loop holds the top of the range.
+    float feedback = (mode == GranularMode::classic && mixLaw == px3::FxMixLaw::additive)
+                         ? lerp(0.55f, 0.9f, juce::jlimit(0.0f, 1.0f, feedbackControl))
+                         : lerp(0.16f, 0.74f, macro);
     float diffusion = 0.0f;
     float stereo = 0.5f;
     float dampHz = lerp(1400.0f, 5200.0f, macro);

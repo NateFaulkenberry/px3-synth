@@ -1084,6 +1084,20 @@ void Mood::processSampleFrame(float inL, float inR, float& outL, float& outR)
     currentSettings.spread = spreadSmoothed.getNextValue();
     currentSettings.degrade = degradeSmoothed.getNextValue();
 
+    // The derived quantities follow the SMOOTHED knobs while any of them is
+    // moving. Translated once a block from the targets, they jumped at every
+    // block boundary while a knob was swept - the reverb's tap times, the
+    // delay time, the loop and slice lengths - and a read position that jumps
+    // is a click (sweeping LOOP LENGTH or CLOCK stepped the output at each
+    // block start, ~10x the steps either side). Settled, the block's
+    // translation stands and this costs nothing.
+    if (clockSmoothed.isSmoothing() || wetTimeSmoothed.isSmoothing() || wetModifySmoothed.isSmoothing()
+        || loopLengthSmoothed.isSmoothing() || loopModifySmoothed.isSmoothing() || feedbackSmoothed.isSmoothing()
+        || spreadSmoothed.isSmoothing() || degradeSmoothed.isSmoothing())
+    {
+        derived = px3::deriveMoodParameters(currentSettings);
+    }
+
     // CLOCK is the engine's sample rate, and it is what makes the two channels
     // move together: audio recorded at one rate and played back at another
     // changes speed and pitch at the same time, so dropping the clock an

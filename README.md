@@ -78,7 +78,7 @@ and a glossary.
   FX return), and EQ / COMP bus inserts on the dry and FX buses — a four-band EQ
   with a playable graph and an 1176-style FET compressor with a VU meter.
 - Clickable 88-key keyboard (A0-C8) with PITCH and MOD wheels.
-- An optional separate FX output pair (outputs 3/4) for hosts that enable it.
+- One stereo output carrying the whole mix (no multi-output variant).
 - A preset bar with a browser, search and filters, and a SAVE / DON'T SAVE /
   CANCEL prompt before a preset switch would discard unsaved edits.
 - In-plugin updates: checked, downloaded and verified while your DAW stays open.
@@ -435,9 +435,6 @@ it again, or CLOSE at the bottom of the page, returns to the page you came from.
   card. This one IS part of the sound: it is automatable and
   travels in sessions and presets. Design:
   [docs/ANALOG_ENGINE_ARCHITECTURE.md](docs/ANALOG_ENGINE_ARCHITECTURE.md).
-- **Separate FX Output** (off by default): with it on and the host's second
-  output pair enabled, outputs 1/2 carry the dry mix and 3/4 the FX return.
-  Saved with the session.
 - **UPDATES** shows the installed version and checks for, downloads and installs
   updates.
 
@@ -459,9 +456,11 @@ installs it once the host quits. Code: `shared/Infrastructure/Update/`.
   routes, Macro assignments, MIDI mappings and the FX order.
 - Saving an unedited project reproduces it exactly, so hosts do not mark a
   reopened project as changed.
-- **Compatibility:** 0.8 rebuilt the parameter set, and 0.8.2 added LFO 4 and
-  ENV 4. Sessions and presets saved by earlier versions do not load; the schema
-  fingerprint check rejects them.
+- **Compatibility:** 0.8 rebuilt the parameter set, 0.8.2 added LFO 4 and
+  ENV 4, and this version removes the Separate FX Output setting along with the
+  second output pair. Sessions and user presets saved by any earlier version,
+  0.8.x included, do not load; the schema fingerprint check rejects them. The
+  factory library is rebuilt from code, so it always loads.
 
 ## Signal Flow (High Level)
 
@@ -486,9 +485,8 @@ Important routing rules:
 - LFOs and envelopes are modulation sources only and are never mixed into any
   audio bus.
 - The send is pre-pan; mute kills a channel's send as well as its dry signal.
-- With the separate FX output on (and enabled by the host), the dry and FX
-  buses leave on separate stereo pairs. Those are stems: the master stages
-  (console master, LUCY, SPREAD, ceiling) act on the sum and are on neither.
+- The plug-in has one stereo output bus (the separate FX pair was removed after 0.8.3); the
+  master stages always reach it.
 - LUCY's wet path is ~17 ms late (816 samples at 48 kHz; ~28 ms in SLOW) and
   is not reported to the host as latency.
 

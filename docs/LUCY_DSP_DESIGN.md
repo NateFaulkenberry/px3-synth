@@ -351,9 +351,11 @@ the dry bus carried the original at full level. Measured through the real AU on
 the default patch: dry −18.0 dBFS, LUCY on −23.3 dBFS, of which the untouched
 residual dry was −22.4 dBFS and LUCY's own output −27.2 dBFS. Engaging it cost
 5 dB and no LUCY control could reach the louder part of what you heard. On the
-master the sum goes in and LUCY's output comes out. With SEPARATE FX OUTPUT on
-the stems carry no master stage, LUCY included — a coder is non-linear, so
-LUCY(dry) + LUCY(fx) is not LUCY(dry + fx) and cannot be split honestly.
+master the sum goes in and LUCY's output comes out. (0.8.3's SEPARATE FX OUTPUT
+stems carried no master stage, LUCY included - a coder is non-linear, so
+LUCY(dry) + LUCY(fx) is not LUCY(dry + fx) - and since JUCE's AU wrapper enables
+every bus, LUCY went silent in Logic with that setting on. The second output
+pair has since been removed.)
 
 **Phase:** magnitude-only manipulation wherever possible, with the input's own
 phase carried through. Spectral processing that rewrites phase carelessly turns

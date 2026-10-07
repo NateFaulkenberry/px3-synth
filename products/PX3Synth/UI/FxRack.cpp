@@ -86,11 +86,10 @@ juce::String sectionTooltip(FxDomain domain)
         case FxDomain::send:
             return "The sources' FX sends (set per source on the MIX page) feed one FX bus. These effects process "
                    "that bus in series: left to right, row after row. Drag a card by its handle to change the order. "
-                   "The bus then passes the FX BUS EQ / COMP and the FX RETURN fader and joins the dry signal. "
-                   "The separate FX output (3/4) carries this chain, after VIBE; LUCY and SPREAD are not on it.";
+                   "The bus then passes the FX BUS EQ / COMP and the FX RETURN fader and joins the dry signal.";
         case FxDomain::master:
             return "Master inserts: they process the finished mix (dry signal + FX return), LUCY then SPREAD. "
-                   "Send amounts do not affect them, they are not on the separate FX output, and they cannot be reordered.";
+                   "Send amounts do not affect them, and they cannot be reordered.";
     }
     return {};
 }

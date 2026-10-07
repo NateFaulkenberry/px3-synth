@@ -3489,54 +3489,6 @@ void testLucy()
               "default patch, LUCY on vs off: " + fmt(changeDb, 2) + " dB (was about -5 dB in the send chain)");
     }
 
-    // SEPARATE FX OUTPUT splits the mixer's own buses into stems. LUCY is a
-    // non-linear coder on the SUM - LUCY(dry) + LUCY(fx) is not LUCY(dry + fx)
-    // - so, like SPREAD, the analog master and the ceiling, it is on neither
-    // stem.
-    {
-        auto renderStems = [](bool lucy)
-        {
-            PX3SynthAudioProcessor processor;
-            makePlainPatch(processor);
-            setChoice(processor, "voice.osc1.mode", 1);
-            for (const auto* id : { "sub", "osc1", "osc2", "osc3" })
-                setParam(processor, juce::String("mix.") + id + ".send.fx", 1.0f);
-            setParam(processor, "fx.reverb.enabled", 1.0f);
-            setParam(processor, "fx.lucy.enabled", lucy ? 1.0f : 0.0f);
-            setParam(processor, "fx.lucy.global", 1.0f);
-            juce::AudioProcessor::BusesLayout layout;
-            layout.outputBuses.add(juce::AudioChannelSet::stereo());
-            layout.outputBuses.add(juce::AudioChannelSet::stereo());
-            processor.setBusesLayout(layout);
-            processor.getFxSeparateOutputParam().setValueNotifyingHost(1.0f);
-            processor.prepareToPlay(kSampleRate, kBlockSize);
-            std::vector<float> stems;
-            juce::AudioBuffer<float> buffer(4, kBlockSize);
-            for (int block = 0; block < 120; ++block)
-            {
-                buffer.clear();
-                juce::MidiBuffer midi;
-                if (block == 0) { midi.addEvent(juce::MidiMessage::noteOn(1, 52, 0.9f), 0); }
-                processor.processBlock(buffer, midi);
-                if (block < 40) { continue; }   // past the split crossfade
-                for (int ch = 0; ch < 4; ++ch)
-                    for (int i = 0; i < kBlockSize; ++i) { stems.push_back(buffer.getSample(ch, i)); }
-            }
-            return stems;
-        };
-        const auto withoutLucy = renderStems(false);
-        const auto withLucy = renderStems(true);
-        auto worst = 0.0f, level = 0.0f;
-        for (std::size_t i = 0; i < withLucy.size() && i < withoutLucy.size(); ++i)
-        {
-            worst = juce::jmax(worst, std::abs(withLucy[i] - withoutLucy[i]));
-            level = juce::jmax(level, std::abs(withoutLucy[i]));
-        }
-        check("Lucy_IsOnNeitherSeparateFxOutputStem",
-              level > 1.0e-3f && worst <= 1.0e-6f * juce::jmax(1.0f, level),
-              "stems with LUCY on differ by at most " + fmt(worst, 8) + " (peak " + fmt(level, 4) + ")");
-    }
-
     // ---- no single LUCY control silences the synth ----------------------------
     //
     // On the master, what LUCY outputs is all there is. Several settings used

@@ -45,7 +45,6 @@ public:
 
     // For the tests: the two controls, by the setting they carry.
     juce::ToggleButton& debugAnimationsToggle() { return animationsToggle; }
-    juce::ToggleButton& debugSeparateFxOutputToggle() { return separateFxOutputToggle; }
     juce::ComboBox& debugAnalogProfileBox() { return analogProfileBox; }
     px3::ui::SheetCloseButton& debugCloseButton() { return closeButton; }
     juce::TextButton& debugUpdateButton() { return updateButton; }
@@ -100,8 +99,6 @@ private:
     juce::ToggleButton animationsToggle;
     // Bound straight to its parameter: unlike the animation preference it is
     // part of the session, because it decides what the host's tracks receive.
-    juce::ToggleButton separateFxOutputToggle;
-    std::unique_ptr<juce::ButtonParameterAttachment> separateFxOutputAttachment;
     juce::Label updatesHeading;
     juce::Label versionLabel;
     juce::Label updateStatus;

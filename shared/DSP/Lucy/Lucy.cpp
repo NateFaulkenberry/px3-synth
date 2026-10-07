@@ -879,6 +879,18 @@ Lucy::Frame Lucy::applyFilter(Frame in)
         values[static_cast<std::size_t>(ch)] = user.filterInvert ? (dry - x) : x;
     }
 
+    // FILTER comes in from nothing over the bottom of its travel. Below
+    // 0.001 the filter is bypassed outright, and just above it the band-pass
+    // is already a whole band-pass, so sweeping FILTER up from zero stepped
+    // the output from the full input to the band (an 0.11 step in the sweep,
+    // against 0.02 either side). Faded in over the first 5% instead.
+    {
+        const auto t = juce::jlimit(0.0f, 1.0f, (width - 0.001f) / 0.05f);
+        const auto blend = t * t * (3.0f - 2.0f * t);
+        values[0] = in.l + (values[0] - in.l) * blend;
+        values[1] = in.r + (values[1] - in.r) * blend;
+    }
+
     // MAKEUP. Each section peaks at unity, so a narrow band passes only the
     // energy inside it: FILTER at the top took a dense patch 33 dB down, the
     // 96 dB slope 56 dB, and with LUCY on the master that was the whole

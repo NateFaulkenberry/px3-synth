@@ -1146,7 +1146,10 @@ own safe limit.
 
 GRANULAR has a **MODE** menu — CLASSIC, CLOUD, SHIMMER and RHYTHMIC — and in the
 last three the knobs take that mode's names (SIZE, DIFFUSE, INTERVAL, SWING/FB,
-RATE). TAPE has three more controls: **QUALITY** (worn tape at the left — darker
+RATE). In CLASSIC, **TIME** sets how far back the grains reach and how long they
+are, and **FEEDBACK** how much of the cloud is fed back into itself. (Before this
+version both knobs did nothing in CLASSIC in P(X3); the standalone PX3 Delay still
+drives CLASSIC from its AMOUNT knob.) TAPE has three more controls: **QUALITY** (worn tape at the left — darker
 and more saturated — new tape at the right), **WOBBLE** (how much the tape speed
 wanders: wow and flutter, from a perfect transport to a badly worn machine) and
 **SLIP** (how often the tape head slips backward for a moment, playing the echo
@@ -1384,30 +1387,19 @@ your patch and travels with a preset. In a host its parameters are named
 this page), so they are not confused with the [ANALOG](#analog--per-voice-analogue-drift)
 card.
 
-## Separate FX Output
+## Outputs
 
-Off by default. P(X3) has a second stereo output pair that a host can enable.
+P(X3) has one stereo output, carrying the whole mix: dry, FX return, the
+console engine, LUCY and SPREAD. Use it on a stereo instrument track.
 
-| Separate FX Output | Outputs 1/2 | Outputs 3/4 |
-| --- | --- | --- |
-| **Off** (default) | The full mix: dry and FX | Silent |
-| **On**, second pair enabled in the host | Dry only | The FX return (the send chain) |
-
-Turn it on when you want the dry and FX signals on separate tracks — in Logic,
-for example, create the instrument as **Multi-Output (2xStereo)** and add the
-extra channel strip. With it off, P(X3) sounds the same in every host however
-many outputs the host has enabled.
-
-VIBE runs on the instrument before the dry/send split, so both pairs carry it:
-3/4 is the send chain processing a vibed FX bus. The two outputs carry the fixed
-output boost but not the master stages — the
-console engine, LUCY, SPREAD and the output ceiling — which act on the sum. LUCY
-in particular cannot be split: it codes the mix as a whole, so with Separate FX
-Output on it is not heard on either pair. Summing 1/2 and 3/4 in your DAW is close
-to the stereo output but not identical to it.
-
-The setting is saved with your session. Switching it while notes sound
-crossfades rather than clicking.
+Up to 0.8.3 it also offered a second stereo pair carrying the FX return on its
+own (**Separate FX Output**). That is gone. In Logic it caused a real problem:
+the AU always enables every output pair, so with the setting on, the stereo
+track heard only the dry signal - and LUCY and SPREAD, which act on the full
+mix, on neither pair. Removing the setting changed the saved parameter set, so
+sessions and user presets from 0.8.x do not load in this version (the factory
+presets do). Logic may need to rescan the plug-in, and a project that used
+P(X3) as a multi-output instrument has only the one stereo output.
 
 ## Updates
 
@@ -1872,8 +1864,9 @@ MIDI Learn, Macros and every mapping behave the same way in both.
 
 ### An old session or preset will not load
 
-Sessions and presets saved before v0.8.2 are not compatible and are rejected by
-design. See [Presets](#what-travels-where).
+Sessions and user presets saved by earlier versions - every 0.8.x release
+included - are not compatible with this version and are rejected by design.
+The factory presets are rebuilt by the plug-in itself and always load. See [Presets](#what-travels-where).
 
 ### A knob will not move
 
